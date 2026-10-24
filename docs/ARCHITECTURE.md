@@ -65,13 +65,13 @@ A Nuxt 3 single-page app (`ssr: false`), generated from the `create-xrp` templat
 
 **What is real and what is SIMULATED.** Both implementations exist side by side and the interface says which one answers, with a striped SIMULATED badge:
 
-| Piece                             | Simulated (`lib/sim/`)                                                                | Live (`lib/live/`)                                                                                                 |
-| --------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Node for Session, Actions, Attack | follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals; no consensus | not yet: waits for the amendment node (milestone M3)                                                               |
-| Quantum exposure check            | histories written for the fixtures                                                    | `checkExposure` of `@carbs/sessions` on the public AlphaNet and on mainnet (read-only)                             |
-| Quantum migration                 | the simulated node and Stax                                                           | a fresh AlphaNet account, signed in the page, validated and linked to the explorer; **the device stays SIMULATED** |
-| Ledger Stax                       | review lines of spec 7.3                                                              | the contract-following software device of `@carbs/ledger`; the real Stax needs the device track's real flow        |
-| Passkey                           | the software authenticator of `@carbs/sessions` (real P-256, no prompt)               | the browser's WebAuthn, when the person presses Connect                                                            |
+| Piece                             | Simulated (`lib/sim/`)                                                                | Live (`lib/live/`)                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node for Session, Actions, Attack | follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals; no consensus | the standalone node with the amendment (`NUXT_PUBLIC_BACKEND=live`, `pnpm demo`): run in modes A, P and C, with the node's own refusal codes |
+| Quantum exposure check            | histories written for the fixtures                                                    | `checkExposure` of `@carbs/sessions` on the public AlphaNet and on mainnet (read-only)                                                       |
+| Quantum migration                 | the simulated node and Stax                                                           | a fresh AlphaNet account, signed in the page, validated and linked to the explorer; **the device stays SIMULATED**                           |
+| Ledger Stax                       | review lines of spec 7.3                                                              | the contract-following software device of `@carbs/ledger`; the real Stax needs the device track's real flow                                  |
+| Passkey                           | the software authenticator of `@carbs/sessions` (real P-256, no prompt)               | the browser's WebAuthn, when the person presses Connect                                                                                      |
 
 **Wallet entry.** The Connect wallet modal lists three adapters against the `WalletAdapter` interface of xrpl-connect 1.0.0: Ledger Stax (Device Management Kit only), Passkey (this Mac) and a throw-away Demo account. No API key, no third-party wallet.
 
