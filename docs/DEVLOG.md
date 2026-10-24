@@ -90,6 +90,38 @@ These are the base failures. `docs/base-failures.txt` lists them one failing ass
 - Tests: 14 vectors encoded with `ripple-binary-codec` (`tests/standalone/testcases/30-…` and `31-…`, a `.json` beside each `.raw`); cmocka 4/4 groups pass, including exact `BLIND_SIGN_REQUIRED` for the three blind cases; Ragger on the Speculos emulator, 7 clear-sign cases per device with signature check, snapshots for Stax, Flex, Nano S Plus, Nano X and Apex P; builds for the five devices with no warning. **Simulated**: the device screens are emulator snapshots, not the real Stax.
 - **On the real Stax** (XRP app with this change and the ML-DSA root of #7, built together locally): a `SigningSessionSet` in mode C (20 XRP, 10 minutes) for the device account `r4MG66fUzV75ZHbSiEAXGHAxANrwQTnGh8` was reviewed and signed with the classical key, signature verified locally with `ripple-keypairs`; a `SigningSessionSet` in mode P (Payment, OfferCreate, 5 minutes) for the post-quantum account `rDX7hJiDtUVUnN2tjRqswtuZcbE88yi9i2` was reviewed through the same screens and signed with the device's ML-DSA-44 key, signature verified with `@noble/post-quantum`. **Not submitted**: no node has the amendment yet, so the acceptance case (session opened on the node) is still open. The throw-away "carbs PQ" spike app was removed from the device.
 
+### Two account profiles and ML-DSA-44 session keys (D13, D14)
+
+Documentation only: no protocol, client or device code changed.
+
+- **D13 and D14 are applied** to the specification (§2, the TL;DR, §6.4, §6.14, case 20 of §6.15, §7.7, §8.2 to §8.5, §10.1, §10.3, §12 and appendix A), to `docs/ARCHITECTURE.md`, and in ADR 0011. ADRs 0004 and 0008 are marked superseded in part; their text stays.
+- **D14, read in code.** An ML-DSA-44 session key needs nothing specific in the amendment; §6.14 gives the `path:line` of each step. Whether the node accepts a transaction single-signed by an ML-DSA-44 key is **UNVERIFIED** in a test: the only upstream test that signs one asserts a duration and not the verdict (`rippled/src/test/app/STTXSigning_test.cpp:46-73`). Case 20 settles it in N4.
+- **Deviation: case 20 with ML-DSA-44 moves from N8 (stretch) to N4 (MVP)**, because D14 makes ML-DSA-44 session keys a requirement.
+- **Deviation: §7.7 now follows the device track.** It said that the app prepends `STX\0` before an ML-DSA signature. In the device track's code, now in `ledger-app/`, the host sends the whole signing data, prefix included, and the app strips the prefix to parse and display (`ledger-app/src/pq/pq_root.c:139-151`). The instructions `0x10` to `0x12`, the 250-byte chunks and the 2 048-byte limit come from the same code (`ledger-app/src/pq/pq_root.h:12-23`, `ledger-app/src/apdu/global.h:71`).
+- **Deviation: three demo profiles become two** (§8.5). The former "Ledger" and "PQ" profiles merge into the Ledger account; the "Face" profile becomes the Mac account.
+- **The numbers of §6.1 match the device header**, `ledger-app/src/xrp/signing_session.h` (from the device track, merged into `develop`):
+
+  | §6.1 item                  | Spec         | `signing_session.h`                           |
+  | -------------------------- | ------------ | --------------------------------------------- |
+  | `SigningSessionSet`        | 130          | `TRANSACTION_SIGNING_SESSION_SET 130` (14)    |
+  | `SigningSessionDelete`     | 131          | `TRANSACTION_SIGNING_SESSION_DELETE 131` (15) |
+  | `SessionKey`               | ACCOUNT 34   | `XRP_ACCOUNT_SESSION_KEY 34` (19)             |
+  | `SessionCap`               | AMOUNT 47    | `XRP_UINT64_SESSION_CAP 47` (20)              |
+  | `SessionDuration`          | UINT32 114   | `XRP_UINT32_SESSION_DURATION 114` (21)        |
+  | `PermissionValue` (reused) | UINT32 52    | `XRP_UINT32_PERMISSION_VALUE 52` (22)         |
+  | `Permissions` (reused)     | ARRAY 29     | `XRP_STARRAY_PERMISSIONS 29` (23)             |
+  | `Permission` (reused)      | OBJECT 15    | `XRP_STOBJECT_PERMISSION 15` (24)             |
+  | `tfAllTransactions`        | `0x00010000` | `TF_ALL_TRANSACTIONS 0x00010000u` (27)        |
+
+  The numbers in brackets are lines of that header. The app does not use `SessionSpent` (an entry field), the entry type, the keylet or the result codes. Its id `0xFD` for the synthetic "Note" row (line 32) is not an XRPL field: VL 253 is free on the public AlphaNet and in the imported tree, whose highest VL field is 54 (`sfClientDataJSON`, `rippled/include/xrpl/protocol/detail/sfields.macro:548`).
+
+- **Review gate, round 1** (on #16, #17 and #18 together): its findings on this part are applied.
+  - §6.14 also cites where the build asserts the 1 312-byte size, the signing side and the jtx signer.
+  - The D14 table now cites the full fee formula and states that no local check limits the size.
+  - UNVERIFIED item 1 now says the AlphaNet accepted device signatures. A new item covers `@noble/post-quantum` signatures, which no node has checked yet.
+  - The case 20 refusals name their codes, and three cases are added.
+  - §7.7 gains the status words, the rule that the context is cleared when the instruction changes, the key derived on chunk 0, the signature length answer, and the devices the path is built for. The stale `LEDGER_ASSERT` sentence is gone.
+
 ### Client library `@carbs/sessions` (W1, Q1, Q2: public API)
 
 - `packages/core` gets its public API with working code: definitions read from `server_definitions` (an answer carrying only `hash` is refused), `encodeForSigning` (`STX\0 ‖ signing fields`), `encodeForDevice` (the same fields without the prefix, `SigningPubKey` set, no `TxnSignature`) and `encodeTx`, low-S strict DER for P-256, a WebCrypto P-256 session key generated non-extractible and fresh per session, ML-DSA-44 through `@noble/post-quantum` 0.7.1 (pinned), classical keys through `ripple-keypairs`, passkey signing (`PasskeySignature`) with a pluggable authenticator, `SigningSessionSet` / `SigningSessionDelete` builders that require `LastLedgerSequence`, a JSON-RPC and WebSocket node client limited to public methods, typed errors for the three `tefSESSION_*` codes, and the quantum module (`checkExposure`, `buildPqMigration`, `runPqMigration`).

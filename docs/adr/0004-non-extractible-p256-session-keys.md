@@ -1,6 +1,6 @@
 # 0004. Session keys are non-extractible P-256 WebCrypto keys, fresh per session
 
-**Status:** Accepted (2026-10-24)
+**Status:** Accepted (2026-10-24). Superseded in part by [0011](0011-two-account-profiles.md): this applies to Mac accounts; a Ledger account's session key is ML-DSA-44.
 
 **Context.** The session key lives in the browser and signs without a prompt. alphanet verifies raw P-256 signatures (SHA-256, DER, no low-S rule). The `LastLedgerSequence` window (256 ledgers) can exceed a session's lifetime, so a held transaction could land under a later session opened with the same key.
 

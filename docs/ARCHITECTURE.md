@@ -14,6 +14,13 @@ An account opens a **signing session**: a short-lived key (at most 600 seconds) 
 
 A session is opened with **one ordinary signature** from a key that already has full authority: a passkey, or a Ledger that shows the rules on its screen (clear signing). It is not a multisig.
 
+Two account profiles share this engine (decisions D13 and D14, [ADR 0011](adr/0011-two-account-profiles.md)):
+
+| Profile            | Full authority                                                                   | Opens a session with                             | Session key                                           |
+| ------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
+| **Ledger account** | the device's ML-DSA-44 key as `RegularKey`; master key disabled; never a passkey | an ML-DSA-44 signature on the Stax, clear-signed | ML-DSA-44, generated in the client, fresh per session |
+| **Mac account**    | the master key and a passkey                                                     | the passkey (WebAuthn)                           | P-256 WebCrypto, non-extractible, fresh per session   |
+
 ## Components
 
 ```mermaid
@@ -22,7 +29,7 @@ graph TB
         W["apps/web<br/>Account, Session, Actions, Attack"]
         C["packages/core (@carbs/sessions)<br/>definitions, encoding, session keys, node client"]
         L["packages/ledger (@carbs/ledger)<br/>DMK preview, custom APDUs for ML-DSA"]
-        K["WebCrypto P-256 session key<br/>non-extractible"]
+        K["Session key, fresh per session<br/>ML-DSA-44 (Ledger account)<br/>or non-extractible P-256 (Mac account)"]
         P["Passkey (WebAuthn)"]
     end
     D["Ledger Stax<br/>ledger-app/ (app-xrp + clear signing)"]
@@ -52,16 +59,16 @@ graph TB
 
 ## Interfaces
 
-| Between            | Format                                                                                                                            | Notes                                                                                                                                                        |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| client ↔ node      | JSON-RPC and WebSocket (`submit`, `account_info`, `ledger_entry` type `signing_session`, `account_objects`, `server_definitions`) | public non-admin port only; never the node's `sign` RPC with a P-256 key                                                                                     |
-| client ↔ Ledger    | APDU through the Device Management Kit: `CLA 0xE0`, `INS 0x02` public key, `0x04` sign, `0x06` configuration                      | the app prepends the signing prefix itself, so the client sends the serialized transaction without `STX\0`; ML-DSA and P-256 add new INS/P2 values (stretch) |
-| client ↔ passkey   | WebAuthn assertion whose challenge is the signed data; result in `PasskeySignature`                                               | normalize the signature to low-S, strict DER                                                                                                                 |
-| session key ↔ node | ECDSA P-256 over `STX\0 ‖ signed fields`, low-S, strict DER                                                                       | `LastLedgerSequence` on every session transaction, fresh key per session                                                                                     |
+| Between            | Format                                                                                                                            | Notes                                                                                                                                                                                                                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| client ↔ node      | JSON-RPC and WebSocket (`submit`, `account_info`, `ledger_entry` type `signing_session`, `account_objects`, `server_definitions`) | public non-admin port only; never the node's `sign` RPC with a P-256 key                                                                                                                                                                                                                                            |
+| client ↔ Ledger    | APDU through the Device Management Kit: `CLA 0xE0`, `INS 0x02` public key, `0x04` sign, `0x06` configuration                      | classical keys: the app prepends the signing prefix itself, so the client sends the serialized transaction without `STX\0`. ML-DSA-44: `INS 0x10` public key, `0x11` sign, `0x12` signature, in 250-byte chunks, and the client sends `STX\0` with the fields (at most 2 048 bytes). P-256 on the device is stretch |
+| client ↔ passkey   | WebAuthn assertion whose challenge is the signed data; result in `PasskeySignature`                                               | normalize the signature to low-S, strict DER                                                                                                                                                                                                                                                                        |
+| session key ↔ node | ML-DSA-44 (Ledger account) or ECDSA P-256 with low-S, strict DER (Mac account), over `STX\0 ‖ signed fields`                      | `LastLedgerSequence` on every session transaction, fresh key per session                                                                                                                                                                                                                                            |
 
 ## Flows
 
-**Open a session from the Ledger**
+**Open a session from the Ledger (Ledger account)**
 
 ```mermaid
 sequenceDiagram
@@ -70,12 +77,12 @@ sequenceDiagram
     participant C as packages/core
     participant D as Ledger Stax
     participant N as xrpld
-    W->>C: createSessionKey() (WebCrypto, non-extractible)
+    W->>C: createSessionKey() (ML-DSA-44)
     W->>C: buildSessionSet(mode, 600 s, permissions or cap)
-    C->>D: serialized SigningSessionSet (DMK, chunked)
+    C->>D: STX prefix and SigningSessionSet (instruction 0x11, chunked)
     D->>U: Open session, Valid for 10 minutes, All transactions, Fee
     U->>D: approve
-    D-->>C: signature
+    D-->>C: ML-DSA-44 signature (instruction 0x12)
     C->>N: submit
     N-->>W: tesSUCCESS, SigningSession entry created
 ```
@@ -124,4 +131,4 @@ The quantum exposure check (`packages/core/src/quantum`) is tested with recorded
 
 ## Decisions
 
-See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008), and the licence (0009).
+See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004, now for Mac accounts), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008, superseded in part by 0011), the licence (0009), and two account profiles with ML-DSA-44 session keys on Ledger accounts (0011).

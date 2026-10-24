@@ -17,11 +17,11 @@
 
 - **Protocol**: a rippled amendment `SigningSessions`. An account opens a *session*: a short-lived (at most 10 minutes) ephemeral key that signs without prompting, and that the **ledger itself** confines in time, in transaction types (or in XRP spent), and in fee burn. It can never change who controls the account. Built on the XLS-75 permission engine, in `rippled/` (base: `XRPLF/rippled:alphanet`).
 - **Three exclusive modes**: **A** all delegable types minus an exclusion list, **P** a list of XLS-75 permissions, **C** direct XRP `Payment` only, with a total cap (fees included).
-- **A post-quantum root in hardware** (the headline): a **Ledger Stax** generates and holds an **ML-DSA-44** key, and **clear-signs** XRPL transactions with it: to our knowledge the first hardware-wallet post-quantum signatures on XRPL, readable on the device screen. The same device opens sessions with the rules displayed ("Valid for 10 minutes · All transactions · Cannot change keys"). A passkey (P-256, Face ID / Touch ID) opens sessions too.
+- **A post-quantum root in hardware** (the headline): a **Ledger Stax** generates and holds an **ML-DSA-44** key, and **clear-signs** XRPL transactions with it: to our knowledge the first hardware-wallet post-quantum signatures on XRPL, readable on the device screen. The same device opens the sessions of a **Ledger account** with the rules displayed ("Valid for 10 minutes · All transactions · Cannot change keys"), and those sessions use ML-DSA-44 keys too. On a **Mac account**, a passkey (P-256, Face ID / Touch ID) opens them (two profiles, D13).
 - **A quantum exposure check and a guided migration** for any XRPL account: is its public key already on the ledger, do its other authorities or signer lists expose keys, and what does the move to a post-quantum key look like (`SetRegularKey` to the ML-DSA key, a proof transaction signed by it, then `asfDisableMaster`, which only the master key can set). See [§8.7](#87-quantum-exposure-check-and-migration).
 - **Community tooling**: a Device Management Kit Ledger adapter for `xrpl-connect` (their current adapter uses the legacy ledgerjs stack), the client library `@carbs/sessions`, and a sessions template for `create-xrp` ([§8.8](#88-ecosystem-contributions)).
 - **Documentation feedback for Ledger** is a first-class deliverable, judged "as much as the code": a running log kept from the start, screenshots, and pull requests to the docs ([§7.6](#76-documentation-and-developer-experience-feedback)).
-- **Client**: TypeScript (`packages/core`, `apps/web`), WebCrypto non-extractible P-256 session keys (or ML-DSA ones), Ledger over WebHID with the Device Management Kit and custom APDUs.
+- **Client**: TypeScript (`packages/core`, `apps/web`), session keys that follow the account profile (ML-DSA-44 generated in the client on a Ledger account, WebCrypto non-extractible P-256 on a Mac account; D13, D14), Ledger over WebHID with the Device Management Kit and custom APDUs.
 - **Single public repository** `carbs`; upstream bases imported unmodified in their own commits; PRs and commits in the XRPLF style.
 
 ### Why this, and why now
@@ -61,6 +61,8 @@ Taken by Sofiane, **for the whole team**.
 | **D10** | Front base | **The `create-xrp` Nuxt template**, generated and recorded in `UPSTREAM.md` (ADR 0007). |
 | **D11** | Headline | **Adopted: quantum-safe by default**: post-quantum root on the Stax, quantum exposure check and migration, sessions on top (§7.7, §8.7). |
 | **D12** | Licence | **Apache-2.0** for the code written here (the `ledger-app/` base is Apache-2.0); changes meant for `rippled/` follow its ISC licence. See `LICENSE` and the README. |
+| **D13** | Account profiles | **Two profiles, one session engine** ([ADR 0011](docs/adr/0011-two-account-profiles.md), §8.5). **Ledger account**: master key disabled, `RegularKey` = the device's ML-DSA-44 key, **never a passkey** (a passkey has full authority and cannot be replaced or removed, so it would defeat the device and the post-quantum root); every transaction made with the account's own authority, session openings included, is signed on the device; its session keys are ML-DSA-44 keys generated in the client. **Mac account**: master key and a passkey; sessions are opened by the passkey; the session key is a non-extractible P-256 WebCrypto key. |
+| **D14** | ML-DSA-44 session keys | **The amendment accepts them.** Nothing in it depends on the key type of a session key; the code path, and the tests that settle what is still unverified, are in §6.14. Case 20 with ML-DSA-44 belongs to N4. |
 
 ---
 
@@ -213,7 +215,7 @@ A transaction is **session-signed** iff **all** hold:
 - a `SigningSession` exists for (`Account`, `AccountID(SigningPubKey)`);
 - it carries no `CounterpartySignature` (a session key used as a counterparty signer follows the existing rules and is rejected).
 
-The predicate first tests `rules.enabled(featureSigningSessions)` (no ledger read on every transaction before activation) and that `SigningPubKey` is a valid public key type. One function, `isSessionSigned(view, tx)`, serves **authorization, accounting and the invariant** so that they cannot disagree. A session-signed transaction is authorized **only** by its session: master, `RegularKey`, passkey and beneficiary rules are not consulted. Consequence: a key that later also becomes `RegularKey` stays bounded until its session is deleted (least privilege); creating a session for a key that already has full authority is forbidden (§6.3). Two shapes follow the existing rules: sponsored transactions and a Batch inner-account signature (`Batch::checkBatchSign` calls `Transactor::checkSign`). Wallets should not make a session key a `RegularKey`.
+The predicate first tests `rules.enabled(featureSigningSessions)` (no ledger read on every transaction before activation) and that `SigningPubKey` is a valid public key type (secp256k1, Ed25519, P-256 or ML-DSA-44; an ML-DSA-44 session key needs nothing more, §6.14, D14). One function, `isSessionSigned(view, tx)`, serves **authorization, accounting and the invariant** so that they cannot disagree. A session-signed transaction is authorized **only** by its session: master, `RegularKey`, passkey and beneficiary rules are not consulted. Consequence: a key that later also becomes `RegularKey` stays bounded until its session is deleted (least privilege); creating a session for a key that already has full authority is forbidden (§6.3). Two shapes follow the existing rules: sponsored transactions and a Batch inner-account signature (`Batch::checkBatchSign` calls `Transactor::checkSign`). Wallets should not make a session key a `RegularKey`.
 
 ### 6.5 Authorization hook
 
@@ -352,12 +354,36 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 
 | Key | Public key | Signature |
 |---|---|---|
-| Session key (P-256, WebCrypto non-extractible) | 65 bytes `0xF6 ‖ X ‖ Y`; `SessionKey` = `RIPEMD160(SHA256(pubkey))` | ECDSA-SHA256 over `encodeForSigning(tx)` (prefix `STX\0`), WebCrypto `r‖s` → **low-S** → **strict DER** → `TxnSignature` |
+| Session key of a Mac account (P-256, WebCrypto non-extractible) | 65 bytes `0xF6 ‖ X ‖ Y`; `SessionKey` = `RIPEMD160(SHA256(pubkey))` | ECDSA-SHA256 over `encodeForSigning(tx)` (prefix `STX\0`), WebCrypto `r‖s` → **low-S** → **strict DER** → `TxnSignature` |
+| Session key of a Ledger account (ML-DSA-44, generated in the client by `@noble/post-quantum` 0.7.1, D13) | 1 312 bytes, no prefix; `SessionKey` = `RIPEMD160(SHA256(pubkey))` over the 1 312 bytes | 2 420 bytes; **pure** ML-DSA-44, empty context, randomized, over `encodeForSigning(tx)` (prefix `STX\0`) → `TxnSignature` |
 | Passkey | same 65-byte format; `SigningPubKey` = passkey key | `navigator.credentials.get` with `challenge` = signed data; also **normalize `PasskeySignature.Signature` to low-S, strict DER** (not in the signed data, and the node accepts high-S today) |
-| ML-DSA-44 | **1 312 bytes, no prefix** | 2 420 bytes; **pure** ML-DSA, empty context, randomized; the node runs `crypto_sign_verify(sig, m = full signing data, ctx empty)`, i.e. `M' = 0x00 ‖ 0x00 ‖ M`. Account derivation from an XRPL seed is non-standard (no `k ‖ l` domain): irrelevant, the device generates the key |
+| ML-DSA-44 root key (on the device) | **1 312 bytes, no prefix** | 2 420 bytes; **pure** ML-DSA, empty context, randomized; the node runs `crypto_sign_verify(sig, m = full signing data, ctx empty)`, i.e. `M' = 0x00 ‖ 0x00 ‖ M`. Account derivation from an XRPL seed is non-standard (no `k ‖ l` domain): irrelevant, the device derives its key with SLIP-21 (§7.7) and the client generates session keys from a random seed |
 | secp256k1 / Ed25519 | standard | standard |
 
 `Quantum` / ML-DSA keys need no amendment gating (the symbol `featureQuantum` is referenced nowhere in code). `ForceQuantum` does not exist on alphanet and was withdrawn by its author; we do not build it.
+
+**ML-DSA-44 session keys (D14).** The amendment accepts them with no code specific to their key type: every step it relies on is generic in the imported tree (cited at `develop` `695e6df`, whose `rippled/` is the import plus the P5 fix and the jtx WebAuthn helper, #12 and #13).
+
+| Step | Code |
+|---|---|
+| Preflight refuses an unknown key type with `temBAD_SIGNATURE` | `rippled/src/libxrpl/tx/Transactor.cpp:131-140` |
+| A 1 312-byte key is typed `KeyType::Dilithium` by its size alone, the size of ML-DSA-44 (the build asserts 1 312), and fits the key buffer | `rippled/src/libxrpl/protocol/PublicKey.cpp:236-256`, `rippled/src/libxrpl/protocol/SecretKey.cpp:77`, `rippled/include/xrpl/protocol/PublicKey.h:61-66`, `rippled/src/libxrpl/protocol/PublicKey.cpp:206-212` |
+| The AccountID of any key is `RIPEMD160(SHA256(all its bytes))`, so `SessionKey` is derived the same way for ML-DSA-44 | `rippled/src/libxrpl/protocol/AccountID.cpp:148-156`, `rippled/include/xrpl/protocol/digest.h:123-146` |
+| A single-signed transaction signs `STX\0` and its fields, before and after role-based prefixes | `rippled/src/libxrpl/protocol/Sign.cpp:54-73`, `rippled/src/libxrpl/protocol/STTx.cpp:262-281` |
+| Only a P-256 key with `PasskeySignature` takes the WebAuthn branch; any other key goes to `verify` | `rippled/src/libxrpl/protocol/STTx.cpp:524-548` |
+| `verify` checks ML-DSA-44 as pure ML-DSA with an empty context over the whole message, and `sign` makes it the same way; jtx signs through `sign` | `rippled/src/libxrpl/protocol/PublicKey.cpp:450-477`, `rippled/src/libxrpl/protocol/SecretKey.cpp:366-373`, `rippled/src/test/jtx/impl/utility.cpp:52-58` |
+| The signer's AccountID in the authorization step, which the session predicate computes the same way | `rippled/src/libxrpl/tx/Transactor.cpp:1021-1028` |
+| The base fee depends on neither the key type nor the size | `rippled/src/libxrpl/tx/Transactor.cpp:459-483` |
+| No local check limits the size of the key or the signature | `rippled/src/libxrpl/protocol/STTx.cpp:956-984` |
+
+**UNVERIFIED**, each with the test that settles it (case 20, N4):
+
+1. The node accepts a transaction single-signed by an ML-DSA-44 key. The public AlphaNet has accepted payments signed on the Stax this way (`docs/DEVLOG.md`, the post-quantum root entries), but no test of our tree shows it: the only upstream test that signs one asserts a duration, not the verdict (`rippled/src/test/app/STTXSigning_test.cpp:46-73`). Test: with jtx accounts of `KeyType::Dilithium` (`rippled/src/test/jtx/impl/Account.cpp:44-61`, keys derived from a seed at `rippled/src/libxrpl/protocol/SecretKey.cpp:609-619`), a Ledger account (`RegularKey` an ML-DSA-44 key, master disabled) opens a session signed by that key, then an ML-DSA-44 session key signs a `Payment`: both `tesSUCCESS`, and the entry's `SessionKey` is `calcAccountID` of the session public key.
+2. The refusals next to it, each with its code: the same session key signing for another account gets `tefBAD_AUTH` (case 15). A corrupted signature, and a 1 312-byte `SigningPubKey` that is not a key (the type is read from the size only), fail the signature check: `submit` answers `invalidTransaction`, "fails local checks: Invalid signature." (`rippled/src/xrpld/rpc/handlers/transaction/Submit.cpp:105-112`), which jtx reports as `telENV_RPC_FAILED`, and preflight would return `temINVALID` (`rippled/src/libxrpl/tx/Transactor.cpp:337-342`). Three more cases: the own close signed by an ML-DSA-44 session key succeeds; a `SessionKey` equal to the ML-DSA-44 `RegularKey` gets `tecNO_PERMISSION` (§6.3); an opening signed by the disabled classical master key gets `tefMASTER_DISABLED` (`rippled/src/libxrpl/tx/Transactor.cpp:1136-1139`).
+3. The fee ceiling (§6.5, rule 4) applies to an ML-DSA-44 session transaction as to a P-256 one (case 13).
+4. No node has yet accepted a signature made by `@noble/post-quantum`: the AlphaNet payments above were signed on the device. Test: a fixed key, message and signature from `@noble/post-quantum` 0.7.1 checked by rippled's `verify` (a vector in the jtx suite), then spike K3 on the AlphaNet.
+5. The client derives the same `SessionKey` as the node: a `packages/core` test (W1) compares `RIPEMD160(SHA256(pubkey))` of a fixed ML-DSA-44 key with the AccountID the node computes for it.
+6. Our node accepts a `SigningSessionSet` signed on the Stax by the ML-DSA-44 key (W3, W7). The device track has signed one in mode P and did not submit it, since no node had the amendment yet (`docs/DEVLOG.md`).
 
 ### 6.15 Test plan (jtx suite `SigningSessions`, `src/test/app/SigningSessions_test.cpp`, plus invariant tests)
 
@@ -384,7 +410,7 @@ TDD: every task starts with the failing test. Assertions name the exact result c
 | 17 / 17b | Session key later set as `RegularKey`: stays bounded (`SetRegularKey` signed by it `tefSESSION_TX_NOT_ALLOWED`), full authority after deletion; missing or far `LastLedgerSequence`: `tefSESSION_TX_NOT_ALLOWED`; sponsored tx / Batch inner signature by a key that is both follow existing rules (documented limitation) |
 | 18 | Owner closes; session key closes (also after expiry, and in mode C with remaining cap < `Fee`: exempt from cap but not from the fee ceiling); stranger closes live: `tecNO_PERMISSION`; stranger closes expired: `tesSUCCESS`; missing: `tecNO_ENTRY`; `Owner == Account`: `temMALFORMED` |
 | 19 | `AccountDelete` with sessions present deletes them |
-| 20 | Session key types: P-256 (raw, low-S, strict DER), Ed25519, secp256k1, ML-DSA-44 |
+| 20 | Session key types: P-256 (raw, low-S, strict DER), Ed25519, secp256k1, ML-DSA-44 (1 312-byte key, 2 420-byte signature). ML-DSA-44 is MVP (D14): a Ledger account opens a session signed by its ML-DSA-44 `RegularKey`, an ML-DSA-44 session key signs, the own close by an ML-DSA-44 session key, and the refusals of §6.14 with their codes (another account `tefBAD_AUTH`; a corrupted signature or a 1 312-byte value that is not a key refused by the signature check, `invalidTransaction`; `SessionKey` = the ML-DSA-44 `RegularKey` `tecNO_PERMISSION`; an opening signed by the disabled master `tefMASTER_DISABLED`) |
 | 21 | Invariants: each rule of §6.7 has a test that mutates the view to violate it and expects the invariant failure result of the pass (`tecINVARIANT_FAILED`; `tefINVARIANT_FAILED` when the reset pass fails too), modelled on `InvariantsBeneficiary_test` |
 | 22 | TxQ: a queued session-signed payment whose session expires or is deleted is dropped |
 | 23 | Accounting paths: `tecNO_DST_INSUF_XRP` (from preclaim), a `tec` from `doApply`, and the `tecINVARIANT_FAILED` reset path each leave `SessionSpent` equal to the fee (or fee + amount on success), invariant satisfied |
@@ -489,11 +515,11 @@ Ledger's bounty judging criteria are explicit: **"We judge the Developer Experie
 
 **Goal.** The Stax generates and holds an **ML-DSA-44** key, shows the transaction in clear, and signs it. Concretely, on a public network that accepts ML-DSA keys (the AlphaNet today), with an account whose master key is the Stax's classical key: (1) `SetRegularKey` to the device's ML-DSA key, signed by the master key and clear-signed; (2) a proof transaction signed by the ML-DSA key on the device, which is the first post-quantum device signature; (3) `AccountSet asfDisableMaster`, **signed by the master key** (the node answers `tecNEED_MASTER_KEY` if the regular key signs it); then (4) a session opened by the ML-DSA key with the rules on the screen. Afterwards no classical key can sign for the account. Ledger states that the pre-hash ML-DSA variant does not fit clear signing; this design uses **pure ML-DSA over the fully buffered message**, which is what clear signing needs (the app parses and displays the same bytes it signs).
 
-**Signing.** `MLDSA_sign` (pure, empty context) over `STX\0 ‖ signed fields`, as `crypto_sign_verify` expects on the node (`M' = 0x00 ‖ 0x00 ‖ M`). The app prepends the prefix itself. Signing is randomized and may retry internally.
+**Signing.** `MLDSA_sign` (pure, empty context) over `STX\0 ‖ signed fields`, as `crypto_sign_verify` expects on the node (`M' = 0x00 ‖ 0x00 ‖ M`). The host sends these bytes, prefix included: the app checks the prefix, runs the rest through its own parser so that the review shows the decoded transaction, and signs the whole message (`ledger-app/src/pq/pq_root.c:139-151`, from the device track). On the classical path the app adds the prefix itself (§8.4). Signing is randomized and may retry internally.
 
-**Key derivation.** A key derived deterministically from an app-scoped **SLIP-21** seed through `MLDSA_internal_keygen` (the internal API of `lib_cxng/src/cx_mldsa_internal.h`; validated in spike K4), so the key is recoverable from the 24 words. **Never** reuse a BIP32 secp256k1 private key as ML-DSA seed. If the key cannot be derived from the seed, say so: it would live in the app's NVRAM and not be recoverable with the 24 words.
+**Key derivation.** A key derived deterministically from an app-scoped **SLIP-21** seed through `MLDSA_internal_keygen` (the internal API of `lib_cxng/src/cx_mldsa_internal.h`; validated in spike K4), so the key is recoverable from the 24 words. **Never** reuse a BIP32 secp256k1 private key as ML-DSA seed. If the key cannot be derived from the seed, say so: it would live in the app's NVRAM and not be recoverable with the 24 words. The device track derives it with the SLIP-21 label `carbs ML-DSA-44` and takes the last 32 bytes of the node as the FIPS 204 seed (`ledger-app/src/pq/pq_root.c:4-8`, `:55-56`); `docs/DEVLOG.md` records the key as stable across reinstalls.
 
-**Protocol with the host.** A new P2 value or INS (the P2 byte accepts only `0x40` / `0x80` today): public key 1 312 B in about 6 APDUs, signature 2 420 B in about 10 responses. The signature buffer lives **outside `tmp_ctx`** (zeroed on each command). Remove the `LEDGER_ASSERT` that would crash the app if signing fails. Sent as custom commands through the Device Management Kit.
+**Protocol with the host.** Three new instructions, from the device track (`ledger-app/src/pq/pq_root.h:12-23`; the P2 byte of `INS_SIGN` accepts only `0x40` / `0x80`): `0x10` returns the public key in 250-byte chunks (P1 = chunk index, 6 chunks; chunk 0 derives the key, `ledger-app/src/pq/pq_root.c:95-104`); `0x11` receives the signing data in chunks (P1 `0` first, `1` next; P2 `0` more, `1` last; the review follows the last chunk, and its answer is the signature length in 2 bytes, big-endian, `ledger-app/src/pq/pq_root.c:134-136`); `0x12` returns the signature in 250-byte chunks (P1 = chunk index, 10 chunks). The signing data is at most 2 048 bytes, the 1 312-byte `SigningPubKey` included (`PQ_MAX_MESSAGE`, `ledger-app/src/apdu/global.h:71`); a longer message gets `0x6700` (`ledger-app/src/pq/pq_root.c:172-175`). These numbers are binding for the client (§8.4). Status words (`ledger-app/src/pq/pq_root.c:47-53`): `0x6985` the user refused, `0x6A80` a bad prefix or a transaction the parser refuses, `0x6B00` a bad P1, P2 or chunk index, `0x6700` a message over 2 048 bytes, `0x6982` no signature to read, `0x6F00` an internal error, including a failed signature (`:129-133`). The app clears the transaction context, `tmp_ctx`, whenever the instruction changes (`ledger-app/src/apdu/entry.c:40-42`, `ledger-app/src/apdu/global.c:30-32`), so a client must not interleave other instructions in an `0x11` sequence; the signature buffer lives outside `tmp_ctx` and survives the switch to `0x12`. The post-quantum path is built for Stax, Flex and Apex P only (`ledger-app/Makefile:40-45`). Sent as custom commands through the Device Management Kit.
 
 **Build.** Makefile: `PATH_SLIP21_APP_LOAD_PARAMS = "<label>"` (a single path; see `Makefile.app_params` of the SDK), the `lib_cxng` ML-DSA sources, `HAVE_MLDSA_OPTIMIZATION`, `INCLUDES_PATH` to `lib_cxng/src` (model: `ledger-app-zond`, which signs a 32-byte hash with an 8-byte context, unlike us).
 
@@ -519,9 +545,9 @@ See §5.1. No `as any`; named constants; Node code uses `import xrpl from "xrpl"
 | `definitions.ts` | `loadDefinitions(rpc)` → `XrplDefinitions`; asserts our codes exist |
 | `encode.ts` | `encodeForSigning(tx, defs)` (prefix `STX\0`), `encodeTx` |
 | `der.ts` | `rawToDer`, **low-S normalization**, strict DER |
-| `keys/p256-session.ts` | `createSessionKey()` WebCrypto non-extractible (IndexedDB), public key `0xF6‖X‖Y`, account id, `sign(bytes)` |
+| `keys/p256-session.ts` | Mac-account session key: `createSessionKey()` WebCrypto non-extractible (IndexedDB), public key `0xF6‖X‖Y`, account id, `sign(bytes)` |
 | `keys/passkey.ts` | `createPasskey`, `getAssertion(challenge)`, build `PasskeySignature`, normalize its signature |
-| `keys/mldsa.ts` | verify and (software) sign with `@noble/post-quantum` 0.7.1 for cross-checks and the stretch fallback |
+| `keys/mldsa.ts` | Ledger-account session key: a fresh ML-DSA-44 key per session with `@noble/post-quantum` 0.7.1 (kept in memory only), public key 1 312 B, account id `RIPEMD160(SHA256(pk))`, `sign(encodeForSigning(tx))`; also verifies the device's signatures as a cross-check |
 | `session.ts` | `buildSessionSet({account, mode, durationSec, permissions?, capDrops?, sessionKey})`, `buildSessionDelete(...)`, always sets `LastLedgerSequence` |
 | `node.ts` | JSON-RPC / WebSocket client (non-admin), `submit`, `account_info`, `ledger_entry` `signing_session`; surfaces the node's exact result code |
 | `errors.ts` | decoded `tef` / `tec` / `tem` with the node's code string, never a simulated message; knows the three new `tefSESSION_*` codes (UI text + the rule that produced them) |
@@ -530,30 +556,32 @@ A single command runs the whole flow against a real node (acceptance of W1).
 
 ### 8.3 Signing details
 
-- Session key: `crypto.subtle.generateKey({name:'ECDSA', namedCurve:'P-256'}, false, ['sign'])`, signing with `{name:'ECDSA', hash:'SHA-256'}`; the raw public key export starts with `0x04`, replace it by `0xF6`; signature `r‖s` (P1363) → DER, **low-S**; `TxnSignature` = DER hex.
+- Mac-account session key: `crypto.subtle.generateKey({name:'ECDSA', namedCurve:'P-256'}, false, ['sign'])`, signing with `{name:'ECDSA', hash:'SHA-256'}`; the raw public key export starts with `0x04`, replace it by `0xF6`; signature `r‖s` (P1363) → DER, **low-S**; `TxnSignature` = DER hex.
+- Ledger-account session key: `ml_dsa44.keygen` of `@noble/post-quantum` 0.7.1 with a fresh random seed; pure ML-DSA-44 with an empty context over `encodeForSigning(tx)`; `SigningPubKey` = the 1 312-byte public key, `TxnSignature` = the 2 420-byte signature. WebCrypto has no ML-DSA, so the secret key is page memory and **extractable** (§12).
 - Every session transaction carries `LastLedgerSequence` ≈ +150 ledgers (with 1-second ledgers +20 is 20 s: too short for a device prompt, `tefMAX_LEDGER`). A queued-on-server design is avoided: state comes from `account_info`, and the same tx is resent until its `LastLedgerSequence` passes. Identify transactions by `(Account, Sequence)`, not by hash, while P-256 malleability exists.
 - **A fresh key per session**: the 256-ledger window can exceed the 600 s lifetime, so a held transaction signed for one session could otherwise land under a later session opened with the same key.
 - Expiration is the only stop: **no heartbeat or auto-revoke** that closes a session after 90 s of silence (sleep, suspended tab).
 
 ### 8.4 Ledger integration (DMK)
 
-- Transport WebHID. `device-signer-kit-xrp` 0.3.0 is used for public key retrieval and for signing: spike K6 signs a `Payment` testnet on the unmodified app, then a `SigningSessionSet` once L1 exists (raw bytes are forwarded, so no custom APDU is needed for W3). Only the stretch items L2 and L6 add new INS/P2 values, sent as **custom APDUs** with the DMK (`dmk.sendApdu({ sessionId, apdu })` / `dmk.sendCommand({ sessionId, command })` per the DMK 1.11 typings; confirm in K6).
+- Transport WebHID. `device-signer-kit-xrp` 0.3.0 is used for public key retrieval and for signing: spike K6 signs a `Payment` testnet on the unmodified app, then a `SigningSessionSet` once L1 exists (raw bytes are forwarded, so a classical device key needs no custom APDU). L2 adds the instructions `0x10` to `0x12` of §7.7, which a Ledger account uses for every signature (D13), and L6 a P2 value; both are sent as **custom APDUs** with the DMK (`dmk.sendApdu({ sessionId, apdu })` / `dmk.sendCommand({ sessionId, command })` per the DMK 1.11 typings; confirm in K6).
 - The kit names the app "XRP": use `skipOpenApp` if the sideloaded app is renamed.
-- Open flow (W3): build `SigningSessionSet` → serialize with `encode(tx)` (`SigningPubKey` set to the device key, no `TxnSignature`, **no `STX\0` prefix**: app-xrp prepends `STX\0` / `SMT\0` itself, `sign_transaction.c`) → the kit forwards the bytes and chunks them to the device → the Stax shows the rules → the user approves → signature returned → assemble and submit. The signer is the account's own **full-authority key** (master or `RegularKey`): this is an ordinary single signature, **not a multisig** and no signer list is involved.
+- Open flow (W3) with a classical device key: build `SigningSessionSet` → serialize with `encode(tx)` (`SigningPubKey` set to the device key, no `TxnSignature`, **no `STX\0` prefix**: app-xrp prepends `STX\0` / `SMT\0` itself, `sign_transaction.c`) → the kit forwards the bytes and chunks them to the device → the Stax shows the rules → the user approves → signature returned → assemble and submit. The signer is the account's own **full-authority key** (master or `RegularKey`): this is an ordinary single signature, **not a multisig** and no signer list is involved.
+- Open flow on a **Ledger account** (D13): the signer is the `RegularKey`, the device's ML-DSA-44 key, and `SigningPubKey` is its 1 312-byte public key (read with `0x10`). The client sends `encodeForSigning(tx)`, **with** the `STX\0` prefix, through `0x11` (at most 2 048 bytes); the Stax shows the rules from the same parse; the 2 420-byte signature is read with `0x12` (§7.7). The session key it authorizes is the client's fresh ML-DSA-44 key.
 - No admin key in the browser, ever, not even for the demo: it is on the Ledger.
 
 ### 8.5 `apps/web`
 
 | Screen | Content |
 |---|---|
-| **Account** | the three demo profiles (Face: master + passkey; Ledger: device key; PQ: `RegularKey` = ML-DSA-44 of the device + `asfDisableMaster`, **no passkey**), passkey creation, `PasskeyListSet`, state |
-| **Session** | mode (A / P / C), duration (10 min), permissions or cap; **Open** (passkey or Ledger); countdown; spent / cap bar; Close |
+| **Account** | the two profiles (D13): **Ledger account** (`RegularKey` = the device's ML-DSA-44 key, `asfDisableMaster`, **never a passkey**; set up by the migration of §8.7) and **Mac account** (master key and a passkey: passkey creation, `PasskeyListSet`); state |
+| **Session** | mode (A / P / C), duration (10 min), permissions or cap; **Open** (on the Stax for a Ledger account, by the passkey for a Mac account); countdown; spent / cap bar; Close |
 | **Actions** | 5-6 ready actions of different types (payment, `OfferCreate`, `TrustSet`, `TicketCreate`, mint, …) signed by the session key, with the node's result code |
 | **Attack** | replays with the session key: `SetRegularKey`, `PasskeyListSet`, `AccountSet`, `SigningSessionSet`, cap overflow, after expiry; each refusal is **the node's code**, never a client-side message |
 
 Principles: account state comes from the node, not local state; errors show the code and one sentence; public (non-admin) WebSocket; CSP `script-src 'self'`. Face ID needs an HTTPS origin and `wss://`; Touch ID on the Mac works on `localhost`. Decide which one the demo uses before the demo; the script says "passkey" and chooses at the last moment.
 
-**PQ-account note**: a passkey list cannot be updated or deleted in this alphanet build, so an account that ever had a passkey cannot become post-quantum. The PQ demo account is a **fresh account**.
+**Ledger-account note**: a passkey list cannot be updated or deleted in this alphanet build (P6), so an account that ever had a passkey cannot become a Ledger account. A Ledger account starts as a **fresh account**. A Mac account opens sessions by passkey only on a node with `fixPasskeyChallenge` (P5, §6.14).
 
 ### 8.6 Client tests
 
@@ -625,12 +653,12 @@ Two tracks; **who does what is not decided (D5)**. Durations are not estimated h
 | N1 | **P5 test first**; fix in a separate commit only if it fails | a challenge ≥ `0x80` fails before and passes after, or passes as is (noted) | ✓ |
 | N2 | Amendment (`Supported::Yes`), fields, entry, keylet `'z'`, tx 130/131, codegen limited to our types, result-code strings, `ledger_entry`, `AccountDelete` and sponsorship-table decisions, minimal transactors, `checkExtraFeatures` on `PermissionDelegationV1_1` | open in modes A and C (1); amendment off → `temDISABLED` (7) | ✓ |
 | N3 | `SigningSessionSet` validation | all preflight and preclaim codes (2, 3, 4, 5, 6) | ✓ |
-| N4 | **Session path, mode A**: `isSessionSigned`, `invokeCheckSession<T>` before `T::checkSign`, `LastLedgerSequence` rule, fee ceiling, enumeration test, P-256 session key | cases 6, 9, 9b, 10, 13 (ceiling), 14, 15, 17, 17b, 20 (P-256) green with the exact `tefSESSION_*`; "key can still close its session" waits for N7 | ✓ |
+| N4 | **Session path, mode A**: `isSessionSigned`, `invokeCheckSession<T>` before `T::checkSign`, `LastLedgerSequence` rule, fee ceiling, enumeration test, P-256 and ML-DSA-44 session keys | cases 6, 9, 9b, 10, 13 (ceiling), 14, 15, 17, 17b, 20 (P-256 and ML-DSA-44, D14) green with the exact `tefSESSION_*`; "key can still close its session" waits for N7 | ✓ |
 | N4b | **Mode P** via XLS-75 engine **and** `T::checkGranularSemantics`; 9b extended | case 8 | ✓ (last mode to land) |
 | N5 | **Mode C**: closed whitelist, pre-check `Fee + Amount ≤ remaining`, `chargeSession` before the first invariant check and after any `reset` | cases 11, 12, 13 (remaining cap), 23 green; the anti-drain loop passes | ✓ |
 | N6 | Invariant `ValidSigningSession` | one test per rule on a mutated view (21) | ✓ |
 | N7 | `SigningSessionDelete`: owner, session key (cap exempt, fee ceiling kept), third party after expiry | cases 18, 19 | ✓ |
-| N8 | Cross-cutting: key types (Ed25519, secp256k1, ML-DSA), TxQ, Firewall (explicit), RPC | cases 16, 20, 22, 24 | stretch |
+| N8 | Cross-cutting: key types (Ed25519, secp256k1; ML-DSA-44 is in N4, D14), TxQ, Firewall (explicit), RPC | cases 16, 20, 22, 24 | stretch |
 | N9 | Standalone config + ledger closer; `[features]` | node starts; `feature` lists the five; `server_definitions` exposes the types | ✓ |
 | N10 | Final XLS from the implementation (`docs/XLS-Sessions.md`) | consistent with the code | stretch |
 
@@ -644,7 +672,7 @@ L0 (MVP), L1 (MVP), **L2 (headline, [§7.7](#77-post-quantum-root-on-the-device-
 |---|---|---|---|
 | W1 | `packages/core` (§8.2) | unit tests; one command runs the flow on a real node | ✓ |
 | W2 | Open by **passkey** (`PasskeyListSet`, `PasskeySignature`) | session open on the node; depends on N1 outcome | ✓ |
-| W3 | Open from the **Ledger** (kit 0.3.0 as is; custom APDUs only for L2 / L6) | session opened with the rules read on the screen; depends on L1 | ✓ |
+| W3 | Open from the **Ledger**: a Ledger account signs the opening with the device's ML-DSA-44 key (instructions `0x10` to `0x12`, L2); kit 0.3.0 as is for a classical device key | session opened with the rules read on the screen; depends on L1 and L2 | ✓ |
 | W4 | Account, Session, Actions screens | 5 transaction types signed by the session key with no prompt | ✓ |
 | W5 | Attack screen | each refusal is the node's code | ✓ |
 | W6 | Mode C in the app: spent / cap bar | 6th payment refused `tefSESSION_LIMIT` | ✓ |
@@ -690,16 +718,17 @@ Rehearse three times on a real passkey and the real Stax. Figures in the pitch a
 
 | Threat | Effect | Defence |
 |---|---|---|
-| Session key copied | — | WebCrypto non-extractible |
+| Session key copied, Mac account | — | WebCrypto non-extractible |
+| Session key copied, Ledger account | the copy signs what the session permits until it expires | WebCrypto has no ML-DSA, so the ML-DSA-44 key is page memory and **extractable**: ledger-side bounds, a fresh key per session, short duration, CSP `script-src 'self'` |
 | Session key used by script of the page (XSS) | signs what the session permits | ledger-side bounds, CSP `script-src 'self'`, short duration |
 | Mode A opened by mistake | everything except account control, 10 minutes | Stax says "All transactions" and the note; mode A never the default |
 | Burned fees | — | rule rejections are `tef` (no fee); fee ceiling in every mode; mode C counts fees in the cap |
 | Blind passkey prompt (domain only) | session opened with wrong rules | the Ledger shows the rules; protocol max duration |
-| Broken passkey public key (quantum) | passkey's full authority | the PQ account has no passkey; a "Face" account is said to be non-PQ |
+| Broken passkey public key (quantum) | passkey's full authority | the Ledger account never has a passkey (D13); a Mac account is said to be non-PQ |
 | Rejected `tef` tx held and replayed under a reopened session | unexpected execution | mandatory `LastLedgerSequence` within 256 ledgers (protocol rule) |
 | P-256 malleability | modifiable tx id | low-S and strict DER client-side; identify by `(Account, Sequence)` |
 
-**Not claimed**: that mode A protects funds (it protects **control**); that Face ID is post-quantum; that alphanet passkeys are defect-free; that the PQ account is fully post-quantum while its sessions use classical P-256 keys; that the Ledger screen proves the session key belongs to the right page (it proves the **rules**, not who holds the key). Beneficiary: a session-signed transaction counts as owner activity for the beneficiary time lock and no session can be created for the beneficiary key. Contention: session transactions share the account's sequence space; tickets do not change authority.
+**Not claimed**: that mode A protects funds (it protects **control**); that Face ID is post-quantum; that alphanet passkeys are defect-free; that a Mac account is post-quantum (its master key, passkey and session keys are classical); that a Ledger account's session key is out of reach of the page (it is extractable); that the Ledger screen proves the session key belongs to the right page (it proves the **rules**, not who holds the key). Beneficiary: a session-signed transaction counts as owner activity for the beneficiary time lock and no session can be created for the beneficiary key. Contention: session transactions share the account's sequence space; tickets do not change authority.
 
 ---
 
@@ -791,6 +820,7 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 | P-256 public key | 65 bytes `0xF6 ‖ X ‖ Y` |
 | ML-DSA-44 | public key 1 312 B (no prefix), signature 2 420 B, secret key 2 560 B |
 | app-xrp APDU | `CLA 0xE0`, `INS 0x02` pubkey, `0x04` sign, `0x06` config; `P2 0x40` secp256k1, `0x80` ed25519 |
+| ML-DSA APDU (device track) | `INS 0x10` public key, `0x11` sign, `0x12` signature; 250-byte chunks; signing data at most 2 048 B, `STX\0` included |
 | Public AlphaNet | network 24100 |
 
 ## Appendix B: references
