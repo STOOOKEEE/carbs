@@ -1,0 +1,191 @@
+import { describe, expect, it } from "vitest";
+import {
+  isIncluded,
+  NodeResultError,
+  resultCategory,
+  resultError,
+  RpcError,
+  SessionExpiredError,
+  SessionLimitError,
+  SessionRefusedError,
+  SessionTxNotAllowedError,
+} from "./errors.js";
+import {
+  fetchCommonFields,
+  getAccountState,
+  JsonRpcClient,
+  NodeClientError,
+  submitAndWait,
+  submitBlob,
+} from "./node.js";
+import { RecordedNode, type RecordedCall } from "./testing/recorded-node.js";
+
+const account = "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK";
+
+describe("typed results", () => {
+  it("maps each tefSESSION code to its error and rule", () => {
+    const expired = resultError("tefSESSION_EXPIRED", "msg", "H");
+    expect(expired).toBeInstanceOf(SessionExpiredError);
+    expect(expired).toBeInstanceOf(SessionRefusedError);
+    expect(resultError("tefSESSION_LIMIT", "")).toBeInstanceOf(SessionLimitError);
+    const notAllowed = resultError("tefSESSION_TX_NOT_ALLOWED", "");
+    expect(notAllowed).toBeInstanceOf(SessionTxNotAllowedError);
+    expect((notAllowed as SessionTxNotAllowedError).rule.rule).toContain("6.5");
+    expect(notAllowed.included).toBe(false);
+    const tec = resultError("tecNO_PERMISSION", "No permission.");
+    expect(tec).toBeInstanceOf(NodeResultError);
+    expect(tec).not.toBeInstanceOf(SessionRefusedError);
+    expect(tec.included).toBe(true);
+    expect(tec.message).toBe("tecNO_PERMISSION: No permission.");
+    expect(resultCategory("temMALFORMED")).toBe("tem");
+    expect(resultCategory("xyz")).toBeUndefined();
+    expect(isIncluded("tesSUCCESS")).toBe(true);
+    expect(isIncluded("tefBAD_AUTH")).toBe(false);
+  });
+});
+
+describe("JSON-RPC client", () => {
+  it("posts the method and unwraps the result; refuses methods off the public list", async () => {
+    const seen: string[] = [];
+    const fake: typeof fetch = async (_url, init) => {
+      seen.push(String(init?.body));
+      return new Response(
+        JSON.stringify({ result: { status: "success", info: { network_id: 24100 } } }),
+      );
+    };
+    const client = new JsonRpcClient("http://node", fake);
+    await expect(client.request("server_info", {})).resolves.toMatchObject({
+      info: { network_id: 24100 },
+    });
+    expect(JSON.parse(seen[0] ?? "")).toEqual({ method: "server_info", params: [{}] });
+    await expect(client.request("sign", {})).rejects.toThrow(NodeClientError);
+    await expect(client.request("wallet_propose", {})).rejects.toThrow(NodeClientError);
+    await expect(client.request("ledger_accept", {})).rejects.toThrow(NodeClientError);
+  });
+
+  it("raises the node's error", async () => {
+    const fake: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          result: { status: "error", error: "actNotFound", error_message: "Account not found." },
+        }),
+      );
+    const client = new JsonRpcClient("http://node", fake);
+    await expect(client.request("account_info", { account })).rejects.toMatchObject({
+      error: "actNotFound",
+    });
+    await expect(getAccountState(client, account)).resolves.toBeUndefined();
+  });
+});
+
+const network: RecordedCall[] = [
+  { method: "server_info", params: {}, result: { info: { network_id: 24100 } } },
+  { method: "fee", params: {}, result: { drops: { base_fee: "10" }, ledger_current_index: 1000 } },
+];
+
+describe("common fields and submission", () => {
+  it("fills Sequence, Fee, LastLedgerSequence and NetworkID above 1024", async () => {
+    const node = new RecordedNode([
+      ...network,
+      {
+        method: "account_info",
+        params: { account, ledger_index: "current" },
+        result: {
+          account_data: {
+            Account: account,
+            Sequence: 42,
+            Flags: 0,
+            Balance: "100000000",
+            OwnerCount: 0,
+          },
+        },
+      },
+    ]);
+    await expect(fetchCommonFields(node, account)).resolves.toEqual({
+      Sequence: 42,
+      Fee: "10",
+      LastLedgerSequence: 1150,
+      NetworkID: 24100,
+    });
+  });
+
+  it("stops waiting at a tef answer, which is never included", async () => {
+    const node = new RecordedNode([
+      {
+        method: "submit",
+        params: { tx_blob: "AB" },
+        result: {
+          engine_result: "tefSESSION_EXPIRED",
+          engine_result_code: -172,
+          engine_result_message: "The session has expired.",
+          accepted: false,
+          tx_json: { hash: "H1" },
+        },
+      },
+    ]);
+    const final = await submitAndWait(node, "AB", "H1", 10);
+    expect(final).toMatchObject({ result: "tefSESSION_EXPIRED", validated: false });
+    expect(node.requests).toHaveLength(1);
+  });
+
+  it("waits for validation and returns the validated result", async () => {
+    const node = new RecordedNode([
+      ...network,
+      {
+        method: "submit",
+        params: { tx_blob: "CD" },
+        result: {
+          engine_result: "tesSUCCESS",
+          engine_result_code: 0,
+          engine_result_message: "",
+          accepted: true,
+          tx_json: { hash: "H2" },
+        },
+      },
+      {
+        method: "tx",
+        params: { transaction: "H2" },
+        result: {
+          validated: true,
+          ledger_index: 999,
+          meta: { TransactionResult: "tecNO_DST_INSUF_XRP" },
+        },
+      },
+    ]);
+    const final = await submitAndWait(node, "CD", "H2", 1100, { sleep: async () => undefined });
+    expect(final).toMatchObject({
+      result: "tecNO_DST_INSUF_XRP",
+      validated: true,
+      ledgerIndex: 999,
+    });
+    await expect(submitBlob(node, "CD")).resolves.toMatchObject({
+      engineResult: "tesSUCCESS",
+      hash: "H2",
+    });
+  });
+
+  it("gives up once LastLedgerSequence has passed", async () => {
+    const node = new RecordedNode([
+      { method: "server_info", params: {}, result: { info: {} } },
+      {
+        method: "fee",
+        params: {},
+        result: { drops: { base_fee: "10" }, ledger_current_index: 1200 },
+      },
+      {
+        method: "submit",
+        params: { tx_blob: "EF" },
+        result: {
+          engine_result: "terQUEUED",
+          engine_result_code: -89,
+          engine_result_message: "",
+          accepted: true,
+        },
+      },
+      { method: "tx", params: { transaction: "H3" }, error: { error: "txnNotFound" } },
+    ]);
+    const final = await submitAndWait(node, "EF", "H3", 1100, { sleep: async () => undefined });
+    expect(final).toMatchObject({ result: "terQUEUED", validated: false });
+    expect(new RpcError("tx", "txnNotFound", "").message).toBe("tx: txnNotFound");
+  });
+});

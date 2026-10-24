@@ -4,3 +4,4 @@ ledger-app/
 xrpl-devex-hook/
 pnpm-lock.yaml
 FIANSO-SPEC.md
+packages/*/src/**/fixtures/*.json
