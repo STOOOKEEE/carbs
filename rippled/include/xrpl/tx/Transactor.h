@@ -361,6 +361,50 @@ public:
         return T::checkGranularSemantics(view, tx, heldGranularPermissions);
     }
 
+    using GranularSemantics = std::function<
+        NotTEC(ReadView const&, STTx const&, std::unordered_set<GranularPermissionType> const&)>;
+
+    /**
+     * Authorizes a session-signed transaction (isSessionSigned) in place of
+     * T::checkSign: the session alone authorizes it, never the master key,
+     * the RegularKey, a passkey or a beneficiary (FIANSO-SPEC 6.5).
+     *
+     * Templated like invokeCheckPermission, because mode P needs
+     * T::checkGranularSemantics and the fee ceiling needs
+     * T::calculateBaseFee. Returns NotTEC: tesSUCCESS or a tef code.
+     */
+    template <class T>
+    static NotTEC
+    invokeCheckSession(PreclaimContext const& ctx)
+    {
+        // A type with a signature check of its own (Batch, LoanSet, the
+        // firewall types) is never authorized by a session.
+        using CheckSign = NotTEC (*)(PreclaimContext const&);
+        bool const overridesCheckSign =
+            static_cast<CheckSign>(&T::checkSign) != static_cast<CheckSign>(&Transactor::checkSign);
+
+        return checkSession(
+            ctx,
+            overridesCheckSign,
+            [&ctx] { return T::calculateBaseFee(ctx.view, ctx.tx); },
+            [](ReadView const& view,
+               STTx const& tx,
+               std::unordered_set<GranularPermissionType> const& held) {
+                return T::checkGranularSemantics(view, tx, held);
+            });
+    }
+
+    /**
+     * The rules of invokeCheckSession, in order: eligibility, then
+     * LastLedgerSequence, expiry and the fee ceiling.
+     */
+    static NotTEC
+    checkSession(
+        PreclaimContext const& ctx,
+        bool overridesCheckSign,
+        std::function<XRPAmount()> const& baseFee,
+        GranularSemantics const& granularSemantics);
+
     static NotTEC
     checkSponsor(ReadView const& view, STTx const& tx);
 

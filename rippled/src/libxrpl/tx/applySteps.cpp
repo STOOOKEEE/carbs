@@ -13,6 +13,7 @@
 #include <xrpl/protocol/TER.h>
 #include <xrpl/protocol/XRPAmount.h>
 #include <xrpl/tx/ApplyContext.h>
+#include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
 
 #include <cstdint>
@@ -189,7 +190,11 @@ invokePreclaim(PreclaimContext const& ctx)
                                 Transactor::invokeCheckPermission<T>(ctx.view, ctx.tx))
                             return result;
 
-                        if (NotTEC const result = T::checkSign(ctx))
+                        // A session-signed transaction is authorized by its
+                        // session alone, in place of the signature check.
+                        if (NotTEC const result = isSessionSigned(ctx.view, ctx.tx)
+                                ? Transactor::invokeCheckSession<T>(ctx)
+                                : T::checkSign(ctx))
                             return result;
 
                         if (NotTEC const result = Transactor::checkFirewall(ctx))
