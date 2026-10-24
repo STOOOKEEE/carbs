@@ -10,8 +10,8 @@
  *   data (STX\0 prefix included), so the host sends exactly those bytes. The
  *   signing data embeds the 1312-byte SigningPubKey, hence the 2 KiB buffer.
  *
- *   Spike scope: the review shows the size and a SHA-256 prefix of the signing
- *   data, not the decoded transaction (clear signing is task L1/L2).
+ *   Review: the transaction part of the signing data goes through the app's own
+ *   parser, so the screen shows the decoded fields, as for a classical signature.
  ********************************************************************************/
 
 #ifdef HAVE_PQ_ROOT
@@ -25,11 +25,12 @@
 #include <io.h>
 #include <os_seed.h>
 #include <lcx_mldsa.h>
-#include <nbgl_use_case.h>
 
 #include "../apdu/global.h"
-#include "../ui/main/idle_menu.h"
-#include "../ui/ui.h"
+#include "../apdu/messages/sign_transaction.h"
+#include "../globals.h"
+#include "../ui/transaction/review_menu.h"
+#include "../xrp/xrp_parse.h"
 
 /* Internal SDK function (lib_cxng/src/cx_mldsa_internal.h): deterministic key generation. */
 cx_err_t MLDSA_internal_keygen(uint8_t *pk,
@@ -43,7 +44,7 @@ cx_err_t MLDSA_internal_keygen(uint8_t *pk,
 #define PQ (&tmp_ctx.pq_context)
 #define PQ_SLIP21_NODE   64U
 #define PQ_SLIP21_KEY    32U
-#define PQ_DIGEST_SHOWN  8U
+#define SW_WRONG_DATA    0x6A80
 #define SW_OK            0x9000
 #define SW_DENY          0x6985
 #define SW_WRONG_LENGTH  0x6700
@@ -57,7 +58,8 @@ static const char PQ_SLIP21_LABEL[] = "\0carbs ML-DSA-44";
 /* The signature stays outside tmp_ctx (which is zeroed when the instruction changes). */
 static uint8_t pq_signature[MLDSA44_SIGBYTES];
 static size_t pq_signature_length;
-static char pq_review_text[64];
+/* XRPL single-signature prefix (HashPrefix::txSign): "STX\0". */
+static const uint8_t PQ_SIGNING_PREFIX[] = {0x53, 0x54, 0x58, 0x00};
 
 static bool derive_keypair(void) {
     uint8_t node[PQ_SLIP21_NODE] = {0};
@@ -101,10 +103,10 @@ int handle_pq_get_public_key(uint8_t chunk_index) {
     return send_chunk(PQ->public_key, sizeof(PQ->public_key), chunk_index);
 }
 
-static void on_review_choice(bool confirm) {
-    if (!confirm) {
+/* Called by the review screen (which also shows the signed / rejected status). */
+static void on_review_result(unsigned int option) {
+    if (option != OPTION_SIGN) {
         PQ->message_length = 0;
-        nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_REJECTED, display_idle_menu);
         io_send_sw(SW_DENY);
         return;
     }
@@ -126,30 +128,37 @@ static void on_review_choice(bool confirm) {
     PQ->message_length = 0;
     if (error != CX_OK) {
         pq_signature_length = 0;
-        nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_REJECTED, display_idle_menu);
         io_send_sw(SW_INTERNAL);
         return;
     }
     pq_signature_length = signature_length;
-    nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_SIGNED, display_idle_menu);
     uint8_t length_be[2] = {(uint8_t) (signature_length >> 8), (uint8_t) signature_length};
     io_send_response_pointer(length_be, sizeof(length_be), SW_OK);
 }
 
-static void format_review(void) {
-    static const char hex_digits[] = "0123456789ABCDEF";
-    uint8_t digest[CX_SHA256_SIZE] = {0};
-    char digest_hex[2 * PQ_DIGEST_SHOWN + 1] = {0};
-    cx_hash_sha256(PQ->message, PQ->message_length, digest, sizeof(digest));
-    for (size_t i = 0; i < PQ_DIGEST_SHOWN; i++) {
-        digest_hex[2 * i] = hex_digits[digest[i] >> 4];
-        digest_hex[2 * i + 1] = hex_digits[digest[i] & 0x0F];
+/* The host sends the full signing data: "STX\0" then the serialized transaction.
+ * The transaction part goes through the app's own parser, so the screen shows the
+ * decoded fields (type, amount, destination...) exactly as for a classical signature. */
+static int review_signing_data(void) {
+    if (PQ->message_length <= sizeof(PQ_SIGNING_PREFIX) ||
+        memcmp(PQ->message, PQ_SIGNING_PREFIX, sizeof(PQ_SIGNING_PREFIX)) != 0) {
+        PQ->message_length = 0;
+        return io_send_sw(SW_WRONG_DATA);
     }
-    snprintf(pq_review_text,
-             sizeof(pq_review_text),
-             "%u bytes\nSHA-256 %s...",
-             (unsigned) PQ->message_length,
-             digest_hex);
+    explicit_bzero(&parse_context, sizeof(parse_context));
+    parse_context.data = PQ->message + sizeof(PQ_SIGNING_PREFIX);
+    parse_context.length = PQ->message_length - sizeof(PQ_SIGNING_PREFIX);
+    int result = parse_tx(&parse_context);
+    if (result == 0) {
+        display_review_menu(&parse_context.result, on_review_result);
+        return 0;
+    }
+    if (result == BLIND_SIGN_REQUIRED) {
+        display_blind_signed_review(&parse_context.result, on_review_result);
+        return 0;
+    }
+    PQ->message_length = 0;
+    return io_send_sw(SW_WRONG_DATA);
 }
 
 int handle_pq_sign(uint8_t p1, uint8_t p2, const uint8_t *data, size_t length) {
@@ -169,14 +178,7 @@ int handle_pq_sign(uint8_t p1, uint8_t p2, const uint8_t *data, size_t length) {
     if (p2 == 0) {
         return io_send_sw(SW_OK);
     }
-    format_review();
-    nbgl_useCaseChoice(&ICON_APP_WARNING,
-                       "Sign with the post-quantum key (ML-DSA-44)?",
-                       pq_review_text,
-                       "Sign",
-                       "Reject",
-                       on_review_choice);
-    return 0;
+    return review_signing_data();
 }
 
 int handle_pq_get_signature(uint8_t chunk_index) {
