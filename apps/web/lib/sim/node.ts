@@ -36,6 +36,7 @@ import type {
   TxJson,
 } from "../ports";
 import { accountIdOf, algorithmOfPublicKey, simTxHash, verifySignature } from "./keys";
+import { verifyPasskeyAssertion } from "./webauthn";
 import {
   ALL_TYPES,
   DELEGABLE_TYPES,
@@ -282,7 +283,9 @@ export class SimulatedNode implements NodePort, SimClock {
 
     const pre = this.preflight(tx);
     if (pre !== OK) return reject(pre);
-    if (!verifySignature(tx)) return reject("temBAD_SIGNATURE");
+    const signatureOk =
+      tx.PasskeySignature !== undefined ? verifyPasskeyAssertion(tx) : verifySignature(tx);
+    if (!signatureOk) return reject("temBAD_SIGNATURE");
 
     // Sequence and LastLedgerSequence (before authorization, as upstream does).
     if (typeof tx.Sequence === "number") {

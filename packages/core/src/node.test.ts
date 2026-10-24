@@ -189,3 +189,35 @@ describe("common fields and submission", () => {
     expect(new RpcError("tx", "txnNotFound", "").message).toBe("tx: txnNotFound");
   });
 });
+
+describe("rate limits", () => {
+  it("retries tooBusy with the server's hint, then gives up", async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    const busy = () =>
+      new Response(
+        JSON.stringify({
+          result: {
+            status: "error",
+            error: "tooBusy",
+            error_message: "rate limit: retry in ~1234ms",
+          },
+        }),
+      );
+    const fake: typeof fetch = async () => {
+      calls += 1;
+      return calls < 3 ? busy() : new Response(JSON.stringify({ result: { ok: true } }));
+    };
+    const client = new JsonRpcClient("http://node", fake, {
+      sleep: async (ms) => void waits.push(ms),
+    });
+    await expect(client.request("server_info", {})).resolves.toEqual({ ok: true });
+    expect(waits).toEqual([1234, 1234]);
+    const always: typeof fetch = async () => busy();
+    const limited = new JsonRpcClient("http://node", always, {
+      busyRetries: 1,
+      sleep: async () => undefined,
+    });
+    await expect(limited.request("server_info", {})).rejects.toMatchObject({ error: "tooBusy" });
+  });
+});

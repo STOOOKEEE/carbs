@@ -55,7 +55,7 @@ graph TB
 | `infra/`          | Run the daemon and the demo locally                                                                                                                             | config, TypeScript       | `rippled/`                                                  |
 | `docs/`           | Architecture, decisions, DEVLOG, Ledger feedback                                                                                                                | Markdown                 |                                                             |
 
-**Dependency rules.** `apps/web` may import `packages/*`; `packages/core` imports no other workspace package and never touches the DOM; `packages/ledger` imports only `packages/core` types; nothing imports from `rippled/` or `ledger-app/` (they talk through the wire formats below). Protocol codes are never copied into TypeScript: they come from `server_definitions` at run time.
+**Dependency rules.** `apps/web` may import `packages/*`; `packages/core` imports no other workspace package and never touches the DOM; `packages/ledger` imports `packages/core` (encoding, signers) and nothing else of the workspace; nothing imports from `rippled/` or `ledger-app/` (they talk through the wire formats below). Protocol codes are never copied into TypeScript: they come from `server_definitions` at run time.
 
 ## Interfaces
 

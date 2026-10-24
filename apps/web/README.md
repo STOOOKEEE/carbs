@@ -25,6 +25,12 @@ Today every node answer and every device screen comes from a **simulation** (`li
 
 `lib/sim/node.test.ts` checks the simulation against the cases of spec 6.15; it proves that the simulation follows the spec and nothing about rippled.
 
+## Wallet entry
+
+The header's **Connect wallet** lists three adapters, written against the `WalletAdapter` interface of xrpl-connect 1.0.0 (`lib/wallets/adapters.ts`) and nothing else: **Ledger Stax** (post-quantum root, Device Management Kit only, SIMULATED until the device track's real flow exists), **Passkey (this Mac)** (the browser's WebAuthn when you press Connect; the software authenticator of `@carbs/sessions` in tests) and **Demo account** (SIMULATED, thrown away on reload). Each shows its key type, who signs what and a SIMULATED badge for the parts that are. No Xaman, WalletConnect or GemWallet adapter, no API key, no environment variable for a wallet. The legacy ledgerjs adapter of xrpl-connect is never imported (a test scans the sources).
+
+The node behind them is still the simulated one: a passkey connected here is registered in the simulated node's passkey list, and its WebAuthn assertion is verified there with real P-256.
+
 ## Art direction
 
 All of the look lives in one file, **`assets/tokens.css`**. Nothing else in the app holds a colour, a size, a radius or a duration; change a value there and every screen follows (Tailwind reads the same variables, `tailwind.config.js`). Dark mode follows the system; force one with `data-theme="light"` or `"dark"` on `<html>`.
@@ -55,6 +61,7 @@ lib/ports.ts             Node, Device, Wallet, Exposure interfaces
 lib/sim/                 the simulated implementations and their tests
 lib/demo.ts, migration.ts  the stores behind the screens (state is read back from the node)
 layouts/, pages/         Nuxt routing: /, /account, /session, /actions, /attack, /quantum
+lib/wallets/             the three wallet adapters, the passkey and the wallet entry's logic
 lib/networks.ts, csp.ts  AlphaNet, Local node, Mainnet (read-only); the CSP is built from them
 server/                  Nitro: moves the inline config script into a file (CSP script-src 'self')
 ```

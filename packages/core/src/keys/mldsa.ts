@@ -8,6 +8,8 @@
  */
 
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
+import { addressFromPublicKey } from "../address.js";
+import { bytesToHex } from "../bytes.js";
 import {
   kMlDsa44PublicKeyLength,
   kMlDsa44SecretKeyLength,
@@ -73,4 +75,25 @@ export function verifyMlDsa(
     return false;
   }
   return ml_dsa44.verify(signature, data, publicKey);
+}
+
+/** A Ledger-account session key (D13, D14): a fresh ML-DSA-44 key per session. */
+export interface MlDsaSessionKey extends MlDsaSigner {
+  readonly publicKeyHex: string;
+  /** The `SessionKey` field: the AccountID of the 1 312-byte public key, as an address. */
+  readonly address: string;
+}
+
+/**
+ * A fresh ML-DSA-44 session key from a random seed. WebCrypto has no ML-DSA, so the secret key is
+ * page memory and can be copied by a script of the page (FIANSO-SPEC.md section 12): the ledger-side
+ * bounds and the short duration are what limit a copy. Never reuse one for a second session.
+ */
+export function createMlDsaSessionKey(): MlDsaSessionKey {
+  const signer = mlDsaSignerFromSeed(generateMlDsaSeed());
+  return {
+    ...signer,
+    publicKeyHex: bytesToHex(signer.publicKey),
+    address: addressFromPublicKey(signer.publicKey),
+  };
 }

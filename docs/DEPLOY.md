@@ -35,6 +35,10 @@ Explorer links for the app's transactions point at the explorer of the selected 
 
 A page served over **https** cannot call a `ws://` or `http://` node: the browser blocks it as mixed content. The node setting of the app therefore accepts only `wss://` and `https://` URLs when the page is https, and says so next to the field. To use our own node from a hosted site, put it behind TLS (a reverse proxy that terminates `wss://` and `https://`) and set `NUXT_PUBLIC_LOCAL_NODE_URL` at build time. The policy below lists the hosts of the configured networks, so a changed URL is part of the build.
 
+## Wallets
+
+The wallet entry offers a Ledger Stax, a passkey on this Mac and a demo account, with no API key and no third-party service. A passkey needs a secure context: `https://` or `http://localhost`. Over plain `http://` on a LAN address the browser exposes no WebAuthn and the entry says so.
+
 ## The Mac account demo needs our own node
 
 A passkey signs with WebAuthn, and the public AlphaNet's validators may refuse such a transaction until they carry the WebAuthn challenge fix (`fixPasskeyChallenge`, `infra/README.md`): where `char` is signed, the challenge comparison of the imported tree fails for any byte at or above 0x80. The Mac account demo against the real node therefore needs **our own node**, started from `infra/standalone.cfg`, which enables the fix. The Ledger account does not use a passkey.

@@ -1,9 +1,10 @@
 import { SIM_TICK_MS } from "~/lib/constants";
-import { createAppContext } from "~/lib/app-context";
+import { sharedAppContext } from "~/lib/app-context";
 import {
   BACKEND_KEY,
   DEMO_KEY,
   DEVICE_PROMPT_KEY,
+  LIVE_EXPOSURE_KEY,
   MIGRATION_KEY,
   NETWORK_KEY,
 } from "~/lib/context";
@@ -13,7 +14,7 @@ import {
 export default defineNuxtPlugin((nuxtApp) => {
   const config = useRuntimeConfig().public;
   const localWss = String(config.localNodeUrl ?? "").trim();
-  const { backend, demo, migration, prompt, network } = createAppContext({
+  const { backend, demo, migration, prompt, network, liveExposure } = sharedAppContext({
     storage: window.localStorage,
     pageProtocol: window.location.protocol,
     ...(localWss === "" ? {} : { localWss }),
@@ -23,6 +24,7 @@ export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.vueApp.provide(MIGRATION_KEY, migration);
   nuxtApp.vueApp.provide(DEVICE_PROMPT_KEY, prompt);
   nuxtApp.vueApp.provide(NETWORK_KEY, network);
+  nuxtApp.vueApp.provide(LIVE_EXPOSURE_KEY, liveExposure);
   void demo.refresh();
   // The simulated ledger closes on its own, at the pace of the real one.
   window.setInterval(() => {
