@@ -5,10 +5,10 @@
  */
 import { DEMO_PAYMENT_XRP } from "./constants";
 import { xrpToDrops } from "./format";
-import type { SessionMode } from "./ports";
-import * as tx from "./tx-builders";
+import type { SessionMode, TxBuilders, UnsignedTx } from "./ports";
 
 export interface ScenarioContext {
+  builders: TxBuilders;
   account: string;
   sink: string;
   victim: string;
@@ -21,7 +21,7 @@ export interface Action {
   title: string;
   type: string;
   blurb: string;
-  build(ctx: ScenarioContext): tx.UnsignedTx;
+  build(ctx: ScenarioContext): UnsignedTx;
 }
 
 export const ACTIONS: readonly Action[] = [
@@ -30,42 +30,42 @@ export const ACTIONS: readonly Action[] = [
     title: `Send ${DEMO_PAYMENT_XRP} XRP`,
     type: "Payment",
     blurb: "A plain XRP payment to a second account. The only action a mode C session allows.",
-    build: (ctx) => tx.payment(ctx.account, ctx.sink, xrpToDrops(DEMO_PAYMENT_XRP)),
+    build: (ctx) => ctx.builders.payment(ctx.account, ctx.sink, xrpToDrops(DEMO_PAYMENT_XRP)),
   },
   {
     id: "offer",
     title: "Place an offer",
     type: "OfferCreate",
     blurb: "Sell 1 XRP for 1 USD on the order book. The offer outlives the session.",
-    build: (ctx) => tx.offerCreate(ctx.account, ctx.sink),
+    build: (ctx) => ctx.builders.offerCreate(ctx.account, ctx.sink),
   },
   {
     id: "trust",
     title: "Open a trust line",
     type: "TrustSet",
     blurb: "Trust the sink account for up to 100 USD. Costs one owner reserve.",
-    build: (ctx) => tx.trustSet(ctx.account, ctx.sink),
+    build: (ctx) => ctx.builders.trustSet(ctx.account, ctx.sink),
   },
   {
     id: "ticket",
     title: "Create a ticket",
     type: "TicketCreate",
     blurb: "Set aside one sequence number for later.",
-    build: (ctx) => tx.ticketCreate(ctx.account),
+    build: (ctx) => ctx.builders.ticketCreate(ctx.account),
   },
   {
     id: "mint",
     title: "Mint an NFT",
     type: "NFTokenMint",
     blurb: "Mint a token with taxon 0.",
-    build: (ctx) => tx.nftMint(ctx.account),
+    build: (ctx) => ctx.builders.nftMint(ctx.account),
   },
   {
     id: "check",
     title: "Write a check",
     type: "CheckCreate",
     blurb: "A check for 1 XRP to the sink account.",
-    build: (ctx) => tx.checkCreate(ctx.account, ctx.sink),
+    build: (ctx) => ctx.builders.checkCreate(ctx.account, ctx.sink),
   },
 ];
 
@@ -80,7 +80,7 @@ export interface Attack {
   /** Needs the session to be past its Expiration (the simulated clock can be advanced). */
   needsExpiry: boolean;
   /** Build the transaction. `fee` and `omitLastLedger` tune the envelope. */
-  build(ctx: ScenarioContext): tx.UnsignedTx;
+  build(ctx: ScenarioContext): UnsignedTx;
   fee?: string;
   omitLastLedger?: boolean;
 }
@@ -96,7 +96,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "SetRegularKey",
     needsMode: null,
     needsExpiry: false,
-    build: (ctx) => tx.setRegularKey(ctx.account, ctx.victim),
+    build: (ctx) => ctx.builders.setRegularKey(ctx.account, ctx.victim),
   },
   {
     id: "passkey",
@@ -105,7 +105,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "PasskeyListSet",
     needsMode: null,
     needsExpiry: false,
-    build: (ctx) => tx.passkeyListSet(ctx.account, [ctx.victim]),
+    build: (ctx) => ctx.builders.passkeyListSet(ctx.account, [ctx.victim]),
   },
   {
     id: "disable-master",
@@ -114,7 +114,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "AccountSet",
     needsMode: null,
     needsExpiry: false,
-    build: (ctx) => tx.accountSetDisableMaster(ctx.account),
+    build: (ctx) => ctx.builders.accountSetDisableMaster(ctx.account),
   },
   {
     id: "open-session",
@@ -124,7 +124,7 @@ export const ATTACKS: readonly Attack[] = [
     needsMode: null,
     needsExpiry: false,
     build: (ctx) =>
-      tx.sessionSet(ctx.account, ctx.victim, {
+      ctx.builders.sessionSet(ctx.account, ctx.victim, {
         mode: "A",
         durationSec: 600,
         permissions: [],
@@ -138,7 +138,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "Payment",
     needsMode: "C",
     needsExpiry: false,
-    build: (ctx) => tx.payment(ctx.account, ctx.sink, (ctx.remainingCapDrops ?? 0) + 1),
+    build: (ctx) => ctx.builders.payment(ctx.account, ctx.sink, (ctx.remainingCapDrops ?? 0) + 1),
   },
   {
     id: "fee-burn",
@@ -148,7 +148,7 @@ export const ATTACKS: readonly Attack[] = [
     needsMode: null,
     needsExpiry: false,
     fee: BURN_FEE_DROPS,
-    build: (ctx) => tx.payment(ctx.account, ctx.sink, xrpToDrops(1)),
+    build: (ctx) => ctx.builders.payment(ctx.account, ctx.sink, xrpToDrops(1)),
   },
   {
     id: "no-last-ledger",
@@ -158,7 +158,7 @@ export const ATTACKS: readonly Attack[] = [
     needsMode: null,
     needsExpiry: false,
     omitLastLedger: true,
-    build: (ctx) => tx.payment(ctx.account, ctx.sink, xrpToDrops(1)),
+    build: (ctx) => ctx.builders.payment(ctx.account, ctx.sink, xrpToDrops(1)),
   },
   {
     id: "other-account",
@@ -167,7 +167,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "Payment",
     needsMode: null,
     needsExpiry: false,
-    build: (ctx) => tx.payment(ctx.victim, ctx.sink, xrpToDrops(1)),
+    build: (ctx) => ctx.builders.payment(ctx.victim, ctx.sink, xrpToDrops(1)),
   },
   {
     id: "after-expiry",
@@ -176,6 +176,6 @@ export const ATTACKS: readonly Attack[] = [
     type: "Payment",
     needsMode: null,
     needsExpiry: true,
-    build: (ctx) => tx.payment(ctx.account, ctx.sink, xrpToDrops(1)),
+    build: (ctx) => ctx.builders.payment(ctx.account, ctx.sink, xrpToDrops(1)),
   },
 ];

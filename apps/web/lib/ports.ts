@@ -23,6 +23,57 @@ export interface TxJson {
   [field: string]: unknown;
 }
 
+/** A transaction before the envelope (Sequence, Fee, LastLedgerSequence) and the signature. */
+export interface UnsignedTx {
+  TransactionType: string;
+  Account: string;
+  Fee?: string;
+  Flags?: number;
+  [field: string]: unknown;
+}
+
+export interface SessionParams {
+  mode: SessionMode;
+  durationSec: number;
+  permissions: readonly string[];
+  capDrops: number;
+}
+
+/**
+ * The only place that builds transaction JSON for the screens. The simulated backend builds
+ * the simulated shapes (`lib/tx-builders.ts`); the live one builds the node's, with the
+ * definitions of its `server_definitions`, through `@carbs/sessions`.
+ */
+export interface TxBuilders {
+  sessionSet(account: string, sessionKey: string, params: SessionParams): UnsignedTx;
+  sessionDelete(account: string, sessionKey: string): UnsignedTx;
+  payment(account: string, destination: string, drops: number): UnsignedTx;
+  offerCreate(account: string, issuer: string): UnsignedTx;
+  trustSet(account: string, issuer: string): UnsignedTx;
+  ticketCreate(account: string): UnsignedTx;
+  nftMint(account: string): UnsignedTx;
+  checkCreate(account: string, destination: string): UnsignedTx;
+  setRegularKey(account: string, regularKey: string | null): UnsignedTx;
+  passkeyListSet(account: string, passkeys: readonly string[]): UnsignedTx;
+  accountSetDisableMaster(account: string): UnsignedTx;
+  /** A harmless `AccountSet` with no change: the proof transaction of the migration (spec 8.7). */
+  accountSetNoop(account: string): UnsignedTx;
+}
+
+export interface CommonFieldsOptions {
+  fee?: string;
+  /** Leave out `LastLedgerSequence` (the Attack screen does, to show the refusal). */
+  omitLastLedger?: boolean;
+}
+
+/** What the node fills in around a transaction (spec 8.3). */
+export interface CommonFields {
+  Fee: string;
+  Sequence?: number;
+  LastLedgerSequence?: number;
+  NetworkID?: number;
+}
+
 export type ResultFamily = "tes" | "tec" | "tef" | "tem" | "ter" | "tel";
 
 /** The node's answer. `code` is the node's own result code, never a client message. */
@@ -96,6 +147,8 @@ export interface NodePort {
   accountInfo(address: string): Promise<AccountInfo | null>;
   accountObjects(address: string): Promise<AccountObjects>;
   accountTx(address: string): Promise<AccountTxPage>;
+  /** `Sequence`, `Fee`, `LastLedgerSequence` (and `NetworkID` where the network needs it). */
+  commonFields(account: string, options?: CommonFieldsOptions): Promise<CommonFields>;
   submit(tx: TxJson): Promise<NodeResult>;
   explorerUrl(hash: string): string | null;
 }
@@ -194,6 +247,9 @@ export interface Backend {
   device: DevicePort;
   wallet: WalletPort;
   exposure: ExposurePort;
+  builders: TxBuilders;
+  /** Two other accounts the actions and attacks use: a payee and an account that never opened a session. */
+  counterparties: { sink: string; victim: string };
   /** Simulated clock controls; absent on the live backend. */
   clock: SimClock | null;
 }

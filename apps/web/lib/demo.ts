@@ -5,14 +5,7 @@
  * holds and what it logged.
  */
 import { reactive } from "vue";
-import {
-  BLACKHOLE_ADDRESS,
-  DEFAULT_FEE_DROPS,
-  LAST_LEDGER_OFFSET,
-  SIM_SINK_SEED,
-  SIM_VICTIM_SEED,
-  TF_FULLY_CANONICAL_SIG,
-} from "./constants";
+import { BLACKHOLE_ADDRESS, TF_FULLY_CANONICAL_SIG } from "./constants";
 import { xrpToDrops } from "./format";
 import {
   DeviceRejectedError,
@@ -21,14 +14,13 @@ import {
   type Backend,
   type KeyHandle,
   type NodeResult,
+  type SessionParams,
+  type UnsignedTx,
   type ServerInfo,
   type SessionEntry,
   type TxJson,
 } from "./ports";
 import { ACTIONS, ATTACKS, type Attack, type ScenarioContext } from "./scenarios";
-import { accountIdOf } from "./sim/keys";
-import * as build from "./tx-builders";
-import type { SessionParams, UnsignedTx } from "./tx-builders";
 
 export type Profile = "mac" | "ledger" | "demo";
 
@@ -110,8 +102,8 @@ export function createDemo(backend: Backend) {
   let counter = 0;
   let fullAuth: Signer | null = null;
   let master: Signer | null = null;
-  const sink = accountIdOf(SIM_SINK_SEED);
-  const victim = accountIdOf(SIM_VICTIM_SEED);
+  const { sink, victim } = backend.counterparties;
+  const build = backend.builders;
 
   /* ---- reading the node ---- */
 
@@ -132,17 +124,13 @@ export function createDemo(backend: Backend) {
     tx: UnsignedTx,
     options: { fee?: string; omitLastLedger?: boolean } = {},
   ): Promise<TxJson> {
-    const account = await backend.node.accountInfo(tx.Account);
-    const server = await backend.node.serverInfo();
+    const common = await backend.node.commonFields(tx.Account, options);
     const out: TxJson = {
       ...tx,
-      Fee: options.fee ?? tx.Fee ?? DEFAULT_FEE_DROPS,
+      ...common,
+      Fee: options.fee ?? tx.Fee ?? common.Fee,
       Flags: ((tx.Flags ?? 0) | TF_FULLY_CANONICAL_SIG) >>> 0,
     };
-    if (account !== null) out.Sequence = account.sequence;
-    if (options.omitLastLedger !== true) {
-      out.LastLedgerSequence = server.ledgerIndex + 1 + LAST_LEDGER_OFFSET;
-    }
     return out;
   }
 
@@ -365,6 +353,7 @@ export function createDemo(backend: Backend) {
     const entry = state.session;
     return {
       account: requireAddress(),
+      builders: build,
       sink,
       victim,
       remainingCapDrops:
