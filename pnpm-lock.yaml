@@ -119,7 +119,24 @@ importers:
         specifier: 3.1.0
         version: 3.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
 
-  packages/ledger: {}
+  packages/ledger:
+    dependencies:
+      '@carbs/sessions':
+        specifier: workspace:*
+        version: link:../core
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
+      ripple-address-codec:
+        specifier: 5.0.1
+        version: 5.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@noble/post-quantum':
+        specifier: 0.7.1
+        version: 0.7.1
+      ripple-keypairs:
+        specifier: 3.1.0
+        version: 3.1.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
 
 packages:
 
