@@ -24,7 +24,7 @@ import { kP256PublicKeyLength } from "../constants.js";
 import type { Definitions } from "../definitions.js";
 import { canonicalizeDer } from "../der.js";
 import { encodeForSigning, encodeTx, transactionHash, type TxJson } from "../encode.js";
-import type { SignedTx } from "../sign.js";
+import type { BytesSigner, SignedTx } from "../sign.js";
 import { KeyError } from "./classic.js";
 import { xrplP256PublicKey } from "./p256-session.js";
 
@@ -168,6 +168,19 @@ export class SoftwareAuthenticator implements Authenticator {
 
   get address(): string {
     return addressFromPublicKey(this.credential.publicKey);
+  }
+
+  /**
+   * The same key signing raw ECDSA-SHA256 (no WebAuthn): the node also accepts that for a key of
+   * the passkey list (FIANSO-SPEC.md section 6.14). Low-S strict DER.
+   */
+  rawSigner(): BytesSigner {
+    return {
+      keyType: "p256",
+      publicKey: this.credential.publicKey,
+      sign: async (data) =>
+        p256.sign(data, this.#secretKey, { prehash: true, lowS: true, format: "der" }),
+    };
   }
 
   async getAssertion({

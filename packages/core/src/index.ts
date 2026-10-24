@@ -16,6 +16,7 @@ export * from "./keys/mldsa.js";
 export * from "./keys/p256-session.js";
 export * from "./keys/passkey.js";
 export * from "./node.js";
+export * from "./passkey-wallet.js";
 export * from "./session.js";
 export * from "./sign.js";
 export * from "./quantum/index.js";

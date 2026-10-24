@@ -36,6 +36,8 @@ const kAllowedMethods = new Set([
 
 /** Answers of a public server's rate limiter. */
 const kBusyErrors = new Set(["tooBusy", "slowDown"]);
+/** The RPC error of `submit` for a blob that fails the node's local checks. */
+const kInvalidTransaction = "invalidTransaction";
 
 export class NodeClientError extends Error {
   override readonly name = "NodeClientError";
@@ -64,6 +66,7 @@ export function unwrapResult(method: string, answer: unknown): JsonObject {
       method,
       String(result["error"] ?? "error"),
       String(result["error_message"] ?? ""),
+      String(result["error_exception"] ?? ""),
     );
   }
   return result;
@@ -284,9 +287,27 @@ export interface SubmitResult {
   accepted: boolean;
 }
 
-/** `submit` a signed blob (never the `sign` mode of `submit`). */
+/**
+ * `submit` a signed blob (never the `sign` mode of `submit`). A blob that fails the node's local
+ * checks (for example "fails local checks: Invalid signature.") is answered with the RPC error
+ * `invalidTransaction`; it is returned as the result `invalidTransaction`, never included.
+ */
 export async function submitBlob(node: NodeClient, blob: string): Promise<SubmitResult> {
-  const result = await node.request("submit", { tx_blob: blob });
+  let result: unknown;
+  try {
+    result = await node.request("submit", { tx_blob: blob });
+  } catch (error) {
+    if (error instanceof RpcError && error.error === kInvalidTransaction) {
+      return {
+        engineResult: kInvalidTransaction,
+        engineResultCode: Number.NaN,
+        engineResultMessage: error.exception || error.errorMessage,
+        hash: undefined,
+        accepted: false,
+      };
+    }
+    throw error;
+  }
   if (!isObject(result)) throw new NodeClientError("submit: malformed result");
   const txJson = isObject(result["tx_json"]) ? result["tx_json"] : {};
   return {
@@ -327,7 +348,12 @@ export async function submitAndWait(
 ): Promise<FinalResult> {
   const submit = await submitBlob(node, blob);
   const prefix = submit.engineResult.slice(0, 3);
-  if (prefix === "tef" || prefix === "tem" || prefix === "tel") {
+  if (
+    prefix === "tef" ||
+    prefix === "tem" ||
+    prefix === "tel" ||
+    submit.engineResult === kInvalidTransaction
+  ) {
     return { hash, result: submit.engineResult, validated: false, ledgerIndex: undefined, submit };
   }
   const sleep = options.sleep ?? defaultSleep;
