@@ -9,6 +9,7 @@
  */
 
 import alphanet from "../fixtures/alphanet-server-definitions.json" with { type: "json" };
+import standalone from "../fixtures/standalone-server-definitions.json" with { type: "json" };
 import {
   asServerDefinitions,
   parseDefinitions,
@@ -89,4 +90,17 @@ export function simulatedSessionDefinitions(): Definitions {
 /** The AlphaNet's recorded definitions (no sessions): enough for the quantum module. */
 export function alphanetDefinitions(): Definitions {
   return parseDefinitions(alphanetServerDefinitions(), { requireSessions: false });
+}
+
+/**
+ * The `server_definitions` of our standalone node with the `SigningSessions` amendment (N2 and N9
+ * merged, `develop` 0882800), recorded by `spikes/k1-local.ts`'s setup: the node's own answer, not
+ * SIMULATED. Prefer it to the simulated definitions in new tests.
+ */
+export function standaloneServerDefinitions(): ServerDefinitions {
+  return asServerDefinitions(structuredClone(standalone));
+}
+
+export function standaloneDefinitions(): Definitions {
+  return parseDefinitions(standaloneServerDefinitions());
 }
