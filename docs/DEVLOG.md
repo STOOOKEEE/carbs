@@ -121,3 +121,24 @@ Documentation only: no protocol, client or device code changed.
   - UNVERIFIED item 1 now says the AlphaNet accepted device signatures. A new item covers `@noble/post-quantum` signatures, which no node has checked yet.
   - The case 20 refusals name their codes, and three cases are added.
   - §7.7 gains the status words, the rule that the context is cleared when the instruction changes, the key derived on chunk 0, the signature length answer, and the devices the path is built for. The stale `LEDGER_ASSERT` sentence is gone.
+
+### Tickets and sessions, a design (D15)
+
+Documentation only, and a proposal: ADR 0010 is `Proposed`, and nothing in §6 of the spec changes until the owner adopts an option.
+
+- **D15 in the spec:** tickets serve multisig coordination (§2). §12 now says that a session-signed transaction may today consume any ticket of the account, and §15 lists the decision left open.
+- **ADR 0010** gives three options, with their fields, flags and result codes, the invariant impact, the tests and what the device would need:
+  1. a ticket budget mode;
+  2. a session key co-signing as its account;
+  3. tickets bound at opening.
+
+  It recommends option 3 and its rule for sessions without a range, and rejects option 2.
+
+- **Every new code an option would need is free** on the public AlphaNet (`server_definitions` `hash` `34614C84…C3C5`, the hash of spike K5): UINT32 115 and 116, ACCOUNT 35, `tef` -169, and no flag defined for `SigningSessionSet`. It is free in the imported tree too, with the commands and output in the ADR. Nothing is allocated.
+- **Device-track watch:** `git fetch --prune` shows `develop` holding the three device-track branches (merge `695e6df`). Open drafts #7, #10 and #11 are those branches. No number in `ledger-app/src/xrp/signing_session.h` changes, so there is nothing to adapt.
+- **Review gate, round 1**, on this part. ADR 0010 is fixed:
+  - the line that names `TicketCount` in the app is corrected;
+  - option 1 notes that mode A can also lock tickets, and gives the owner count when a `TicketCreate` uses a ticket;
+  - option 2 lists every code of the signer check;
+  - option 3 exempts the own close, rejects an overflowing range, names `terPRE_TICKET`, says that opening does not check the tickets, and cites the code it would touch;
+  - the "if adopted" list is completed, and the ADR gains its Decision and Consequences parts.
