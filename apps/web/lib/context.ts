@@ -12,6 +12,7 @@ export const MIGRATION_KEY: InjectionKey<Migration> = Symbol("carbs-migration");
 export const NETWORK_KEY: InjectionKey<NetworkStore> = Symbol("carbs-network");
 export const WALLETS_KEY: InjectionKey<WalletsApi> = Symbol("carbs-wallets");
 export const LIVE_EXPOSURE_KEY: InjectionKey<ExposurePort> = Symbol("carbs-live-exposure");
+export const LIVE_MIGRATION_KEY: InjectionKey<Migration> = Symbol("carbs-live-migration");
 export const DEVICE_PROMPT_KEY: InjectionKey<DevicePrompt> = Symbol("carbs-device-prompt");
 
 function required<T>(key: InjectionKey<T>): T {
@@ -27,3 +28,4 @@ export const useDevicePrompt = (): DevicePrompt => required(DEVICE_PROMPT_KEY);
 export const useNetwork = (): NetworkStore => required(NETWORK_KEY);
 export const useWallets = (): WalletsApi => required(WALLETS_KEY);
 export const useLiveExposure = (): ExposurePort => required(LIVE_EXPOSURE_KEY);
+export const useLiveMigration = (): Migration => required(LIVE_MIGRATION_KEY);

@@ -14,6 +14,7 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@carbs/ledger": "workspace:*",
     "@carbs/sessions": "workspace:*",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",

@@ -32,11 +32,24 @@ export interface MigrationStep {
   refusal: string | null;
 }
 
+/** What the Quantum screen needs from a migration, simulated or live. */
+export interface MigrationController {
+  kind: "simulated" | "live";
+  state: MigrationState;
+  start(): Promise<void>;
+  proveRecoverable(): Promise<void>;
+  runStep(id: 1 | 2 | 3): Promise<void>;
+}
+
 export interface MigrationState {
   address: string | null;
   steps: MigrationStep[];
   recoverableProven: boolean;
   authoritiesReviewed: boolean;
+  /** Live run only: the seed of the SIMULATED device, shown so the person can save it. */
+  recoverySeed: string | null;
+  /** Live run only: the person confirmed saving that seed. */
+  recoveryConfirmed: boolean;
   before: ExposureReport | null;
   after: ExposureReport | null;
   busy: boolean;
@@ -55,6 +68,8 @@ export function createMigration(backend: Backend) {
     steps: [],
     recoverableProven: false,
     authoritiesReviewed: false,
+    recoverySeed: null,
+    recoveryConfirmed: false,
     before: null,
     after: null,
     busy: false,
@@ -164,7 +179,14 @@ export function createMigration(backend: Backend) {
     });
   }
 
-  return { state, start, proveRecoverable, runStep };
+  const controller: MigrationController = {
+    kind: "simulated",
+    state,
+    start,
+    proveRecoverable,
+    runStep,
+  };
+  return controller;
 }
 
-export type Migration = ReturnType<typeof createMigration>;
+export type Migration = MigrationController;

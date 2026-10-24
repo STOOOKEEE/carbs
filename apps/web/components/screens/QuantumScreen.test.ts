@@ -9,7 +9,8 @@ import {
   alphanetServerDefinitions,
   type RecordedCall,
 } from "@carbs/sessions/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { FakeAlphaNet } from "~/lib/live/fake-alphanet";
 import QuantumScreen from "./QuantumScreen.vue";
 import { flushPromises, mountScreen } from "./test-utils";
 
@@ -50,6 +51,7 @@ describe("Quantum screen", () => {
 
   it("is read-only on mainnet: no migration", async () => {
     const { wrapper } = mountScreen(QuantumScreen);
+    await wrapper.get("[data-testid='source-simulated']").setValue(true);
     await wrapper.get("[data-testid='network']").setValue("mainnet");
     expect(wrapper.get("[data-testid='read-only']").text()).toContain("read-only");
     expect(wrapper.find("[data-testid='migration-start']").exists()).toBe(false);
@@ -57,6 +59,7 @@ describe("Quantum screen", () => {
 
   it("migrates a fresh account in the required order and refuses step 3 until it is safe", async () => {
     const { wrapper } = mountScreen(QuantumScreen);
+    await wrapper.get("[data-testid='source-simulated']").setValue(true);
     await wrapper.get("[data-testid='migration-start']").trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='migration-address']").text()).toMatch(/^rSim/);
@@ -244,5 +247,66 @@ describe("Quantum screen, live source", () => {
     await mounted.wrapper.get("[data-testid='exposure-form']").trigger("submit");
     await flushPromises();
     expect(mounted.wrapper.text()).toContain("cannot connect");
+  });
+});
+
+describe("Quantum screen, live migration (AlphaNet double, SIMULATED device)", () => {
+  function liveScreen() {
+    const fake = new FakeAlphaNet();
+    const mounted = mountScreen(QuantumScreen, { clientFactory: () => fake, fetcher: fake.faucet });
+    return { ...mounted, fake };
+  }
+
+  it("says that the device is simulated and the node is real", () => {
+    const { wrapper } = liveScreen();
+    expect(wrapper.get("[data-testid='live-note']").text()).toContain("device simulated");
+    expect(wrapper.get("[data-testid='live-note']").text()).toContain("node real");
+  });
+
+  it("migrates a fresh account on the node, with explorer links, the seed backup and the safety refusals", async () => {
+    const { wrapper, fake, ctx } = liveScreen();
+    const idle = () =>
+      vi.waitFor(() => expect(ctx.liveMigration.state.busy).toBe(false), { timeout: 15000 });
+    const click = async (id: string) => {
+      await wrapper.get(`[data-testid='${id}']`).trigger("click");
+      await flushPromises();
+      await idle();
+      await flushPromises();
+    };
+    await click("migration-start");
+    const address = wrapper.get("[data-testid='migration-address']").text();
+    expect(address).toMatch(/^r/);
+    expect(wrapper.get("[data-testid='account-link']").attributes("href")).toBe(
+      `https://alphanet.xrpl.org/accounts/${address}`,
+    );
+
+    await click("run-step-1");
+    await click("run-step-2");
+    await click("run-step-3");
+    expect(wrapper.get("[data-testid='refusal-3']").text()).toContain("not proven recoverable");
+
+    await click("prove-recoverable");
+    expect(wrapper.get("[data-testid='recovery-seed']").text()).toMatch(/^[0-9A-F]{128}$/);
+    await wrapper.get("[data-testid='seed-saved']").setValue(true);
+    await wrapper.get("[data-testid='reviewed']").setValue(true);
+    await click("run-step-3");
+
+    const links = wrapper.findAll("[data-testid='migration'] [data-testid='explorer-link']");
+    expect(links).toHaveLength(3);
+    for (const link of links) {
+      expect(link.attributes("href")).toMatch(
+        /^https:\/\/alphanet\.xrpl\.org\/transactions\/[0-9A-F]{64}$/,
+      );
+    }
+    const codes = wrapper
+      .findAll("[data-testid='migration'] [data-testid='result-code']")
+      .map((n) => n.text());
+    expect(codes).toEqual(["tesSUCCESS", "tesSUCCESS", "tesSUCCESS"]);
+    expect(wrapper.get("[data-testid='after']").text()).toContain("No exposure found");
+    expect(fake.accounts.get(address)?.masterDisabled).toBe(true);
+    // The results are the node's: no SIMULATED badge on them, only on the device.
+    expect(
+      wrapper.findAll("[data-testid='migration'] [data-testid='result'] [data-testid='sim-badge']"),
+    ).toHaveLength(0);
   });
 });

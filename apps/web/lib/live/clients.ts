@@ -2,15 +2,10 @@
  * Node clients and definitions for the live Quantum screen, on `@carbs/sessions`. The
  * definitions are loaded from the node's `server_definitions` (never the bundled xrpl.js
  * ones, which do not know types 130 and 131) and cached per network. Only public,
- * non-admin methods are used (`JsonRpcClient` refuses anything else).
+ * non-admin methods are used (`JsonRpcClient` refuses anything else), and it waits out a
+ * public node's rate limit itself.
  */
-import {
-  JsonRpcClient,
-  RpcError,
-  loadDefinitions,
-  type Definitions,
-  type NodeClient,
-} from "@carbs/sessions";
+import { JsonRpcClient, loadDefinitions, type Definitions, type NodeClient } from "@carbs/sessions";
 import type { AppNetwork, NetworkId } from "../networks";
 import type { NetworkName } from "../ports";
 
@@ -47,38 +42,6 @@ export function simpleRequestFetch(
 
 const defaultFactory: ClientFactory = (url) => new JsonRpcClient(url, simpleRequestFetch());
 
-/** Public nodes rate-limit; their answer says how long to wait ("retry in ~7042ms"). */
-const RATE_LIMIT_ERRORS = new Set(["tooBusy", "slowDown"]);
-const DEFAULT_RETRY_MS = 2000;
-const MAX_RETRY_MS = 15_000;
-export const MAX_RATE_LIMIT_RETRIES = 4;
-
-export function retryDelayMs(error: RpcError): number {
-  const match = /retry in ~?(\d+)\s*ms/i.exec(error.errorMessage);
-  const asked = match?.[1] === undefined ? DEFAULT_RETRY_MS : Number(match[1]);
-  return Math.min(Math.max(asked, 0) + 250, MAX_RETRY_MS);
-}
-
-/** Wait out a rate limit and ask again, a bounded number of times. Read-only methods only reach it. */
-export function withRateLimitRetry(
-  inner: NodeClient,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-): NodeClient {
-  return {
-    async request(method, params) {
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          return await inner.request(method, params);
-        } catch (error) {
-          const limited = error instanceof RpcError && RATE_LIMIT_ERRORS.has(error.error);
-          if (!limited || attempt >= MAX_RATE_LIMIT_RETRIES) throw error;
-          await sleep(retryDelayMs(error));
-        }
-      }
-    },
-  };
-}
-
 /** JSON-RPC over HTTPS to the networks' public nodes (CORS allows the browser). */
 export function createLiveClients(
   networks: () => Record<NetworkId, AppNetwork>,
@@ -91,7 +54,7 @@ export function createLiveClients(
     const url = networks()[network].rpc;
     let existing = clients.get(url);
     if (existing === undefined) {
-      existing = withRateLimitRetry(factory(url));
+      existing = factory(url);
       clients.set(url, existing);
     }
     return existing;

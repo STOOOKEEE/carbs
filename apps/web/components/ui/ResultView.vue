@@ -6,7 +6,12 @@ import { describeResult } from "~/lib/result-codes";
 import type { NodeResult } from "~/lib/ports";
 import { shortHex } from "~/lib/format";
 
-const props = defineProps<{ result: NodeResult; simulated: boolean }>();
+const props = defineProps<{
+  result: NodeResult;
+  simulated: boolean;
+  /** Overrides the link: a real transaction on a given explorer (`null`: none). */
+  explorerUrl?: string | null;
+}>();
 
 const backend = useBackend();
 const network = useNetwork();
@@ -20,9 +25,12 @@ const tone = computed(() =>
       : "chip-danger",
 );
 // A simulated hash exists on no explorer; a real one is linked on the selected network's.
-const explorerUrl = computed(() =>
-  backend.mode === "live" && props.result.feeClaimed ? network.explorerTx(props.result.hash) : null,
-);
+const explorerLink = computed(() => {
+  if (props.explorerUrl !== undefined) return props.explorerUrl;
+  return backend.mode === "live" && props.result.feeClaimed
+    ? network.explorerTx(props.result.hash)
+    : null;
+});
 </script>
 
 <template>
@@ -38,8 +46,8 @@ const explorerUrl = computed(() =>
     <p v-if="description.rule" class="text-muted-foreground">{{ description.rule }}</p>
     <p class="mono text-muted-foreground">
       <a
-        v-if="explorerUrl"
-        :href="explorerUrl"
+        v-if="explorerLink"
+        :href="explorerLink"
         target="_blank"
         rel="noreferrer"
         class="underline"
