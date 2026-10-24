@@ -81,6 +81,10 @@ The simulated backend needs nothing else. There is no API key anywhere.
 | Quantum                           | works against the simulated history today; with the live backend it reads **mainnet read-only** and migrates on the **AlphaNet** with a fresh account |
 | Account, Session, Actions, Attack | need a node that carries the `SigningSessions` amendment; until one is hosted they run in **SIMULATED** mode and the badge stays visible              |
 
+## Running the node and the app together (local)
+
+`pnpm demo` starts, on this machine, the standalone node of `infra/standalone.cfg` (`XRPLD_BIN`, a build with the SigningSessions amendment), its ledger closer, a dev faucet that holds the genesis key (`GENESIS_SEED`, read from the environment, never written) and the web app on the live backend. It is not a deployment: nothing is exposed beyond the loopback. A hosted site needs its own TLS in front of a node (see "A hosted site and the node").
+
 ## For the owner (human-only)
 
 - Creating the account on a host, logging in, linking the project, the domain and the DNS.

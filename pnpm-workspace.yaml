@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "scripts"
 
 # Moved from the create-xrp template (apps/web/pnpm-workspace.yaml): pnpm
 # reads these settings from the workspace root only.
