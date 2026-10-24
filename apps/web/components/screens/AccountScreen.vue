@@ -14,7 +14,7 @@ const state = demo.state;
 const passkeyOnly = ref(false);
 const webHid = hasWebHid();
 // The simulated Stax needs no browser support; the real one does.
-const ledgerBlocked = computed(() => backend.mode === "live" && !webHid);
+const ledgerBlocked = computed(() => backend.device.mode === "live" && !webHid);
 
 const PROFILES: readonly { id: Profile; title: string; body: string; note: string }[] = [
   {
@@ -65,7 +65,7 @@ async function create(profile: Profile): Promise<void> {
           data-testid="hid-warning"
         >
           {{ WEBHID_MESSAGE }}
-          <template v-if="backend.mode === 'simulated'">
+          <template v-if="backend.device.mode === 'simulated'">
             The simulated Stax below works in any browser; the real one needs Chrome.
           </template>
         </p>

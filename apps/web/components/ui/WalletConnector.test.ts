@@ -67,7 +67,7 @@ describe("Wallet entry", () => {
 
   it("shows the error of a rejected device and stays open", async () => {
     const { wrapper, ctx } = await opened();
-    ctx.backend.simDevice.setApprover(async () => false);
+    ctx.sim.simDevice.setApprover(async () => false);
     await wrapper.get("[data-testid='connect-ledger-stax']").trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='wallet-error']").text()).toContain("Rejected on the device");

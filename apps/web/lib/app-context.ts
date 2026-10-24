@@ -1,4 +1,5 @@
 import { createSimBackend, type SimBackend } from "./backend";
+import type { Backend } from "./ports";
 import { createLiveClients, type ClientFactory } from "./live/clients";
 import { LiveExposure } from "./live/exposure";
 import { createLiveMigration } from "./live/migration";
@@ -8,7 +9,10 @@ import { createMigration, type Migration } from "./migration";
 import { createNetworkStore, type NetworkStore, type NetworkStoreOptions } from "./network-store";
 
 export interface AppContext {
-  backend: SimBackend;
+  /** The simulation, always present (the Quantum screen's simulated source runs on it). */
+  sim: SimBackend;
+  /** The backend the screens run on: `sim`, or the live node when one was reached (`lib/boot.ts`). */
+  backend: Backend;
   demo: Demo;
   migration: Migration;
   prompt: DevicePrompt;
@@ -37,6 +41,7 @@ export function createAppContext(
   const clients = createLiveClients(() => networkStore.networks(), live.clientFactory);
   const liveExposure = new LiveExposure(clients);
   return {
+    sim: backend,
     backend,
     demo: createDemo(backend),
     migration: createMigration(backend),
@@ -60,4 +65,9 @@ let shared: AppContext | null = null;
 export function sharedAppContext(network: NetworkStoreOptions = {}): AppContext {
   shared ??= createAppContext(network);
   return shared;
+}
+
+/** Replace the shared context once the backend is chosen (the simulation or the live node). */
+export function setSharedAppContext(ctx: AppContext): void {
+  shared = ctx;
 }

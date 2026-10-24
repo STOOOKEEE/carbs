@@ -16,19 +16,49 @@ import {
   type Definitions,
   type NodeClient,
 } from "@carbs/sessions";
-import { alphanetServerDefinitions } from "@carbs/sessions/testing";
+import {
+  alphanetServerDefinitions,
+  simulatedSessionServerDefinitions,
+} from "@carbs/sessions/testing";
 
 interface FakeAccount {
   sequence: number;
   regularKey: string | undefined;
   masterDisabled: boolean;
+  /** Public keys (hex) of the passkey list. */
+  passkeys: string[];
   history: { hash: string; ledgerIndex: number; tx: Record<string, unknown>; result: string }[];
 }
 
+interface FakeSession {
+  Account: string;
+  SessionKey: string;
+  Expiration: number;
+  Permissions?: unknown;
+  SessionCap?: string;
+  SessionSpent?: string;
+  Flags: number;
+}
+
+export interface FakeOptions {
+  /** Serve the SigningSessions names (SIMULATED definitions of core) and accept session transactions. */
+  sessions?: boolean;
+}
+
 export class FakeAlphaNet implements NodeClient {
-  readonly defs: Definitions = parseDefinitions(alphanetServerDefinitions(), {
-    requireSessions: false,
-  });
+  readonly sessions = new Map<string, FakeSession>();
+  closeTime = 800_000_000;
+  readonly #raw;
+  readonly defs: Definitions;
+
+  constructor(options: FakeOptions = {}) {
+    this.#raw =
+      options.sessions === true ? simulatedSessionServerDefinitions() : alphanetServerDefinitions();
+    this.defs = parseDefinitions(structuredClone(this.#raw), {
+      requireSessions: options.sessions === true,
+    });
+  }
+
   readonly accounts = new Map<string, FakeAccount>();
   readonly requests: string[] = [];
   readonly results = new Map<string, string>();
@@ -41,6 +71,7 @@ export class FakeAlphaNet implements NodeClient {
       sequence: 1,
       regularKey: undefined,
       masterDisabled: false,
+      passkeys: [],
       history: [],
     });
     return new Response("{}", { status: 200 });
@@ -50,7 +81,11 @@ export class FakeAlphaNet implements NodeClient {
     this.requests.push(method);
     switch (method) {
       case "server_definitions":
-        return structuredClone(alphanetServerDefinitions());
+        return structuredClone(this.#raw);
+      case "ledger":
+        return {
+          ledger: { ledger_index: String(this.ledger), close_time: this.closeTime },
+        };
       case "server_info":
         return { info: { network_id: 24100 } };
       case "fee":
@@ -58,7 +93,13 @@ export class FakeAlphaNet implements NodeClient {
       case "account_info":
         return this.accountInfo(String(params["account"]));
       case "account_objects":
-        return { account: params["account"], account_objects: [] };
+        return {
+          account: params["account"],
+          account_objects:
+            params["type"] === "signing_session"
+              ? [...this.sessions.values()].filter((x) => x.Account === params["account"])
+              : [],
+        };
       case "account_tx":
         return this.accountTx(String(params["account"]), params["forward"] === true);
       case "submit":
@@ -162,6 +203,7 @@ export class FakeAlphaNet implements NodeClient {
     if (account && included) {
       account.sequence += 1;
       this.ledger += 1;
+      this.closeTime += 3;
       account.history.push({ hash, ledgerIndex: this.ledger, tx, result });
     }
     this.results.set(hash, result);
@@ -174,23 +216,83 @@ export class FakeAlphaNet implements NodeClient {
     };
   }
 
+  /** The few rules the tests need, with the node's own codes. This is a TEST DOUBLE, not the amendment. */
   private apply(account: FakeAccount, tx: Record<string, unknown>): string {
-    const signer = addressFromPublicKey(String(tx["SigningPubKey"]));
+    const publicKey = String(tx["SigningPubKey"]);
+    const signer = addressFromPublicKey(publicKey);
     const address = String(tx["Account"]);
+    const type = String(tx["TransactionType"]);
     const isMaster = signer === address;
-    if (isMaster && account.masterDisabled) return "tefMASTER_DISABLED";
-    if (!isMaster && signer !== account.regularKey) return "tefBAD_AUTH";
-    if (tx["TransactionType"] === "SetRegularKey") {
-      account.regularKey = String(tx["RegularKey"]);
+    const session = this.sessions.get(`${address}:${signer}`);
+    const viaPasskey = tx["PasskeySignature"] !== undefined;
+
+    if (session !== undefined && !isMaster && signer !== account.regularKey) {
+      const verdict = this.checkSession(session, tx, type, signer);
+      if (verdict !== "tesSUCCESS") return verdict;
+      if (type === "SigningSessionDelete") this.sessions.delete(`${address}:${signer}`);
       return "tesSUCCESS";
     }
-    if (
-      tx["TransactionType"] === "AccountSet" &&
-      tx["SetFlag"] === this.defs.accountSetFlag("asfDisableMaster")
-    ) {
-      if (!isMaster) return "tecNEED_MASTER_KEY";
-      account.masterDisabled = true;
-      return "tesSUCCESS";
+    if (isMaster && account.masterDisabled) return "tefMASTER_DISABLED";
+    const passkeyOk = viaPasskey && account.passkeys.includes(publicKey.toUpperCase());
+    if (!isMaster && signer !== account.regularKey && !passkeyOk) return "tefBAD_AUTH";
+
+    switch (type) {
+      case "SetRegularKey":
+        account.regularKey = String(tx["RegularKey"]);
+        return "tesSUCCESS";
+      case "PasskeyListSet":
+        if (account.passkeys.length > 0) return "tefEXCEPTION";
+        account.passkeys = (tx["Passkeys"] as { Passkey: { PublicKey: string } }[]).map((item) =>
+          item.Passkey.PublicKey.toUpperCase(),
+        );
+        return "tesSUCCESS";
+      case "AccountSet":
+        if (tx["SetFlag"] === this.defs.accountSetFlag("asfDisableMaster")) {
+          if (!isMaster) return "tecNEED_MASTER_KEY";
+          account.masterDisabled = true;
+        }
+        return "tesSUCCESS";
+      case "SigningSessionSet": {
+        const key = `${address}:${String(tx["SessionKey"])}`;
+        if (this.sessions.has(key)) return "tecDUPLICATE";
+        this.sessions.set(key, {
+          Account: address,
+          SessionKey: String(tx["SessionKey"]),
+          Expiration: this.closeTime + Number(tx["SessionDuration"]),
+          ...(tx["Permissions"] === undefined ? {} : { Permissions: tx["Permissions"] }),
+          ...(tx["SessionCap"] === undefined
+            ? {}
+            : { SessionCap: String(tx["SessionCap"]), SessionSpent: "0" }),
+          Flags: Number(tx["Flags"] ?? 0),
+        });
+        return "tesSUCCESS";
+      }
+      case "SigningSessionDelete":
+        this.sessions.delete(`${address}:${String(tx["SessionKey"])}`);
+        return "tesSUCCESS";
+      default:
+        return "tesSUCCESS";
+    }
+  }
+
+  private checkSession(
+    session: FakeSession,
+    tx: Record<string, unknown>,
+    type: string,
+    signer: string,
+  ): string {
+    const ownClose = type === "SigningSessionDelete" && tx["SessionKey"] === signer;
+    if (!ownClose && type !== "Payment") return "tefSESSION_TX_NOT_ALLOWED";
+    if (typeof tx["LastLedgerSequence"] !== "number") return "tefSESSION_TX_NOT_ALLOWED";
+    if (!ownClose && this.closeTime >= session.Expiration) return "tefSESSION_EXPIRED";
+    const fee = Number(tx["Fee"]);
+    if (fee > 10 + 1000 * 10) return "tefSESSION_LIMIT";
+    if (!ownClose && session.SessionCap !== undefined) {
+      const amount = typeof tx["Amount"] === "string" ? Number(tx["Amount"]) : 0;
+      if (Number(session.SessionSpent) + fee + amount > Number(session.SessionCap)) {
+        return "tefSESSION_LIMIT";
+      }
+      session.SessionSpent = String(Number(session.SessionSpent) + fee + amount);
     }
     return "tesSUCCESS";
   }

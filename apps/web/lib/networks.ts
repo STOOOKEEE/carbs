@@ -24,9 +24,15 @@ export interface AppNetwork {
 export const DEFAULT_LOCAL_WSS = "ws://localhost:6006";
 /** Default URL of its JSON-RPC port. */
 export const DEFAULT_LOCAL_RPC = "http://localhost:5005";
+/** The dev faucet that `pnpm demo` starts for the local node (the browser never holds the genesis key). */
+export const DEFAULT_LOCAL_FAUCET = "http://localhost:3005/accounts";
 
 export function createNetworks(
-  local: { wss: string; rpc: string } = { wss: DEFAULT_LOCAL_WSS, rpc: DEFAULT_LOCAL_RPC },
+  local: { wss: string; rpc: string; faucet?: string } = {
+    wss: DEFAULT_LOCAL_WSS,
+    rpc: DEFAULT_LOCAL_RPC,
+    faucet: DEFAULT_LOCAL_FAUCET,
+  },
 ): Record<NetworkId, AppNetwork> {
   return {
     alphanet: {
@@ -45,7 +51,7 @@ export function createNetworks(
       networkId: null,
       wss: local.wss,
       rpc: local.rpc,
-      faucet: null,
+      faucet: local.faucet ?? null,
       explorer: null,
       readOnly: false,
     },

@@ -26,6 +26,7 @@ export function passkeyKeyHandle(
   const publicKey = bytesToHex(credential.publicKey);
   return {
     algorithm: "p256",
+    credentialId: bytesToHex(credential.credentialId),
     publicKey,
     address: accountIdOf(publicKey),
     async sign(tx: TxJson): Promise<TxJson> {
@@ -59,14 +60,21 @@ const CREATE_CHALLENGE_BYTES = 32;
 const USER_ID_BYTES = 16;
 const ES256 = -7;
 
+/** A passkey and the authenticator that holds it. */
+export interface PasskeyMaterial {
+  credential: PasskeyCredential;
+  authenticator: Authenticator;
+  rpId: string;
+}
+
 /**
  * Create a passkey with the browser's authenticator. Real WebAuthn: it opens the platform
  * prompt (Touch ID, Face ID), so it runs only from a click, in a browser.
  */
-export async function createBrowserPasskey(
+export async function createBrowserCredential(
   container: CredentialsContainer,
   rp: PasskeyRelyingParty,
-): Promise<KeyHandle> {
+): Promise<PasskeyMaterial> {
   const created = await container.create({
     publicKey: {
       rp,
@@ -88,11 +96,23 @@ export async function createBrowserPasskey(
   const spki = response?.getPublicKey?.();
   const rawId = (created as { rawId?: ArrayBuffer } | null)?.rawId;
   if (!spki || !rawId) throw new Error("The authenticator returned no P-256 public key");
-  const credential: PasskeyCredential = {
-    credentialId: new Uint8Array(rawId),
-    publicKey: passkeyPublicKeyFromSpki(new Uint8Array(spki)),
+  return {
+    credential: {
+      credentialId: new Uint8Array(rawId),
+      publicKey: passkeyPublicKeyFromSpki(new Uint8Array(spki)),
+    },
+    authenticator: browserAuthenticator(container),
+    rpId: rp.id,
   };
-  return passkeyKeyHandle(credential, browserAuthenticator(container), rp.id);
+}
+
+/** The same passkey as a key of the simulated node. */
+export async function createBrowserPasskey(
+  container: CredentialsContainer,
+  rp: PasskeyRelyingParty,
+): Promise<KeyHandle> {
+  const { credential, authenticator, rpId } = await createBrowserCredential(container, rp);
+  return passkeyKeyHandle(credential, authenticator, rpId);
 }
 
 /** The browser's authenticator. Used only when the person asks to connect. */
@@ -105,6 +125,8 @@ export function browserPasskeySource(): PasskeySource {
       typeof globalThis.PublicKeyCredential !== "undefined",
     create: () =>
       createBrowserPasskey(navigator.credentials, { id: location.hostname, name: "carbs" }),
+    material: () =>
+      createBrowserCredential(navigator.credentials, { id: location.hostname, name: "carbs" }),
   };
 }
 
@@ -117,6 +139,10 @@ export function softwarePasskeySource(): PasskeySource {
     async create() {
       const authenticator = new SoftwareAuthenticator(`https://${rpId}`);
       return passkeyKeyHandle(authenticator.credential, authenticator, rpId);
+    },
+    async material() {
+      const authenticator = new SoftwareAuthenticator(`https://${rpId}`);
+      return { credential: authenticator.credential, authenticator, rpId };
     },
   };
 }

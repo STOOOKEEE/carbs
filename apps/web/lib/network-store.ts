@@ -1,5 +1,6 @@
 import { reactive } from "vue";
 import {
+  DEFAULT_LOCAL_FAUCET,
   DEFAULT_LOCAL_WSS,
   DEFAULT_NETWORK_ID,
   LOCAL_URL_STORAGE_KEY,
@@ -27,6 +28,8 @@ export interface NetworkStoreOptions {
   pageProtocol?: string;
   /** Default URL of the local node, from `NUXT_PUBLIC_LOCAL_NODE_URL`. */
   localWss?: string;
+  /** The dev faucet of the local node, from `NUXT_PUBLIC_LOCAL_FAUCET_URL`. */
+  localFaucet?: string;
 }
 
 function safeGet(storage: KeyValueStorage | null, key: string): string | null {
@@ -50,6 +53,7 @@ export function createNetworkStore(options: NetworkStoreOptions = {}) {
   const storage = options.storage ?? null;
   const pageProtocol = options.pageProtocol ?? "http:";
   const defaultLocal = options.localWss ?? DEFAULT_LOCAL_WSS;
+  const localFaucet = options.localFaucet ?? DEFAULT_LOCAL_FAUCET;
 
   const saved = safeGet(storage, NETWORK_STORAGE_KEY);
   const savedId = saved !== null && isNetworkId(saved) && SELECTABLE_NETWORK_IDS.includes(saved);
@@ -63,7 +67,11 @@ export function createNetworkStore(options: NetworkStoreOptions = {}) {
   }
 
   function networks(): Record<NetworkId, AppNetwork> {
-    return createNetworks({ wss: state.localWss, rpc: localRpcFor(state.localWss) });
+    return createNetworks({
+      wss: state.localWss,
+      rpc: localRpcFor(state.localWss),
+      faucet: localFaucet,
+    });
   }
 
   return {

@@ -8,7 +8,7 @@ import { browserPasskeySource, softwarePasskeySource } from "./passkey";
 
 function wired(passkeys = softwarePasskeySource()) {
   const ctx = createAppContext();
-  ctx.backend.simDevice.setApprover(async () => true);
+  ctx.sim.simDevice.setApprover(async () => true);
   const adapters = createWalletAdapters(
     { backend: ctx.backend, demo: ctx.demo, network: ctx.network },
     passkeys,
@@ -50,7 +50,7 @@ describe("wallets API on the Vue binding", () => {
 
   it("keeps the error when a connection fails", async () => {
     const { api, ctx } = wired();
-    ctx.backend.simDevice.setApprover(async () => false);
+    ctx.sim.simDevice.setApprover(async () => false);
     expect(await api.connect("ledger-stax")).toBe(false);
     expect(api.state.error).toContain("Rejected on the device");
     expect(api.state.connectedId).toBeNull();

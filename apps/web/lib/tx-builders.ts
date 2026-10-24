@@ -5,7 +5,7 @@
  * which fill the same fields from `server_definitions`.
  */
 import { ASF_DISABLE_MASTER, TF_ALL_TRANSACTIONS } from "./constants";
-import type { SessionParams, TxBuilders, UnsignedTx } from "./ports";
+import type { PasskeyRef, SessionParams, TxBuilders, UnsignedTx } from "./ports";
 
 export type { SessionParams, UnsignedTx } from "./ports";
 
@@ -75,8 +75,12 @@ export function setRegularKey(account: string, regularKey: string | null): Unsig
   return tx;
 }
 
-export function passkeyListSet(account: string, passkeys: readonly string[]): UnsignedTx {
-  return { TransactionType: "PasskeyListSet", Account: account, Passkeys: [...passkeys] };
+export function passkeyListSet(account: string, passkeys: readonly PasskeyRef[]): UnsignedTx {
+  return {
+    TransactionType: "PasskeyListSet",
+    Account: account,
+    Passkeys: passkeys.map((passkey) => passkey.publicKey),
+  };
 }
 
 export function accountSetDisableMaster(account: string): UnsignedTx {

@@ -59,7 +59,7 @@ describe("Session screen", () => {
     const { wrapper, ctx } = mountScreen(SessionScreen);
     await ctx.demo.createAccount("ledger");
     const seen: string[] = [];
-    ctx.backend.simDevice.setApprover(async (review) => {
+    ctx.sim.simDevice.setApprover(async (review) => {
       seen.push(...review.lines.map((line) => `${line.label}: ${line.value}`));
       return true;
     });

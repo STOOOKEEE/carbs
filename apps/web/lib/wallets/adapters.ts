@@ -24,6 +24,7 @@ import type { Demo, Profile } from "../demo";
 import type { NetworkStore } from "../network-store";
 import type { Backend, KeyHandle, TxJson } from "../ports";
 import { accountIdOf, simTxHash } from "../sim/keys";
+import type { PasskeyMaterial } from "./passkey";
 import {
   DEMO_ACCOUNT,
   LEDGER_STAX,
@@ -45,6 +46,8 @@ export interface PasskeySource {
   simulated: boolean;
   available(): boolean;
   create(): Promise<KeyHandle>;
+  /** The passkey and its authenticator, for a live wallet that signs through `@carbs/sessions`. */
+  material(): Promise<PasskeyMaterial>;
 }
 
 type Listener = (data: unknown) => void;
@@ -188,7 +191,7 @@ export class LedgerStaxAdapter extends CarbsAdapter {
 
   async isAvailable(): Promise<boolean> {
     // The simulated Stax needs no browser support; the real one needs WebHID.
-    return this.host.backend.mode === "simulated" || hasWebHid();
+    return this.host.backend.device.mode === "simulated" || hasWebHid();
   }
 
   protected async open(): Promise<void> {
