@@ -17,3 +17,10 @@ Ledger-enforced signing sessions for the XRP Ledger (a rippled amendment `Signin
 ## Commands
 
 `pnpm install`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`. Daemon, protocol tests and Ledger app: see `docs/ARCHITECTURE.md`.
+
+## Current state (history in `docs/DEVLOG.md`)
+
+- `rippled/`: amendments `fixPasskeyChallenge` and `SigningSessions` with modes C (`SessionCap`, optional `SessionMaxPerTx`), A (`tfAllTransactions`) and P (`Permissions`, the `Delegate` check), optional `SessionWitness`, and the `ValidSigningSession` invariant (4 rules). Session suites `SigningSessions`, `SigningSessionsModes`, `SigningSessionsInvariant` pass; neighbours add no base failure.
+- Not done: the extra 6.7 invariant rules (owner count, `Expiration` bound, XRP vs `SessionSpent`, beneficiary / firewall), the `SigningSessionDelete` flag mask, the N1 activation-safety work, review gate 2.
+- `apps/passkey-wallet`: passkey wallet, Ledger panel, Sessions panel; `scripts/session-demo.ts` (modes C, witness, A, P on a live node) and `scripts/agent/` (a local Ollama LLM paying invoices with a session key only). `ripple-binary-codec` needs `definitions.associateTypes({})` after loading `server_definitions` (see `docs/ledger-dx-feedback.md`).
+- Node: `infra/standalone.cfg` enables the amendments through `[amendments]`; `infra/closer.ts` closes ledgers.
