@@ -19,7 +19,9 @@ import { signAndSubmitWithStax, staxAccount } from "./ledger-panel.ts";
 import { log, logError } from "./log.ts";
 import { RpcError, type RpcResult } from "./rpc.ts";
 import {
+  type SessionMode,
   type SessionRules,
+  TF_ALL_TRANSACTIONS,
   closeSessionTx,
   openSessionTx,
   paymentTx,
@@ -29,22 +31,44 @@ import type { StoredWallet } from "./storage.ts";
 
 const DROPS_PER_XRP = 1_000_000;
 const COUNTDOWN_INTERVAL_MS = 1_000;
+/** Seconds between the Unix epoch and the XRPL epoch (2000-01-01). */
+const RIPPLE_EPOCH_OFFSET_S = 946_684_800;
+/** AccountSet flag asfDefaultRipple: an account setting no session may change. */
+const ASF_DEFAULT_RIPPLE = 8;
+
+/** Mode P choices: PermissionValue = transaction type + 1. */
+const PERMISSIONS: ReadonlyArray<{ name: string; value: number }> = [
+  { name: "Payment", value: 1 },
+  { name: "EscrowCreate", value: 2 },
+  { name: "OfferCreate", value: 8 },
+  { name: "TrustSet", value: 21 },
+  { name: "NFTokenMint", value: 26 },
+];
+
+const OPENER_LABELS = {
+  passkey: "Touch ID",
+  staxClassic: "Stax classique",
+  staxPostQuantum: "Stax ML-DSA",
+} as const;
+type OpenerLabel = (typeof OPENER_LABELS)[keyof typeof OPENER_LABELS];
 
 interface ActiveSession {
   owner: string;
+  openedBy: OpenerLabel;
   keySeed: string;
   keyAddress: string;
   rules: SessionRules;
   witnessSeed?: string;
-  /** Unix time, seconds: when the node will refuse the session key. */
-  expiresAt: number;
   closed: boolean;
 }
 
 const ui = {
   info: element("session-info", HTMLElement),
   opener: element("session-opener", HTMLSelectElement),
+  mode: element("session-mode", HTMLSelectElement),
   duration: element("session-duration", HTMLInputElement),
+  capFields: element("session-cap-fields", HTMLFieldSetElement),
+  permissions: element("session-permissions", HTMLFieldSetElement),
   cap: element("session-cap", HTMLInputElement),
   maxPerTx: element("session-max-per-tx", HTMLInputElement),
   witness: element("session-witness", HTMLInputElement),
@@ -53,6 +77,7 @@ const ui = {
   payDestination: element("session-pay-destination", HTMLInputElement),
   payAmount: element("session-pay-amount", HTMLInputElement),
   attackRegularKey: element("attack-regular-key", HTMLButtonElement),
+  attackAccountSet: element("attack-account-set", HTMLButtonElement),
   attackPerTx: element("attack-per-tx", HTMLButtonElement),
   attackNoWitness: element("attack-no-witness", HTMLButtonElement),
   close: element("session-close", HTMLButtonElement),
@@ -60,6 +85,52 @@ const ui = {
 };
 
 let active: ActiveSession | undefined;
+
+function isSessionMode(value: string): value is SessionMode {
+  return value === "cap" || value === "all" || value === "permissions";
+}
+
+function selectedMode(): SessionMode {
+  const value = ui.mode.value;
+  if (!isSessionMode(value)) throw new Error(`unknown session mode ${value}`);
+  return value;
+}
+
+function selectedPermissions(): number[] {
+  const values = Array.from(ui.permissions.querySelectorAll("input"))
+    .filter((input) => input.type === "checkbox" && input.checked)
+    .map((input) => Number(input.value));
+  if (values.length === 0) throw new Error("tick at least one permission");
+  return values;
+}
+
+function permissionName(value: number): string {
+  return PERMISSIONS.find((permission) => permission.value === value)?.name ?? `#${value}`;
+}
+
+function maxPerTxXrp(rules: SessionRules): number | undefined {
+  return rules.mode === "cap" ? rules.maxPerTxXrp : undefined;
+}
+
+/** Mode C shows the cap inputs, mode P the permission checkboxes, mode A neither. */
+function showModeFields(): void {
+  const mode = selectedMode();
+  ui.capFields.hidden = mode !== "cap";
+  ui.permissions.hidden = mode !== "permissions";
+}
+
+function buildPermissionCheckboxes(): void {
+  for (const { name, value } of PERMISSIONS) {
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = String(value);
+    input.checked = value === PERMISSIONS[0]?.value;
+    const label = document.createElement("label");
+    label.className = "inline";
+    label.append(input, ` ${name}`);
+    ui.permissions.append(label);
+  }
+}
 
 /** The session's ledger entry; undefined once it is gone (closed or deleted). */
 async function sessionEntry(
@@ -118,13 +189,21 @@ async function openSession(
       opener === "passkey" ? "create the passkey account first" : "connect the Stax first",
     );
 
-  const rules: SessionRules = {
-    durationSeconds: positiveNumber(ui.duration, "the duration"),
-    capXrp: positiveNumber(ui.cap, "the cap"),
-    ...(ui.maxPerTx.value === ""
-      ? {}
-      : { maxPerTxXrp: positiveNumber(ui.maxPerTx, "the cap per payment") }),
-  };
+  const durationSeconds = positiveNumber(ui.duration, "the duration");
+  const mode = selectedMode();
+  const rules: SessionRules =
+    mode === "cap"
+      ? {
+          mode,
+          durationSeconds,
+          capXrp: positiveNumber(ui.cap, "the cap"),
+          ...(ui.maxPerTx.value === ""
+            ? {}
+            : { maxPerTxXrp: positiveNumber(ui.maxPerTx, "the cap per payment") }),
+        }
+      : mode === "all"
+        ? { mode, durationSeconds }
+        : { mode, durationSeconds, permissions: selectedPermissions() };
   let witnessSeed: string | undefined;
   if (ui.witness.checked) {
     witnessSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
@@ -137,23 +216,30 @@ async function openSession(
   const keySeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
   const keyAddress = addressOfSeed(keySeed);
   const tx = openSessionTx(owner, keyAddress, rules);
+  const postQuantum = staxAccount()?.postQuantum ?? false;
+  const openedBy =
+    opener === "passkey"
+      ? OPENER_LABELS.passkey
+      : postQuantum
+        ? OPENER_LABELS.staxPostQuantum
+        : OPENER_LABELS.staxClassic;
   log(
     `Ouverture d'une session pour ${keyAddress} : ${opener === "passkey" ? "validez avec Touch ID" : "relisez les règles sur la Stax"}…`,
   );
   const submitted =
     opener === "passkey" && wallet !== undefined
       ? await signAndSubmitWithPasskey(connection, wallet, tx)
-      : await signAndSubmitWithStax(connection, tx, staxAccount()?.postQuantum ?? false);
+      : await signAndSubmitWithStax(connection, tx, postQuantum);
   log("SigningSessionSet :", submitted);
   if (submitted.result !== "tesSUCCESS") return;
 
   active = {
     owner,
+    openedBy,
     keySeed,
     keyAddress,
     rules,
     ...(witnessSeed === undefined ? {} : { witnessSeed }),
-    expiresAt: Math.floor(Date.now() / 1000) + rules.durationSeconds,
     closed: false,
   };
 }
@@ -166,7 +252,9 @@ export async function refreshSessionPanel(connection: Connection | undefined): P
       field.disabled = !usable;
   }
   ui.attackRegularKey.disabled = !usable;
-  ui.attackPerTx.disabled = !usable || active?.rules.maxPerTxXrp === undefined;
+  ui.attackAccountSet.disabled = !usable;
+  ui.attackPerTx.disabled =
+    !usable || active === undefined || maxPerTxXrp(active.rules) === undefined;
   ui.attackNoWitness.disabled = !usable || active?.witnessSeed === undefined;
   ui.close.disabled = !usable;
   ui.attackAfterClose.disabled = connection === undefined || active?.closed !== true;
@@ -176,19 +264,53 @@ export async function refreshSessionPanel(connection: Connection | undefined): P
     return;
   }
   const entry = await sessionEntry(connection, active);
-  const spent = read(entry, ["node", "SessionSpent"]);
-  const remaining = Math.max(0, active.expiresAt - Math.floor(Date.now() / 1000));
-  ui.info.textContent = [
-    `Clé de session ${active.keyAddress} pour ${active.owner}`,
-    active.closed ? "fermée" : `expire dans ${remaining} s`,
-    `dépensé ${typeof spent === "string" ? Number(spent) / DROPS_PER_XRP : "?"} / ${active.rules.capXrp} XRP`,
-    active.rules.maxPerTxXrp === undefined
-      ? ""
-      : `max ${active.rules.maxPerTxXrp} XRP par paiement`,
-    active.witnessSeed === undefined ? "" : "témoin requis",
-  ]
-    .filter((part) => part !== "")
-    .join(" · ");
+  const header = `Clé de session ${active.keyAddress} pour ${active.owner}, ouverte par ${active.openedBy}`;
+  if (entry === undefined) {
+    ui.info.textContent = `${header} · ${active.closed ? "fermée" : "absente du ledger"}`;
+    return;
+  }
+  ui.info.textContent = [header, ...describeEntry(read(entry, ["node"]))].join(" · ");
+}
+
+function xrp(value: unknown): string {
+  return typeof value === "string" ? `${Number(value) / DROPS_PER_XRP}` : "?";
+}
+
+/** The node renders PermissionValue as its name ("Payment", "TrustlineAuthorize"); a number is mapped through the table. */
+function permissionLabel(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return permissionName(value);
+  return "?";
+}
+
+/** Mode, limits, witness and time left, as the node stores them in the session entry. */
+function describeEntry(node: unknown): string[] {
+  const flags = read(node, ["Flags"]);
+  const permissions = read(node, ["Permissions"]);
+  const cap = read(node, ["SessionCap"]);
+  const maxPerTx = read(node, ["SessionMaxPerTx"]);
+  const witness = read(node, ["SessionWitness"]);
+  const expiration = read(node, ["Expiration"]);
+
+  const parts: string[] = [];
+  if (typeof flags === "number" && (flags & TF_ALL_TRANSACTIONS) !== 0) {
+    parts.push("mode A : toutes les transactions délégables");
+  } else if (Array.isArray(permissions)) {
+    const names = permissions.map((permission) =>
+      permissionLabel(read(permission, ["Permission", "PermissionValue"])),
+    );
+    parts.push(`mode P : ${names.join(", ")}`);
+  } else if (cap !== undefined) {
+    parts.push(`mode C : dépensé ${xrp(read(node, ["SessionSpent"]))} / ${xrp(cap)} XRP`);
+    if (maxPerTx !== undefined) parts.push(`max ${xrp(maxPerTx)} XRP par paiement`);
+  }
+  if (typeof witness === "string") parts.push(`témoin ${witness}`);
+  if (typeof expiration === "number") {
+    const nowRipple = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH_OFFSET_S;
+    const remaining = expiration - nowRipple;
+    parts.push(remaining > 0 ? `expire dans ${remaining} s` : "expirée");
+  }
+  return parts;
 }
 
 export function setupSessionPanel(
@@ -196,6 +318,10 @@ export function setupSessionPanel(
   getWallet: () => StoredWallet | undefined,
   refreshAll: () => Promise<void>,
 ): void {
+  buildPermissionCheckboxes();
+  showModeFields();
+  ui.mode.addEventListener("change", showModeFields);
+
   const run = (action: () => Promise<void>) => guarded(action, logError, refreshAll);
   const withSession = (action: (connection: Connection, session: ActiveSession) => Promise<void>) =>
     run(async () => {
@@ -239,10 +365,25 @@ export function setupSessionPanel(
     }),
   );
 
+  ui.attackAccountSet.addEventListener(
+    "click",
+    withSession(async (connection, session) => {
+      const tx: TxJson = {
+        TransactionType: "AccountSet",
+        Account: session.owner,
+        SetFlag: ASF_DEFAULT_RIPPLE,
+      };
+      log(
+        "Attaque : la clé de session volée tente de modifier les réglages du compte (AccountSet) :",
+        await submitWithSessionKey(connection, session, tx),
+      );
+    }),
+  );
+
   ui.attackPerTx.addEventListener(
     "click",
     withSession(async (connection, session) => {
-      const amount = (session.rules.maxPerTxXrp ?? 0) + 1;
+      const amount = (maxPerTxXrp(session.rules) ?? 0) + 1;
       const tx = paymentTx(session.owner, destination(), amount);
       log(
         `Attaque : paiement de ${amount} XRP, au-dessus du plafond par paiement :`,

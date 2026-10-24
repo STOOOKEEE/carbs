@@ -1,4 +1,5 @@
-// End-to-end test of signing sessions on the carbs node (mode C, cap per transaction, witness).
+// End-to-end test of signing sessions on the carbs node (mode C, cap per transaction, witness,
+// mode A, mode P).
 // Every line prints the node's own result; the script stops with an error at the first surprise.
 //   GENESIS_SEED=… XRPLD_WS=ws://127.0.0.1:6006 node scripts/session-demo.ts
 
@@ -21,14 +22,31 @@ const GENESIS_SEED_ENV = process.env["GENESIS_SEED"];
 if (GENESIS_SEED_ENV === undefined) throw new Error("GENESIS_SEED is not set");
 const genesisSeed: string = GENESIS_SEED_ENV;
 
+/** AccountSet flag asfDefaultRipple: an account setting no session may change. */
+const ASF_DEFAULT_RIPPLE = 8;
+/** PermissionValue of Payment (transaction type 0, plus one). */
+const PAYMENT_PERMISSION = 1;
+
 const node = await NodeClient.connect(NODE_WS);
 const defs = await loadDefinitions(node);
+
+/** A result the check accepts other than one exact code. */
+interface Expectation {
+  label: string;
+  accepts: (result: string) => boolean;
+}
+
+/** Allowed by the session: the node may still refuse it later (tec, tem…), just not as a session. */
+const NOT_REFUSED_BY_SESSION: Expectation = {
+  label: "any non-tef result",
+  accepts: (result) => !result.startsWith("tef"),
+};
 
 async function submit(
   label: string,
   tx: TxJson,
   seed: string,
-  expected: string,
+  expected: string | Expectation,
   witnessSeed?: string,
 ): Promise<void> {
   const filled = await autofill(node, defs, tx);
@@ -38,9 +56,27 @@ async function submit(
     defs,
     witnessSeed ? witnessSign(defs, signed, witnessSeed) : signed,
   );
-  const verdict = result === expected ? "OK " : "!! ";
+  const accepted = typeof expected === "string" ? result === expected : expected.accepts(result);
+  const verdict = accepted ? "OK " : "!! ";
   console.log(`${verdict} ${label.padEnd(58)} ${result.padEnd(26)} ${hash.slice(0, 16)}…`);
-  if (result !== expected) throw new Error(`${label}: expected ${expected}, got ${result}`);
+  if (!accepted) {
+    const wanted = typeof expected === "string" ? expected : expected.label;
+    throw new Error(`${label}: expected ${wanted}, got ${result}`);
+  }
+}
+
+function offerCreateTx(owner: string): TxJson {
+  return {
+    TransactionType: "OfferCreate",
+    Account: owner,
+    TakerGets: "1000000",
+    TakerPays: { currency: "USD", issuer: owner, value: "1" },
+  };
+}
+
+function newSessionKey(): { seed: string; address: string } {
+  const seed = generateSeed({ algorithm: "ecdsa-secp256k1" });
+  return { seed, address: addressOfSeed(seed) };
 }
 
 async function newFundedAccount(xrp: number): Promise<{ seed: string; address: string }> {
@@ -77,7 +113,12 @@ try {
   console.log("\n— Session 1: 50 XRP total, 20 XRP per payment, 120 s");
   await submit(
     "open the session (master key)",
-    openSessionTx(owner.address, sessionKey, { durationSeconds: 120, capXrp: 50, maxPerTxXrp: 20 }),
+    openSessionTx(owner.address, sessionKey, {
+      mode: "cap",
+      durationSeconds: 120,
+      capXrp: 50,
+      maxPerTxXrp: 20,
+    }),
     owner.seed,
     "tesSUCCESS",
   );
@@ -114,7 +155,7 @@ try {
   );
   await submit(
     "stolen key changes account settings",
-    { TransactionType: "AccountSet", Account: owner.address, SetFlag: 8 },
+    { TransactionType: "AccountSet", Account: owner.address, SetFlag: ASF_DEFAULT_RIPPLE },
     sessionSeed,
     "tefSESSION_TX_NOT_ALLOWED",
   );
@@ -139,6 +180,7 @@ try {
   await submit(
     "open the session with a witness",
     openSessionTx(owner.address, session2Key, {
+      mode: "cap",
       durationSeconds: 120,
       capXrp: 50,
       witness: witness.address,
@@ -165,6 +207,64 @@ try {
     session2Seed,
     "tesSUCCESS",
     witness.seed,
+  );
+
+  console.log("\n— Session 3: mode A, every delegable transaction, no cap");
+  const session3 = newSessionKey();
+  await submit(
+    "open the session in mode A",
+    openSessionTx(owner.address, session3.address, { mode: "all", durationSeconds: 120 }),
+    owner.seed,
+    "tesSUCCESS",
+  );
+  await submit(
+    "pay 5 XRP, signed by the session key",
+    paymentTx(owner.address, bob.address, 5),
+    session3.seed,
+    "tesSUCCESS",
+  );
+  await submit(
+    "create an offer, signed by the session key",
+    offerCreateTx(owner.address),
+    session3.seed,
+    NOT_REFUSED_BY_SESSION,
+  );
+  await submit(
+    "stolen key changes the regular key",
+    { TransactionType: "SetRegularKey", Account: owner.address, RegularKey: session3.address },
+    session3.seed,
+    "tefSESSION_TX_NOT_ALLOWED",
+  );
+  await submit(
+    "stolen key changes account settings",
+    { TransactionType: "AccountSet", Account: owner.address, SetFlag: ASF_DEFAULT_RIPPLE },
+    session3.seed,
+    "tefSESSION_TX_NOT_ALLOWED",
+  );
+
+  console.log("\n— Session 4: mode P, Payment only");
+  const session4 = newSessionKey();
+  await submit(
+    "open the session in mode P (Payment)",
+    openSessionTx(owner.address, session4.address, {
+      mode: "permissions",
+      durationSeconds: 120,
+      permissions: [PAYMENT_PERMISSION],
+    }),
+    owner.seed,
+    "tesSUCCESS",
+  );
+  await submit(
+    "pay 5 XRP, signed by the session key",
+    paymentTx(owner.address, bob.address, 5),
+    session4.seed,
+    "tesSUCCESS",
+  );
+  await submit(
+    "create an offer (not in the permissions)",
+    offerCreateTx(owner.address),
+    session4.seed,
+    "tefSESSION_TX_NOT_ALLOWED",
   );
 
   console.log("\nAll session checks behaved as expected.");

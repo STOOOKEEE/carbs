@@ -95,7 +95,8 @@
         <p class="muted">
           Une validation (Touch ID ou Stax) ouvre une session ; la clé de session signe ensuite sans
           rien demander, dans les limites que le nœud fait respecter. Mode C : paiements XRP
-          plafonnés.
+          plafonnés ; mode A : toutes les transactions délégables ; mode P : une liste de
+          permissions.
         </p>
         <div id="session-info" class="muted">Aucune session ouverte.</div>
         <div class="actions">
@@ -107,16 +108,30 @@
             </select></label
           >
           <label
+            >Mode
+            <select id="session-mode">
+              <option value="cap">C : plafond de dépense</option>
+              <option value="all">A : toutes les transactions</option>
+              <option value="permissions">P : permissions</option>
+            </select></label
+          >
+          <label
             >Durée (s) <input id="session-duration" type="number" min="1" max="600" value="300"
           /></label>
-          <label
-            >Plafond total (XRP)
-            <input id="session-cap" type="number" min="0.000001" step="any" value="50"
-          /></label>
-          <label
-            >Max par paiement (XRP)
-            <input id="session-max-per-tx" type="number" min="0.000001" step="any" value="20"
-          /></label>
+          <fieldset id="session-cap-fields">
+            <legend>Plafonds (mode C)</legend>
+            <label
+              >Plafond total (XRP)
+              <input id="session-cap" type="number" min="0.000001" step="any" value="50"
+            /></label>
+            <label
+              >Max par paiement (XRP)
+              <input id="session-max-per-tx" type="number" min="0.000001" step="any" value="20"
+            /></label>
+          </fieldset>
+          <fieldset id="session-permissions" hidden>
+            <legend>Permissions (mode P)</legend>
+          </fieldset>
           <label class="inline"
             ><input id="session-witness" type="checkbox" /> exiger un témoin</label
           >
@@ -142,6 +157,9 @@
         <div class="actions">
           <button id="attack-regular-key" type="button" class="secondary">
             Clé volée : changer la RegularKey
+          </button>
+          <button id="attack-account-set" type="button" class="secondary">
+            Clé volée : AccountSet
           </button>
           <button id="attack-per-tx" type="button" class="secondary">
             Dépasser le max par paiement

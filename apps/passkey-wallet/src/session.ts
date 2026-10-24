@@ -1,5 +1,5 @@
-// Signing sessions (amendment SigningSessions, mode C): the transactions that open
-// and close one, and the witness co-signature. Shared by the app and the demo script.
+// Signing sessions (amendment SigningSessions, modes C, A and P): the transactions that
+// open and close one, and the witness co-signature. Shared by the app and the demo script.
 
 import type { XrplDefinitions } from "ripple-binary-codec";
 import { encodeForSigning } from "ripple-binary-codec";
@@ -13,19 +13,59 @@ const TX_SIGN_PREFIX = "53545800";
 /** The witness signs the same fields under its own prefix WTS\0 (HashPrefix::WitnessTxSign). */
 const WITNESS_SIGN_PREFIX = "57545300";
 
-export interface SessionRules {
-  /** Seconds, 1 to 600. */
-  durationSeconds: number;
+/** Flag tfAllTransactions of SigningSessionSet (mode A), mirrored as lsfAllTransactions on the entry. */
+export const TF_ALL_TRANSACTIONS = 0x00010000;
+
+/** Mode C: a spending cap. */
+export interface CapRules {
+  mode: "cap";
   /** Total the session may spend, fees included, in XRP. */
   capXrp: number;
   /** Largest single payment, in XRP. */
   maxPerTxXrp?: number;
+}
+
+/** Mode A: every delegable transaction type, no cap. */
+export interface AllTransactionsRules {
+  mode: "all";
+}
+
+/** Mode P: an explicit list of permissions (PermissionValue = transaction type + 1, or granular). */
+export interface PermissionRules {
+  mode: "permissions";
+  permissions: number[];
+}
+
+export type SessionMode = (CapRules | AllTransactionsRules | PermissionRules)["mode"];
+
+export type SessionRules = (CapRules | AllTransactionsRules | PermissionRules) & {
+  /** Seconds, 1 to 600. */
+  durationSeconds: number;
   /** Account that must co-sign every session transaction. */
   witness?: string;
-}
+};
 
 function drops(xrp: number): string {
   return String(Math.round(xrp * DROPS_PER_XRP));
+}
+
+/** The fields that select the session's mode: exactly one of SessionCap, tfAllTransactions, Permissions. */
+function modeFields(rules: SessionRules): TxJson {
+  switch (rules.mode) {
+    case "cap":
+      return {
+        SessionCap: drops(rules.capXrp),
+        ...(rules.maxPerTxXrp === undefined ? {} : { SessionMaxPerTx: drops(rules.maxPerTxXrp) }),
+      };
+    case "all":
+      return { Flags: TF_ALL_TRANSACTIONS };
+    case "permissions":
+      return {
+        Permissions: rules.permissions.map((value) => ({
+          Permission: { PermissionValue: value },
+        })),
+      };
+  }
 }
 
 export function openSessionTx(owner: string, sessionKey: string, rules: SessionRules): TxJson {
@@ -34,8 +74,7 @@ export function openSessionTx(owner: string, sessionKey: string, rules: SessionR
     Account: owner,
     SessionKey: sessionKey,
     SessionDuration: rules.durationSeconds,
-    SessionCap: drops(rules.capXrp),
-    ...(rules.maxPerTxXrp === undefined ? {} : { SessionMaxPerTx: drops(rules.maxPerTxXrp) }),
+    ...modeFields(rules),
     ...(rules.witness === undefined ? {} : { SessionWitness: rules.witness }),
   };
 }
