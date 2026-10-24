@@ -49,7 +49,7 @@ An earlier design ("v2": a witness co-signer, `ForceQuantum`, XRP-only payments)
 ## Working on it
 
 ```sh
-pnpm install            # Node >= 22.18, pnpm 10.18.3 (see .nvmrc, package.json)
+pnpm install            # Node >= 22.18, pnpm 10.33.0 (see .nvmrc, package.json)
 pnpm format:check
 pnpm typecheck
 pnpm test
