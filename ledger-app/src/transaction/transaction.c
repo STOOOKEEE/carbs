@@ -1,0 +1,214 @@
+/*******************************************************************************
+ *   XRP Wallet
+ *   (c) 2020 Towo Labs
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ ********************************************************************************/
+
+#include "transaction.h"
+
+#include "review_menu.h"
+#ifdef HAVE_BAGL
+#include "loading.h"
+#endif  // HAVE_BAGL
+#include <string.h>
+
+#include "amount.h"
+#include "blind_signing.h"
+#include "fields.h"
+#include "fmt.h"
+#include "global.h"
+#include "globals.h"
+#include "handle_swap_sign_transaction.h"
+#include "readers.h"
+#include "swap.h"
+#include "transaction_types.h"
+#include "xrp_helpers.h"
+
+static action_t approval_action;
+static action_t rejection_action;
+
+void on_approval_menu_result(unsigned int result) {
+    switch (result) {
+        case OPTION_SIGN:
+#ifdef HAVE_BAGL
+            execute_async(approval_action, "Signing...");
+#endif  // HAVE_BAGL
+
+#ifdef HAVE_NBGL  // HAVE_BAGL
+            approval_action();
+#endif  // HAVE_NBGL
+            break;
+        case OPTION_REJECT:
+            rejection_action();
+            break;
+        default:
+            rejection_action();
+    }
+}
+
+static bool check_field(const field_t* field, field_type_t data_type,
+                        uint8_t id, bool compare_value, uint64_t value) {
+    if (field->data_type != data_type || field->id != id) {
+        return false;
+    }
+
+    if (!compare_value) {
+        return true;
+    }
+
+    bool ret;
+    switch (data_type) {
+        case STI_UINT16:
+            ret = (field->data.u16 == (uint16_t)value);
+            break;
+        case STI_UINT32:
+            ret = (field->data.u32 == (uint32_t)value);
+            break;
+        case STI_AMOUNT:
+            ret = (field->length == XRP_AMOUNT_LEN &&
+                   read_unsigned64(field->data.ptr) == value);
+            break;
+        default:
+            ret = false;
+            break;
+    }
+
+    return ret;
+}
+
+/*
+Check that a previously parsed TX has the right shape/content for the app to
+sign it without user approval. Example of such a swappable TX (as it would be
+displayed with the approval flow):
+{
+    "TransactionType" : "Payment",
+    "Account" : "ra7Zr8ddy9tB88RaXL8B87YkqhEJG2vkAJ",
+    "DestinationTag" : 98765432,
+    "Amount" : "21000000",
+    "Fee" : "123",
+    "Destination" : "rhBuYom8agWA4s7DFoM7AvsDA9XGkVCJz4"
+}
+ */
+bool check_swap_conditions_and_sign(parseResult_t* transaction) {
+    if (!G_called_from_swap) {
+        PRINTF("Not called from swap!\n");
+        return false;
+    }
+
+    if (transaction->num_fields != 6) {
+        PRINTF("Wrong num fields for swap: %d\n", transaction->num_fields);
+        return false;
+    }
+
+    size_t step_index = 0;
+    field_t* field = &transaction->fields[step_index++];
+    // "Transaction Type" field
+    if (!check_field(field, STI_UINT16, XRP_UINT16_TRANSACTION_TYPE, true,
+                     TRANSACTION_PAYMENT)) {
+        return false;
+    }
+
+    // "Account" field
+    field = &transaction->fields[step_index++];
+    if (!check_field(field, STI_ACCOUNT, XRP_ACCOUNT_ACCOUNT, false, 0)) {
+        return false;
+    }
+
+    // "Destination Tag" field
+    field = &transaction->fields[step_index++];
+    if (!check_field(field, STI_UINT32, XRP_VL_MEMO_FORMAT, false, 0)) {
+        return false;
+    }
+
+    snprintf(approval_strings.swap.tmp, sizeof(approval_strings.swap.tmp), "%u",
+             field->data.u32);
+    if (strncmp(approval_strings.swap.tmp,
+                approval_strings.swap.destination_tag,
+                sizeof(approval_strings.swap.destination_tag)) != 0) {
+        return false;
+    }
+
+    // "Amount" field
+    field = &transaction->fields[step_index++];
+    uint64_t amount = approval_strings.swap.amount;
+    if (amount & 0x4000000000000000) {
+        return false;
+    }
+    amount |= 0x4000000000000000;
+    if (!check_field(field, STI_AMOUNT, XRP_UINT64_AMOUNT, true, amount)) {
+        return false;
+    }
+
+    field = &transaction->fields[step_index++];
+    // "Fee" field
+    uint64_t fee = approval_strings.swap.fee;
+    if (fee & 0x4000000000000000) {
+        return false;
+    }
+    fee |= 0x4000000000000000;
+    if (!check_field(field, STI_AMOUNT, XRP_UINT64_FEE, true, fee)) {
+        return false;
+    }
+
+    field = &transaction->fields[step_index++];
+    if (!check_field(field, STI_ACCOUNT, XRP_ACCOUNT_DESTINATION, false, 0)) {
+        return false;
+    }
+
+    // "Destination" field
+    xrp_address_t destination;
+    xrp_account_t* account = (xrp_account_t*)field->data.account;
+    size_t addr_length =
+        xrp_public_key_to_encoded_base58(NULL, account, &destination, 0);
+    // Compare full lengths, not just the first addr_length bytes: strncmp
+    // alone would not require the two addresses to be fully identical.
+    size_t expected_length = strnlen(approval_strings.swap.address,
+                                     sizeof(approval_strings.swap.address));
+    if (addr_length == 0 || addr_length != expected_length ||
+        memcmp(destination.buf, approval_strings.swap.address, addr_length) !=
+            0) {
+        return false;
+    }
+
+    PRINTF("Swap parameters verified by current tx\n");
+
+    return true;
+}
+
+void review_transaction(parseResult_t* transaction, action_t on_approve,
+                        action_t on_reject, bool blind_sign) {
+    approval_action = on_approve;
+    rejection_action = on_reject;
+
+    if (G_called_from_swap) {
+        if (check_swap_conditions_and_sign(transaction)) {
+            approval_action();
+            finalize_exchange_sign_transaction(true);
+        } else {
+            rejection_action();
+            finalize_exchange_sign_transaction(false);
+        }
+    } else {
+        if (blind_sign) {
+            if (N_storage.allow_blind_sign == BlindSignDisabled) {
+                ui_error_blind_signing();
+            } else {
+                display_blind_signed_review(transaction,
+                                            on_approval_menu_result);
+            }
+        } else {
+            display_review_menu(transaction, on_approval_menu_result);
+        }
+    }
+}
