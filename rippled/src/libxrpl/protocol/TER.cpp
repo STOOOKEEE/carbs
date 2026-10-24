@@ -148,6 +148,10 @@ transResults()
         MAKE_ERROR(tefNO_BYTECODE,                 "There is no WASM code to run, but a WASM-specific field was included."),
         MAKE_ERROR(tefBYTECODE_NOT_INCLUDED,       "WASM code requires a field that was not included."),
         MAKE_ERROR(tefFIREWALL_BLOCK,              "Transaction was blocked by the account's firewall."),
+        MAKE_ERROR(tefSESSION_EXPIRED,             "The signing session has expired."),
+        MAKE_ERROR(tefSESSION_LIMIT,               "The transaction exceeds the limits of its signing session."),
+        MAKE_ERROR(tefSESSION_TX_NOT_ALLOWED,      "The signing session does not allow this transaction."),
+        MAKE_ERROR(tefSESSION_NO_WITNESS,          "The signing session requires a valid witness signature."),
 
         MAKE_ERROR(telLOCAL_ERROR,            "Local failure."),
         MAKE_ERROR(telBAD_DOMAIN,             "Domain too long."),

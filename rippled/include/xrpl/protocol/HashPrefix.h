@@ -112,6 +112,11 @@ enum class HashPrefix : std::uint32_t {
      * inner transaction to multi-sign as the sponsor
      */
     SponsorTxMultiSign = detail::makeHashPrefix('S', 'P', 'M'),
+
+    /**
+     * transaction to co-sign as the witness of a signing session
+     */
+    WitnessTxSign = detail::makeHashPrefix('W', 'T', 'S'),
 };
 
 template <class Hasher>

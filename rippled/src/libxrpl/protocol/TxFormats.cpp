@@ -34,6 +34,7 @@ TxFormats::getCommonFields()
         {sfSponsor, SoeOptional},
         {sfSponsorFlags, SoeOptional},
         {sfSponsorSignature, SoeOptional},
+        {sfWitnessSignature, SoeOptional},
     };
     return kCommonFields;
 }

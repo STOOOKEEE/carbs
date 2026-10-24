@@ -1620,3 +1620,28 @@ TRANSACTION(ttTOKEN_CONVERT, 128, TokenConvert,
     ({
     {sfAmount, SoeRequired, SoeMptSupported},
 }))
+
+/** This transaction opens a signing session (FIANSO-SPEC 6.3). */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/session/SigningSessionSet.h>
+#endif
+TRANSACTION(ttSIGNING_SESSION_SET, 130, SigningSessionSet,
+    ({.amendment = featureSigningSessions}),
+    ({
+    {sfSessionKey, SoeRequired},
+    {sfSessionDuration, SoeRequired},
+    {sfSessionCap, SoeOptional},
+    {sfSessionMaxPerTx, SoeOptional},
+    {sfSessionWitness, SoeOptional},
+}))
+
+/** This transaction closes a signing session (FIANSO-SPEC 6.3). */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/session/SigningSessionDelete.h>
+#endif
+TRANSACTION(ttSIGNING_SESSION_DELETE, 131, SigningSessionDelete,
+    ({.amendment = featureSigningSessions}),
+    ({
+    {sfSessionKey, SoeRequired},
+    {sfOwner, SoeOptional},
+}))

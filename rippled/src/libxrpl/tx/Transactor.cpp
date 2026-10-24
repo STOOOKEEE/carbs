@@ -43,6 +43,7 @@
 #include <xrpl/tx/apply.h>
 #include <xrpl/tx/applySteps.h>
 #include <xrpl/tx/invariants/InvariantRunner.h>
+#include <xrpl/tx/transactors/session/SigningSession.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -1722,6 +1723,9 @@ Transactor::operator()()
         trapTransaction(*trap);
     }
 
+    // The session is found before apply(): a session closing itself erases it.
+    auto const session = sessionOf(view(), ctx_.tx);
+
     auto result = ctx_.preclaimResult;
     if (isTesSuccess(result))
         result = apply();
@@ -1769,6 +1773,11 @@ Transactor::operator()()
     if (!canApply)
         return logger(result, canApply);
 
+    // What a session transaction cost is charged to its session in the same
+    // view, before the invariants see it (FIANSO-SPEC 6.6).
+    if (session)
+        chargeSession(view(), *session, ctx_.tx, result, fee);
+
     // First invariant pass: both protocol and transaction-specific
     // checks run against the transaction's tentative outcome. If it
     // does not return tecINVARIANT_FAILED, we can proceed to apply the
@@ -1784,6 +1793,10 @@ Transactor::operator()()
             result = resetResult.first;
 
         fee = resetResult.second;
+
+        // The reset erased the charge with everything else: charge the fee again.
+        if (session && isTecClaim(result))
+            chargeSession(view(), *session, ctx_.tx, result, fee);
 
         // Re-check invariants against the post-reset (fee-claim only)
         // state. The transaction's effects are gone, so the

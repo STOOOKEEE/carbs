@@ -351,6 +351,30 @@ parseDelegate(
     return keylet::delegate(*account, *authorize).key;
 }
 
+static std::expected<uint256, json::Value>
+parseSigningSession(
+    json::Value const& params,
+    json::StaticString const fieldName,
+    [[maybe_unused]] unsigned const apiVersion)
+{
+    if (!params.isObject())
+    {
+        return parseObjectID(params, fieldName);
+    }
+
+    auto const account =
+        ledger_entry_helpers::requiredAccountID(params, jss::account, "malformedAddress");
+    if (!account)
+        return std::unexpected(account.error());
+
+    auto const sessionKey =
+        ledger_entry_helpers::requiredAccountID(params, jss::session_key, "malformedAddress");
+    if (!sessionKey)
+        return std::unexpected(sessionKey.error());
+
+    return keylet::signingSession(*account, *sessionKey).key;
+}
+
 static std::expected<STArray, json::Value>
 parseAuthorizeCredentials(json::Value const& jv)
 {

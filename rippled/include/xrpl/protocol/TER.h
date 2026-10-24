@@ -185,6 +185,10 @@ enum TEFcodes : TERUnderlyingType {
     tefNO_BYTECODE,
     tefBYTECODE_NOT_INCLUDED,
     tefFIREWALL_BLOCK,
+    tefSESSION_EXPIRED,
+    tefSESSION_LIMIT,
+    tefSESSION_TX_NOT_ALLOWED,
+    tefSESSION_NO_WITNESS,
 };
 
 //------------------------------------------------------------------------------

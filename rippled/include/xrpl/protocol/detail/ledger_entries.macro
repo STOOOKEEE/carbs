@@ -953,5 +953,23 @@ LEDGER_ENTRY(ltTOKEN_ISSUANCE, 0x0099, TokenIssuance, token_issuance, ({
     {sfPreviousTxnLgrSeq,    SoeRequired},
 }))
 
+/** A signing session: a key that may sign for Account, within bounds, until
+    Expiration (FIANSO-SPEC 6.2). Mode C: SessionCap. SessionMaxPerTx and
+    SessionWitness are optional carbs protections.
+    \sa keylet::signingSession
+ */
+LEDGER_ENTRY(ltSIGNING_SESSION, 0x009A, SigningSession, signing_session, ({
+    {sfAccount,              SoeRequired},
+    {sfSessionKey,           SoeRequired},
+    {sfExpiration,           SoeRequired},
+    {sfSessionCap,           SoeOptional},
+    {sfSessionSpent,         SoeOptional},
+    {sfSessionMaxPerTx,      SoeOptional},
+    {sfSessionWitness,       SoeOptional},
+    {sfOwnerNode,            SoeRequired},
+    {sfPreviousTxnID,        SoeRequired},
+    {sfPreviousTxnLgrSeq,    SoeRequired},
+}))
+
 #undef EXPAND
 #undef LEDGER_ENTRY_DUPLICATE

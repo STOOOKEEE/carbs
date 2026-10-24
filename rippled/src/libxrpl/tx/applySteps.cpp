@@ -14,6 +14,7 @@
 #include <xrpl/protocol/XRPAmount.h>
 #include <xrpl/tx/ApplyContext.h>
 #include <xrpl/tx/Transactor.h>
+#include <xrpl/tx/transactors/session/SigningSession.h>
 
 #include <cstdint>
 #include <exception>
@@ -189,8 +190,17 @@ invokePreclaim(PreclaimContext const& ctx)
                                 Transactor::invokeCheckPermission<T>(ctx.view, ctx.tx))
                             return result;
 
-                        if (NotTEC const result = T::checkSign(ctx))
+                        // A session-signed transaction is authorized only by
+                        // its session, in place of checkSign (FIANSO-SPEC 6.5).
+                        if (auto const session = sessionOf(ctx.view, ctx.tx))
+                        {
+                            if (NotTEC const result = checkSession(ctx, *session))
+                                return result;
+                        }
+                        else if (NotTEC const result = T::checkSign(ctx))
+                        {
                             return result;
+                        }
 
                         if (NotTEC const result = Transactor::checkFirewall(ctx))
                             return result;

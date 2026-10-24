@@ -28,6 +28,8 @@ signatureField(SignatureRole role)
             return &sfCounterpartySignature;
         case SignatureRole::Sponsor:
             return &sfSponsorSignature;
+        case SignatureRole::Witness:
+            return &sfWitnessSignature;
     }
     UNREACHABLE("xrpl::signatureField : unknown SignatureRole");
     return nullptr;
@@ -40,6 +42,8 @@ signatureRole(SField const& sigField)
         return SignatureRole::Counterparty;
     if (sigField == sfSponsorSignature)
         return SignatureRole::Sponsor;
+    if (sigField == sfWitnessSignature)
+        return SignatureRole::Witness;
     return std::nullopt;
 }
 
@@ -53,6 +57,11 @@ signatureRole(SField const& sigField)
 HashPrefix
 signingPrefix(SignatureRole role, bool multiSigning, Rules const& rules)
 {
+    // A witness signature is new with SigningSessions: it has always had its
+    // own prefix, whatever fixCleanup3_4_0 says.
+    if (role == SignatureRole::Witness)
+        return HashPrefix::WitnessTxSign;
+
     // Before fixCleanup3_4_0 every signature on a transaction covered the same
     // bytes, so a signature could be moved from one role to another.
     if (!rules.enabled(fixCleanup3_4_0))
@@ -67,6 +76,8 @@ signingPrefix(SignatureRole role, bool multiSigning, Rules const& rules)
                                 : HashPrefix::CounterpartyTxSign;
         case SignatureRole::Sponsor:
             return multiSigning ? HashPrefix::SponsorTxMultiSign : HashPrefix::SponsorTxSign;
+        case SignatureRole::Witness:
+            return HashPrefix::WitnessTxSign;
     }
     UNREACHABLE("xrpl::signingPrefix : unknown SignatureRole");
     return multiSigning ? HashPrefix::TxMultiSign : HashPrefix::TxSign;

@@ -371,6 +371,13 @@ amm(uint256 const& amm) noexcept;
 Keylet
 delegate(AccountID const& account, AccountID const& authorizedAccount) noexcept;
 
+/**
+ * A keylet for a SigningSession: keyed by the owner and the session key's
+ * AccountID, so the node finds the session from the transaction's signer.
+ */
+Keylet
+signingSession(AccountID const& account, AccountID const& sessionKey) noexcept;
+
 Keylet
 bridge(STXChainBridge const& bridge, STXChainBridge::ChainType chainType);
 

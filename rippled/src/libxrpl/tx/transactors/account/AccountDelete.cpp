@@ -31,6 +31,7 @@
 #include <xrpl/tx/transactors/firewall/WithdrawPreauth.h>
 #include <xrpl/tx/transactors/oracle/OracleDelete.h>
 #include <xrpl/tx/transactors/payment/DepositPreauth.h>
+#include <xrpl/tx/transactors/session/SigningSessionDelete.h>
 
 #include <cstdint>
 #include <utility>
@@ -198,6 +199,18 @@ removeDelegateFromLedger(
     return DelegateSet::deleteDelegate(view, sleDel, j);
 }
 
+TER
+removeSigningSessionFromLedger(
+    ServiceRegistry&,
+    ApplyView& view,
+    AccountID const&,
+    uint256 const&,
+    SLE::ref sleDel,
+    beast::Journal j)
+{
+    return SigningSessionDelete::deleteSession(view, sleDel, j);
+}
+
 // Return nullptr if the LedgerEntryType represents an obligation that can't
 // be deleted.  Otherwise return the pointer to the function that can delete
 // the non-obligation
@@ -224,6 +237,8 @@ nonObligationDeleter(LedgerEntryType t)
             return removeCredentialFromLedger;
         case ltDELEGATE:
             return removeDelegateFromLedger;
+        case ltSIGNING_SESSION:
+            return removeSigningSessionFromLedger;
         case ltWITHDRAW_PREAUTH:
             return removeWithdrawPreauthFromLedger;
         default:
