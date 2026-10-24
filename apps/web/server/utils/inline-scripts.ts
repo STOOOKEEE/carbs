@@ -23,10 +23,33 @@ export function loadInlineScript(file: string): string | undefined {
 }
 
 const INLINE_SCRIPT = /<script>([\s\S]*?)<\/script>/g;
+const EMBEDDED_SCRIPT =
+  /<script src="\/_carbs\/inline\/([0-9a-f]{32}\.js)" data-carbs-body="([A-Za-z0-9+/=]*)"><\/script>/g;
 
-/** Replace every executable inline `<script>` of an HTML chunk by a same-origin one. */
-export function externalizeInlineScripts(chunk: string): string {
+/**
+ * Replace every executable inline `<script>` of an HTML chunk by a same-origin one.
+ * With `embedBody` (prerender only) the body travels in a data attribute so that the
+ * build can write the file next to the page; `extractEmbeddedScripts` removes it again.
+ */
+export function externalizeInlineScripts(chunk: string, embedBody = false): string {
   return chunk.replace(INLINE_SCRIPT, (_tag, body: string) => {
-    return `<script src="/_carbs/inline/${storeInlineScript(body)}"></script>`;
+    const file = storeInlineScript(body);
+    const data = embedBody ? ` data-carbs-body="${Buffer.from(body).toString("base64")}"` : "";
+    return `<script src="/_carbs/inline/${file}"${data}></script>`;
   });
+}
+
+export interface ExtractedScripts {
+  html: string;
+  files: { name: string; body: string }[];
+}
+
+/** Build side of the static output: pull the embedded bodies out of a prerendered page. */
+export function extractEmbeddedScripts(html: string): ExtractedScripts {
+  const files: { name: string; body: string }[] = [];
+  const clean = html.replace(EMBEDDED_SCRIPT, (_tag, name: string, encoded: string) => {
+    files.push({ name, body: Buffer.from(encoded, "base64").toString("utf8") });
+    return `<script src="/_carbs/inline/${name}"></script>`;
+  });
+  return { html: clean, files };
 }

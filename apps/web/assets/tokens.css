@@ -1,0 +1,117 @@
+/*
+ * Design tokens of the carbs web app: the one place that sets the look.
+ * Change a value here and every screen follows; nothing else in the app holds a
+ * colour, a size, a radius or a duration. The README section "Art direction" lists
+ * the knobs. Fonts and assets are self-hosted (CSP: no third-party origin), so the
+ * font stacks below only name system fonts; to ship a font, put the file in
+ * public/fonts and add an @font-face here.
+ */
+:root {
+  /* ---- Colour: "ledger paper" (light) ---- */
+  --color-surface: #f4f1ea; /* page background */
+  --color-surface-raised: #fbf9f4; /* panels, cards */
+  --color-surface-sunken: #ebe6da; /* inputs, code, table stripes */
+  --color-ink: #15130f; /* primary text */
+  --color-ink-muted: #5e594e; /* secondary text */
+  --color-line: #d9d3c4; /* borders, dividers */
+  --color-line-strong: #b9b19c;
+  --color-accent: #0f6b62; /* primary action, links, focus */
+  --color-accent-ink: #fbf9f4; /* text on accent */
+  --color-ok: #1a7f37; /* tesSUCCESS */
+  --color-warn: #9a6700; /* held back, caution */
+  --color-danger: #b42318; /* a refusal by the node */
+  --color-sim: #b45309; /* SIMULATED badge and frame: never reuse for anything else */
+  --color-sim-wash: #fbe9d0;
+  --color-device: #1d1b19; /* the (simulated) Stax screen */
+  --color-device-ink: #f2efe8;
+
+  /* ---- Type ---- */
+  --font-display: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.875rem; /* 14 */
+  --text-base: 1rem; /* 16 */
+  --text-lg: 1.125rem; /* 18 */
+  --text-xl: 1.375rem; /* 22 */
+  --text-2xl: 1.75rem; /* 28 */
+  --text-3xl: 2.25rem; /* 36 */
+  --leading-tight: 1.2;
+  --leading-body: 1.55;
+  --tracking-caps: 0.14em; /* small uppercase labels */
+  --weight-body: 400;
+  --weight-strong: 600;
+
+  /* ---- Spacing (4px grid) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4.5rem;
+  --content-width: 72rem;
+
+  /* ---- Shape ---- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.875rem;
+  --border-width: 1px;
+  --shadow-panel: 0 1px 0 rgb(21 19 15 / 6%), 0 8px 24px -16px rgb(21 19 15 / 28%);
+
+  /* ---- Motion ---- */
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --motion-slow: 480ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Dark follows the system unless the page forces one with data-theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-surface: #14120f;
+    --color-surface-raised: #1c1a16;
+    --color-surface-sunken: #24211c;
+    --color-ink: #f2efe8;
+    --color-ink-muted: #a8a193;
+    --color-line: #38342c;
+    --color-line-strong: #565043;
+    --color-accent: #4fc3b6;
+    --color-accent-ink: #0d0c0a;
+    --color-ok: #4cc470;
+    --color-warn: #e3b341;
+    --color-danger: #ff7b72;
+    --color-sim: #f0a45b;
+    --color-sim-wash: #3a2a15;
+    --color-device: #0a0908;
+    --shadow-panel: 0 1px 0 rgb(0 0 0 / 40%), 0 8px 24px -16px rgb(0 0 0 / 70%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-surface: #14120f;
+  --color-surface-raised: #1c1a16;
+  --color-surface-sunken: #24211c;
+  --color-ink: #f2efe8;
+  --color-ink-muted: #a8a193;
+  --color-line: #38342c;
+  --color-line-strong: #565043;
+  --color-accent: #4fc3b6;
+  --color-accent-ink: #0d0c0a;
+  --color-ok: #4cc470;
+  --color-warn: #e3b341;
+  --color-danger: #ff7b72;
+  --color-sim: #f0a45b;
+  --color-sim-wash: #3a2a15;
+  --color-device: #0a0908;
+  --shadow-panel: 0 1px 0 rgb(0 0 0 / 40%), 0 8px 24px -16px rgb(0 0 0 / 70%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+  }
+}

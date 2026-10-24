@@ -1,15 +1,17 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { buildCsp, buildMetaCsp, netlifyHeaders, securityHeaders } from "./lib/csp";
+import { DEFAULT_LOCAL_WSS, allConnectOrigins, createNetworks, localRpcFor } from "./lib/networks";
+import { extractEmbeddedScripts } from "./server/utils/inline-scripts";
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self' ws: wss: https:",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "frame-ancestors 'none'",
-].join("; ");
+const isProduction = process.env.NODE_ENV === "production";
+const localWss = (process.env.NUXT_PUBLIC_LOCAL_NODE_URL ?? "").trim() || DEFAULT_LOCAL_WSS;
+const networks = createNetworks({ wss: localWss, rpc: localRpcFor(localWss) });
+// The policy lists the hosts of the configured networks and explorers, no bare scheme.
+const cspOptions = { connectOrigins: allConnectOrigins(networks), dev: !isProduction };
+const CONTENT_SECURITY_POLICY = buildCsp(cspOptions);
+const HEADERS = securityHeaders(buildCsp({ ...cspOptions, dev: false }));
 
 export default defineNuxtConfig({
   compatibilityDate: "2024-11-01",
@@ -17,24 +19,36 @@ export default defineNuxtConfig({
 
   modules: ["@nuxt/eslint", "@nuxtjs/tailwindcss"],
 
-  css: ["~/assets/css/main.css"],
+  // Components in subfolders keep their plain names (<SimBadge>, not <UiSimBadge>).
+  components: [{ path: "~/components", pathPrefix: false }],
+
+  css: ["~/assets/tokens.css", "~/assets/css/main.css"],
 
   app: {
     head: {
-      title: "Scaffold-XRP",
+      title: "carbs",
+      link: [{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
       meta: [
         { charset: "utf-8" },
         { name: "viewport", content: "width=device-width, initial-scale=1" },
-        { name: "description", content: "A starter kit for building XRP Ledger dApps" },
+        // The dev server needs inline HMR code, so the meta fallback is production only.
+        ...(isProduction
+          ? [{ "http-equiv": "Content-Security-Policy", content: buildMetaCsp(cspOptions) }]
+          : []),
+        {
+          name: "description",
+          content:
+            "Ledger-enforced signing sessions and a quantum exposure check for the XRP Ledger",
+        },
       ],
     },
   },
 
   runtimeConfig: {
     public: {
-      defaultNetwork: "testnet",
-      xamanApiKey: "",
-      walletConnectProjectId: "",
+      defaultNetwork: "alphanet",
+      // Public WebSocket of the standalone node (infra/standalone.cfg); wss:// when hosted.
+      localNodeUrl: "",
     },
   },
 
@@ -71,10 +85,25 @@ export default defineNuxtConfig({
   // Fonts and assets are self-hosted. connect-src allows the node and the explorers.
   routeRules: {
     "/**": {
-      headers: {
-        "Content-Security-Policy": CONTENT_SECURITY_POLICY,
-        "X-Content-Type-Options": "nosniff",
-        "Referrer-Policy": "no-referrer",
+      headers: { ...HEADERS, "Content-Security-Policy": CONTENT_SECURITY_POLICY },
+    },
+  },
+
+  // Static output (`nuxt generate`): write the externalized inline scripts next to the pages.
+  nitro: {
+    hooks: {
+      "prerender:generate"(route, nitro) {
+        if (typeof route.contents !== "string") return;
+        const { html, files } = extractEmbeddedScripts(route.contents);
+        if (files.length === 0) return;
+        route.contents = html;
+        const dir = join(nitro.options.output.publicDir, "_carbs", "inline");
+        mkdirSync(dir, { recursive: true });
+        for (const file of files) writeFileSync(join(dir, file.name), file.body);
+      },
+      // Netlify reads headers from this file in the output, built from the same policy.
+      compiled(nitro) {
+        writeFileSync(join(nitro.options.output.publicDir, "_headers"), netlifyHeaders(HEADERS));
       },
     },
   },
