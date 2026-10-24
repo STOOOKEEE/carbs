@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+dist/
+.output/
+.nuxt/
+coverage/
+*.tsbuildinfo
+
+# rippled build trees (the daemon is built out of tree)
+build/
+build-*/
+.conan2/
+
+# Ledger app build output
+ledger-app/bin/
+ledger-app/obj/
+ledger-app/debug/
+
+# Local environment
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Ripple DevRel DevEx capture hook: installed locally by each developer (see README)
+xrpl-devex-hook/
+.xrpl-devex/
+.claude/settings.local.json
+.claude/skills/
+.cursor/
+.codex/
+.grok/
