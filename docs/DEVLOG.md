@@ -114,3 +114,10 @@ Documentation only: no protocol, client or device code changed.
   | `tfAllTransactions`        | `0x00010000` | `TF_ALL_TRANSACTIONS 0x00010000u` (27)        |
 
   The numbers in brackets are lines of that header. The app does not use `SessionSpent` (an entry field), the entry type, the keylet or the result codes. Its id `0xFD` for the synthetic "Note" row (line 32) is not an XRPL field: VL 253 is free on the public AlphaNet and in the imported tree, whose highest VL field is 54 (`sfClientDataJSON`, `rippled/include/xrpl/protocol/detail/sfields.macro:548`).
+
+- **Review gate, round 1** (on #16, #17 and #18 together): its findings on this part are applied.
+  - §6.14 also cites where the build asserts the 1 312-byte size, the signing side and the jtx signer.
+  - The D14 table now cites the full fee formula and states that no local check limits the size.
+  - UNVERIFIED item 1 now says the AlphaNet accepted device signatures. A new item covers `@noble/post-quantum` signatures, which no node has checked yet.
+  - The case 20 refusals name their codes, and three cases are added.
+  - §7.7 gains the status words, the rule that the context is cleared when the instruction changes, the key derived on chunk 0, the signature length answer, and the devices the path is built for. The stale `LEDGER_ASSERT` sentence is gone.
