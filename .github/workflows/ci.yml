@@ -28,7 +28,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - name: Static build of the web app
-        run: pnpm --filter web generate
+        run: pnpm --filter web generate && node apps/web/scripts/check-static.mjs apps/web/.output/public
 
 # Not in CI on purpose, because they need the daemon build and a device:
 #   rippled/      ./xrpld --unittest=SigningSessions plus the upstream suites (see docs/ARCHITECTURE.md)
