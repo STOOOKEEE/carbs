@@ -31,7 +31,7 @@ import {
   signingSessionIndex,
   signTransaction,
   signWithSessionKey,
-  submitAndWait,
+  submitSignedAndWait,
   submitWithPasskey,
   SoftwareAuthenticator,
   WebSocketClient,
@@ -96,7 +96,7 @@ async function send(
 ): Promise<FinalResult> {
   const common = await fetchCommonFields(n, tx.Account);
   const signed = await signTransaction({ ...tx, ...common }, signer, d);
-  return submitAndWait(n, signed.blob, signed.hash, common.LastLedgerSequence);
+  return submitSignedAndWait(n, signed, common.LastLedgerSequence);
 }
 
 function report(label: string, result: FinalResult): void {
@@ -132,7 +132,7 @@ async function sessionTx(tx: TxJson, key: BytesSigner): Promise<FinalResult> {
     defs,
     common.LastLedgerSequence - kLastLedgerSequenceOffset,
   );
-  return submitAndWait(node, signed.blob, signed.hash, common.LastLedgerSequence);
+  return submitSignedAndWait(node, signed, common.LastLedgerSequence);
 }
 
 console.log("\n== Passkey wallet (SIMULATED authenticator) ==");
@@ -278,7 +278,7 @@ const lOpen = await signTransaction(
 );
 report(
   "SigningSessionSet by ML-DSA root",
-  await submitAndWait(node, lOpen.blob, lOpen.hash, lCommon.LastLedgerSequence),
+  await submitSignedAndWait(node, lOpen, lCommon.LastLedgerSequence),
 );
 report(
   "Payment, ML-DSA session key",
