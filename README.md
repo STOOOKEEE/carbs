@@ -1,54 +1,50 @@
 # carbs
 
-**Ledger-enforced signing sessions for the XRP Ledger.**
+**Quantum-safe, delegable signing for the XRP Ledger: the rules are enforced by the ledger and read on a Ledger device.**
 
-On XRPL a key has all the authority of an account or none. A person who wants "approve once, then sign several transactions without a prompt", or an agent that must pay, has to hold an unbounded hot key or ask for a signature every time. carbs adds the missing middle: a **session**, a short-lived key (at most 10 minutes) whose limits are checked by **the ledger itself**.
+On XRPL a key has all the authority of an account or none, and a public key that has signed once stays visible forever, which is a forgery target for a future quantum computer. carbs adds three things that fit together:
 
-| Mode  | A session key may                                              | Bound                                              |
-| ----- | -------------------------------------------------------------- | -------------------------------------------------- |
-| **A** | sign every delegable transaction type except an exclusion list | time, fee ceiling                                  |
-| **P** | sign the listed XLS-75 permissions                             | time, the list, fee ceiling                        |
-| **C** | send direct XRP `Payment` only                                 | time, a total XRP cap (fees included), fee ceiling |
+1. **A post-quantum root in hardware.** A Ledger Stax holds an **ML-DSA-44** key and clear-signs XRPL transactions with it, so an account can drop its classical keys (`SetRegularKey` to the ML-DSA key, then `asfDisableMaster`).
+2. **Sessions enforced by the ledger.** A rippled amendment, `SigningSessions`, lets an account open a short-lived key (at most 10 minutes) that signs without prompting, bounded by the **ledger itself**:
 
-A session is opened with **one ordinary signature**, either from a **passkey** or from a **Ledger Stax that shows the rules on its screen** (clear signing). A session key can never change who controls the account. It is a rippled amendment (`SigningSessions`), not a wrapper, which is what makes the bounds real.
+   | Mode  | A session key may                                              | Bound                                              |
+   | ----- | -------------------------------------------------------------- | -------------------------------------------------- |
+   | **A** | sign every delegable transaction type except an exclusion list | time, fee ceiling                                  |
+   | **P** | sign the listed XLS-75 permissions                             | time, the list, fee ceiling                        |
+   | **C** | send direct XRP `Payment` only                                 | time, a total XRP cap (fees included), fee ceiling |
 
-> **Status: architecture only.** The repository contains the two upstream bases (imported unmodified), the workspace skeleton, CI, the architecture and the specification. There is no amendment, no Ledger clear signing and no client code yet. This README says what exists; it will be updated as it changes.
+   A session is opened with **one ordinary signature**, from the Stax (which shows the rules on its screen) or from a passkey. A session key can never change who controls the account.
+
+3. **A quantum exposure check and a one-step migration** for any XRPL account, plus community tooling: a Device Management Kit Ledger adapter for `xrpl-connect`, the `@carbs/sessions` library and a `create-xrp` template.
+
+> **Status: architecture only.** The repository contains the two upstream bases (imported unmodified), the workspace skeleton, CI, the architecture and the specification. There is no amendment, no Ledger clear signing and no client code yet. This README says what exists and changes as it does.
 
 ## Where to read
 
-|                                                            |                                                                                                                   |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| [`FIANSO-SPEC.md`](FIANSO-SPEC.md)                         | The build specification: protocol, Ledger app, client, spikes, work breakdown, demo, conventions (Sofiane's spec) |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)             | The map of the repository, wire formats, flows, hook points, commands                                             |
-| [`docs/adr/`](docs/adr/)                                   | Decision records                                                                                                  |
-| [`UPSTREAM.md`](UPSTREAM.md)                               | What was imported, from where, at which commit, under which licence                                               |
-| [`docs/DEVLOG.md`](docs/DEVLOG.md)                         | What was done, removed, ignored or simulated, dated                                                               |
-| [`docs/ledger-dx-feedback.md`](docs/ledger-dx-feedback.md) | Our feedback on the Ledger documentation and SDKs, written as we go                                               |
+|                                                            |                                                                                                                                                |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`FIANSO-SPEC.md`](FIANSO-SPEC.md)                         | The specification: protocol, Ledger app, post-quantum root, exposure check, client, spikes, work breakdown, demo, conventions (Sofiane's spec) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)             | The map of the repository, wire formats, flows, hook points, commands                                                                          |
+| [`docs/adr/`](docs/adr/)                                   | Decision records                                                                                                                               |
+| [`UPSTREAM.md`](UPSTREAM.md)                               | What was imported, from where, at which commit, under which licence                                                                            |
+| [`docs/DEVLOG.md`](docs/DEVLOG.md)                         | What was done, removed, ignored or simulated, dated                                                                                            |
+| [`docs/ledger-dx-feedback.md`](docs/ledger-dx-feedback.md) | Our feedback on the Ledger documentation and SDKs, written as we go                                                                            |
 
 ## Layout
 
 ```text
-rippled/        XRPLF/rippled:alphanet, imported unmodified, then the amendment
-ledger-app/     LedgerHQ/app-xrp, imported unmodified, then clear signing
-packages/core/  @carbs/sessions: client library (no DOM, no framework)
-packages/ledger/ @carbs/ledger: Device Management Kit library (stretch)
-apps/web/       the demo application
-infra/          standalone node configuration and the ledger closer
-docs/           architecture, decisions, DEVLOG, Ledger feedback
+rippled/          XRPLF/rippled:alphanet, imported unmodified, then the amendment
+ledger-app/       LedgerHQ/app-xrp, imported unmodified, then clear signing and ML-DSA
+packages/core/    @carbs/sessions: client library (sessions, signing, quantum exposure check)
+packages/ledger/  @carbs/ledger: Device Management Kit library (stretch)
+apps/web/         the demo application
+infra/            standalone node configuration and the ledger closer
+docs/             architecture, decisions, DEVLOG, Ledger feedback
 ```
 
-## Before the kickoff / During the hackathon
+## Prior work
 
-Everything we submit as code is written during the hackathon (24-25 Oct 2026, kickoff 24 Oct 10:00 ET). What existed before, and what did not:
-
-|                          | When                     | What                                                                                                                                                                                                                                                                                                                               |
-| ------------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Before the kickoff**   | 21-22 Oct                | An idea and a first design ("v2": a witness co-signer, `ForceQuantum`, XRP-only payments), an XLS draft and plans, in `STOOOKEEE/TTT`                                                                                                                                                                                              |
-|                          | 21-23 Oct                | A full prototype of that v2 design (branch `feat/signing-sessions` of `STOOOKEEE/TTT`, one commit, 135 files). **It is not reused here**: nothing was copied, patched or retyped from it                                                                                                                                           |
-|                          | 23 Oct - 24 Oct 08:32 ET | A review, and the "v3" preparation dossier (`docs/carbs/` in `STOOOKEEE/TTT`): the design this repository builds                                                                                                                                                                                                                   |
-| **During the hackathon** | from 24 Oct 10:00 ET     | Updates to that dossier up to noon, then this repository from its first commit (24 Oct 11:24 ET): the specification (documentation, a consolidation and translation of the dossier), the two upstream imports, the workspace, CI, the architecture and decision records, and everything built after (see the DEVLOG and `git log`) |
-
-The v3 design is of the same family as the v2 prototype (same ledger entry idea, same two transactions, same families of result codes). It differs in substance: no witness, three modes, relative duration, a fee ceiling, the XLS-75 engine, and the XRPLF base.
+An earlier design ("v2": a witness co-signer, `ForceQuantum`, XRP-only payments) and a prototype of it exist in `STOOOKEEE/TTT` (branch `feat/signing-sessions`), along with the preparation dossier of the current design (`docs/carbs/`). **Nothing from the prototype is used here**: no file was copied, patched or retyped. The history of this repository starts with the specification; every code commit after it is written here, and the two upstream bases are imported unmodified in their own commits ([`UPSTREAM.md`](UPSTREAM.md)).
 
 ## Working on it
 
@@ -63,8 +59,8 @@ The daemon and the Ledger app have their own build and test commands, listed in 
 
 ### Ripple DevRel DevEx capture hook (optional, per developer)
 
-The organizers ask builders who use a coding agent to install the hook from `RippleDevRel/xrpl-devex-hook`. It records XRPL friction pseudonymously and nothing without an XRPL keyword. Each developer consents on their own; it is **not** committed to this repository (`xrpl-devex-hook/`, `.xrpl-devex/` and the agent skill folders are git-ignored). Follow the instructions in that repository, then use `/xrpl-feedback <what happened>` whenever the XRPL or Ledger documentation, the SDKs or the node cost you time.
+Builders who use a coding agent are asked to install the hook from `RippleDevRel/xrpl-devex-hook`. It records XRPL friction pseudonymously and nothing without an XRPL keyword. Each developer consents on their own; it is **not** committed to this repository (`xrpl-devex-hook/`, `.xrpl-devex/` and the agent skill folders are git-ignored). Follow the instructions in that repository, then use `/xrpl-feedback <what happened>` whenever the XRPL or Ledger documentation, the SDKs or the node cost you time.
 
 ## Licence
 
-Imported code keeps its own licence (`rippled/LICENSE.md`, ISC; `ledger-app/LICENSE`, Apache-2.0). The licence of the code written in this repository is **not decided yet**.
+Apache-2.0 for the code written in this repository (see [`LICENSE`](LICENSE)); changes made inside `rippled/` that are meant for the XRPL code base follow its ISC licence. Imported code keeps its own licence (`rippled/LICENSE.md`, ISC; `ledger-app/LICENSE`, Apache-2.0).

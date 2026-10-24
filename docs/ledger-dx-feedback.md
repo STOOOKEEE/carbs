@@ -8,7 +8,7 @@ Ledger judges developer-experience feedback "as much as the code". This log is k
 
 ## Log
 
-Template: `date/time ET · area · page or path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR`
+Template: `date · area · page or path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR`
 
 | When  | Area                                 | Where                                      | What happened or was missing                                                                                                                                                                                                                                                                                                                                       | Minutes lost                             | Suggested fix                                                                                            |
 | ----- | ------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
