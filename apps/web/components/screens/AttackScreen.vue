@@ -15,7 +15,13 @@ function blocked(attack: Attack): string | null {
   if (attack.needsMode !== null && state.session?.mode !== attack.needsMode) {
     return `Needs a mode ${attack.needsMode} session.`;
   }
-  if (attack.needsExpiry && backend.clock === null) return "Wait for the session to expire.";
+  if (attack.needsExpiry && backend.clock === null) {
+    const session = state.session;
+    const server = state.server;
+    if (session !== null && server !== null && server.closeTime < session.expiration) {
+      return `Wait for the session to expire (${session.expiration - server.closeTime} s left).`;
+    }
+  }
   return null;
 }
 </script>

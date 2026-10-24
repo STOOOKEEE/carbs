@@ -12,7 +12,7 @@ import { softwarePasskeySource } from "./passkey";
 
 function rig() {
   const ctx = createAppContext();
-  ctx.backend.simDevice.setApprover(async () => true);
+  ctx.sim.simDevice.setApprover(async () => true);
   const adapters = createWalletAdapters(
     { backend: ctx.backend, demo: ctx.demo, network: ctx.network },
     softwarePasskeySource(),
@@ -136,7 +136,7 @@ describe("Ledger Stax", () => {
   it("sets up a post-quantum account in three device confirmations", async () => {
     const { manager, ctx } = rig();
     const reviews: string[] = [];
-    ctx.backend.simDevice.setApprover(async (review) => {
+    ctx.sim.simDevice.setApprover(async (review) => {
       reviews.push(review.title);
       return true;
     });
@@ -149,7 +149,7 @@ describe("Ledger Stax", () => {
 
   it("connects nothing when the device rejects", async () => {
     const { manager, ctx } = rig();
-    ctx.backend.simDevice.setApprover(async () => false);
+    ctx.sim.simDevice.setApprover(async () => false);
     await expect(manager.connect("ledger-stax")).rejects.toThrow();
     expect(manager.connected).toBe(false);
     expect(DeviceRejectedError).toBeDefined();

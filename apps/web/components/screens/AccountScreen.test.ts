@@ -37,7 +37,7 @@ describe("Account screen", () => {
 
   it("shows a rejection on the device and sends nothing", async () => {
     const { wrapper, ctx } = mountScreen(AccountScreen, { autoApprove: false });
-    ctx.backend.simDevice.setApprover(async () => false);
+    ctx.sim.simDevice.setApprover(async () => false);
     await wrapper.get("[data-testid='create-ledger']").trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='error']").text()).toContain("Rejected on the device");

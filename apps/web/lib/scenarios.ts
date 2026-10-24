@@ -85,6 +85,12 @@ export interface Attack {
   omitLastLedger?: boolean;
 }
 
+/** A well-formed passkey the attacker would register: `0xF6 ‖ X ‖ Y` and a 16-byte credential id. */
+const ATTACKER_PASSKEY = {
+  publicKey: `F6${"11".repeat(64)}`,
+  credentialId: "AB".repeat(16),
+};
+
 /** Fee far above the ceiling of spec 6.5 rule 4. */
 const BURN_FEE_DROPS = "500000";
 
@@ -105,7 +111,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "PasskeyListSet",
     needsMode: null,
     needsExpiry: false,
-    build: (ctx) => ctx.builders.passkeyListSet(ctx.account, [ctx.victim]),
+    build: (ctx) => ctx.builders.passkeyListSet(ctx.account, [ATTACKER_PASSKEY]),
   },
   {
     id: "disable-master",

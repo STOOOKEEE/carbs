@@ -5,7 +5,7 @@ import DeviceModal from "./DeviceModal.vue";
 describe("Device modal", () => {
   it("shows the review lines of the simulated device and resolves on Approve", async () => {
     const { wrapper, ctx } = mountScreen(DeviceModal, { autoApprove: false });
-    ctx.backend.simDevice.setApprover(ctx.prompt.approver);
+    ctx.sim.simDevice.setApprover(ctx.prompt.approver);
     const signing = ctx.backend.device.signTransaction("secp256k1", {
       TransactionType: "SigningSessionDelete",
       Account: "rSimAccount",
@@ -26,7 +26,7 @@ describe("Device modal", () => {
 
   it("rejects without signing", async () => {
     const { wrapper, ctx } = mountScreen(DeviceModal, { autoApprove: false });
-    ctx.backend.simDevice.setApprover(ctx.prompt.approver);
+    ctx.sim.simDevice.setApprover(ctx.prompt.approver);
     const signing = ctx.backend.device.signTransaction("secp256k1", {
       TransactionType: "Payment",
       Account: "rSimAccount",

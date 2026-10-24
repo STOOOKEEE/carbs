@@ -253,7 +253,9 @@ export function createDemo(backend: Backend) {
     await stepTx(
       "PasskeyListSet, signed by the master key",
       master,
-      build.passkeyListSet(masterKey.address, [passkey.publicKey]),
+      build.passkeyListSet(masterKey.address, [
+        { publicKey: passkey.publicKey, credentialId: passkey.credentialId ?? "" },
+      ]),
     );
     if (passkeyOnly) {
       await stepTx(
@@ -393,11 +395,16 @@ export function createDemo(backend: Backend) {
       if (key === null) throw new Error("Open a session first");
       if (attack.needsExpiry) {
         const entry = state.session;
-        if (backend.clock === null || entry === null) {
-          throw new Error("Wait for the session to expire, then try again");
-        }
+        if (entry === null) throw new Error("Open a session first");
         const server = await backend.node.serverInfo();
-        backend.clock.advance(Math.max(1, entry.expiration - server.closeTime + 1));
+        if (backend.clock !== null) {
+          backend.clock.advance(Math.max(1, entry.expiration - server.closeTime + 1));
+        } else if (server.closeTime < entry.expiration) {
+          // A live node cannot be hurried: the person waits for the Expiration.
+          throw new Error(
+            `Wait for the session to expire (${entry.expiration - server.closeTime} s left)`,
+          );
+        }
       }
       await ensureVictim();
       const ctx = scenarioContext();

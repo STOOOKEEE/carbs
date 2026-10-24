@@ -39,7 +39,7 @@ export function mountScreen(
   const manager = new WalletManager({ adapters, autoConnect: false, logger: { level: "error" } });
   const wallets = createWalletsApi(manager, adapters, ctx.backend, true);
   if (options.autoApprove !== false) {
-    ctx.backend.simDevice.setApprover(async () => true);
+    ctx.sim.simDevice.setApprover(async () => true);
     ctx.prompt.approver = async () => true;
   }
   const wrapper = mount(component, {

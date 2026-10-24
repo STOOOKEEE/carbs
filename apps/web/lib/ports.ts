@@ -32,6 +32,14 @@ export interface UnsignedTx {
   [field: string]: unknown;
 }
 
+/** A passkey as the account's passkey list holds it. */
+export interface PasskeyRef {
+  /** `0xF6 ‖ X ‖ Y` as hex. */
+  publicKey: string;
+  /** The WebAuthn credential id as hex (`PasskeyID`). */
+  credentialId: string;
+}
+
 export interface SessionParams {
   mode: SessionMode;
   durationSec: number;
@@ -54,7 +62,7 @@ export interface TxBuilders {
   nftMint(account: string): UnsignedTx;
   checkCreate(account: string, destination: string): UnsignedTx;
   setRegularKey(account: string, regularKey: string | null): UnsignedTx;
-  passkeyListSet(account: string, passkeys: readonly string[]): UnsignedTx;
+  passkeyListSet(account: string, passkeys: readonly PasskeyRef[]): UnsignedTx;
   accountSetDisableMaster(account: string): UnsignedTx;
   /** A harmless `AccountSet` with no change: the proof transaction of the migration (spec 8.7). */
   accountSetNoop(account: string): UnsignedTx;
@@ -188,6 +196,8 @@ export interface DevicePort {
 
 export interface KeyHandle {
   algorithm: KeyAlgorithm;
+  /** Passkeys only: the credential id as hex. */
+  credentialId?: string;
   publicKey: string;
   address: string;
   /** Returns the transaction with `SigningPubKey` and `TxnSignature` (and `PasskeySignature` for a passkey). */

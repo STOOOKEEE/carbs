@@ -1,13 +1,20 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildCsp, buildMetaCsp, netlifyHeaders, securityHeaders } from "./lib/csp";
-import { DEFAULT_LOCAL_WSS, allConnectOrigins, createNetworks, localRpcFor } from "./lib/networks";
+import {
+  DEFAULT_LOCAL_FAUCET,
+  DEFAULT_LOCAL_WSS,
+  allConnectOrigins,
+  createNetworks,
+  localRpcFor,
+} from "./lib/networks";
 import { extractEmbeddedScripts } from "./server/utils/inline-scripts";
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const isProduction = process.env.NODE_ENV === "production";
 const localWss = (process.env.NUXT_PUBLIC_LOCAL_NODE_URL ?? "").trim() || DEFAULT_LOCAL_WSS;
-const networks = createNetworks({ wss: localWss, rpc: localRpcFor(localWss) });
+const localFaucet = (process.env.NUXT_PUBLIC_LOCAL_FAUCET_URL ?? "").trim() || DEFAULT_LOCAL_FAUCET;
+const networks = createNetworks({ wss: localWss, rpc: localRpcFor(localWss), faucet: localFaucet });
 // The policy lists the hosts of the configured networks and explorers, no bare scheme.
 const cspOptions = { connectOrigins: allConnectOrigins(networks), dev: !isProduction };
 const CONTENT_SECURITY_POLICY = buildCsp(cspOptions);
@@ -48,7 +55,11 @@ export default defineNuxtConfig({
     public: {
       defaultNetwork: "alphanet",
       // Public WebSocket of the standalone node (infra/standalone.cfg); wss:// when hosted.
+      // "live" runs Session, Actions and Attack on the local node; "" or "simulated" on the simulation.
+      backend: "",
       localNodeUrl: "",
+      // The dev faucet of the local node (started by `pnpm demo`).
+      localFaucetUrl: "",
     },
   },
 

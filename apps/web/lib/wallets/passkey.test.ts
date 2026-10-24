@@ -84,7 +84,11 @@ describe("Ledger Stax availability", () => {
     expect(await simulated[0]?.isAvailable()).toBe(true);
     Reflect.deleteProperty(navigator, "hid");
     const live = createWalletAdapters(
-      { backend: { ...ctx.backend, mode: "live" }, demo: ctx.demo, network: ctx.network },
+      {
+        backend: { ...ctx.backend, device: { ...ctx.backend.device, mode: "live" } },
+        demo: ctx.demo,
+        network: ctx.network,
+      },
       softwarePasskeySource(),
     );
     expect(await live[0]?.isAvailable()).toBe(false);

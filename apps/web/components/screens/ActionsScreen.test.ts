@@ -34,7 +34,7 @@ describe("Actions screen", () => {
   it("runs six transaction types with no prompt, each answered by the node", async () => {
     const { wrapper, ctx } = await withSession("P");
     let prompts = 0;
-    ctx.backend.simDevice.setApprover(async () => {
+    ctx.sim.simDevice.setApprover(async () => {
       prompts += 1;
       return true;
     });

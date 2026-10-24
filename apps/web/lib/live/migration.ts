@@ -20,8 +20,6 @@ import {
   fetchCommonFields,
   generateClassicSeed,
   getAccountState,
-  isIncluded,
-  resultCategory,
   signTransaction,
   submitAndWait,
   type BytesSigner,
@@ -41,11 +39,12 @@ import {
   type Review,
 } from "@carbs/ledger";
 import { reactive } from "vue";
-import type { DeviceApprover, DeviceReview, NodeResult, ResultFamily } from "../ports";
+import type { DeviceApprover, DeviceReview } from "../ports";
 import { DeviceRejectedError } from "../ports";
 import type { MigrationController, MigrationState } from "../migration";
 import type { AppNetwork } from "../networks";
 import type { LiveClients } from "./clients";
+import { toNodeResult } from "./result";
 import type { LiveExposure } from "./exposure";
 
 const FAUCET_POLL_MS = 2000;
@@ -70,19 +69,6 @@ export interface LiveMigrationDeps {
   approver: DeviceApprover;
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
-}
-
-/** A node answer in the shape of the port. */
-export function toNodeResult(final: FinalResult): NodeResult {
-  const family = (resultCategory(final.result) ?? "tef") as ResultFamily;
-  return {
-    code: final.result,
-    family,
-    success: final.result === "tesSUCCESS",
-    feeClaimed: isIncluded(final.result),
-    hash: final.hash,
-    ledgerIndex: final.ledgerIndex ?? 0,
-  };
 }
 
 function asDeviceReview(review: Review): DeviceReview {
