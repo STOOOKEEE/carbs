@@ -22,6 +22,7 @@ ledger-app/debug/
 .env
 .env.*
 !.env.example
+!.env.local.example
 .DS_Store
 
 # Ripple DevRel DevEx capture hook: installed locally by each developer (see README)

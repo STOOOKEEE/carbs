@@ -3,7 +3,7 @@
 ## TypeScript packages
 
 ```sh
-pnpm install            # Node >= 22.18, pnpm 10.18.3 (see .nvmrc and package.json)
+pnpm install            # Node >= 22.18, pnpm 10.33.0 (see .nvmrc and package.json)
 pnpm format:check
 pnpm typecheck
 pnpm test
