@@ -44,6 +44,7 @@ const ledger = computed(() => demo.state.server?.ledgerIndex ?? null);
           <span v-if="ledger !== null" class="mono">ledger {{ ledger }}</span>
           <SimBadge v-if="backend.mode === 'simulated'" />
           <NetworkSelector />
+          <WalletConnector />
         </div>
       </div>
     </header>

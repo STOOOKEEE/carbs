@@ -1,5 +1,5 @@
 import { SIM_TICK_MS } from "~/lib/constants";
-import { createAppContext } from "~/lib/app-context";
+import { sharedAppContext } from "~/lib/app-context";
 import {
   BACKEND_KEY,
   DEMO_KEY,
@@ -13,7 +13,7 @@ import {
 export default defineNuxtPlugin((nuxtApp) => {
   const config = useRuntimeConfig().public;
   const localWss = String(config.localNodeUrl ?? "").trim();
-  const { backend, demo, migration, prompt, network } = createAppContext({
+  const { backend, demo, migration, prompt, network } = sharedAppContext({
     storage: window.localStorage,
     pageProtocol: window.location.protocol,
     ...(localWss === "" ? {} : { localWss }),

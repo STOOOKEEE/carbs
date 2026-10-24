@@ -30,7 +30,21 @@ import { accountIdOf } from "./sim/keys";
 import * as build from "./tx-builders";
 import type { SessionParams, UnsignedTx } from "./tx-builders";
 
-export type Profile = "mac" | "ledger";
+export type Profile = "mac" | "ledger" | "demo";
+
+export const PROFILE_LABELS: Record<Profile, string> = {
+  mac: "Mac account",
+  ledger: "Ledger account",
+  demo: "Demo account",
+};
+
+export interface CreateAccountOptions {
+  passkeyOnly?: boolean;
+  /** A passkey made elsewhere (the browser's authenticator); default: the wallet port's. */
+  passkey?: () => Promise<KeyHandle>;
+  /** Said in the setup step for that passkey. */
+  passkeyLabel?: string;
+}
 
 /** Something that can sign for the account with full authority. */
 export interface Signer {
@@ -208,14 +222,15 @@ export function createDemo(backend: Backend) {
 
   async function createAccount(
     profile: Profile,
-    options: { passkeyOnly?: boolean } = {},
+    options: CreateAccountOptions = {},
   ): Promise<boolean> {
     const done = await guarded(async () => {
       reset();
       state.profile = profile;
       state.passkeyOnly = options.passkeyOnly === true;
-      if (profile === "mac") await setupMac(state.passkeyOnly);
-      else await setupLedger();
+      if (profile === "mac") await setupMac(state.passkeyOnly, options);
+      else if (profile === "ledger") await setupLedger();
+      else await setupDemo();
       await refresh();
       return true;
     });
@@ -228,13 +243,25 @@ export function createDemo(backend: Backend) {
     step.status = "ok";
   }
 
-  async function setupMac(passkeyOnly: boolean): Promise<void> {
+  async function setupDemo(): Promise<void> {
+    const masterKey = await backend.wallet.createMasterKey();
+    master = signerFrom(masterKey, "Demo master key");
+    state.address = masterKey.address;
+    await fund(masterKey.address);
+    fullAuth = master;
+  }
+
+  async function setupMac(passkeyOnly: boolean, options: CreateAccountOptions): Promise<void> {
     const masterKey = await backend.wallet.createMasterKey();
     master = signerFrom(masterKey, "Master key");
     state.address = masterKey.address;
     await fund(masterKey.address);
-    const passkey = await backend.wallet.createPasskey();
-    addStep("Create a passkey (SIMULATED: no biometric prompt)").status = "ok";
+    const passkey = options.passkey
+      ? await options.passkey()
+      : await backend.wallet.createPasskey();
+    addStep(
+      options.passkeyLabel ?? "Create a passkey (SIMULATED: software authenticator, no prompt)",
+    ).status = "ok";
     await stepTx(
       "PasskeyListSet, signed by the master key",
       master,
@@ -402,6 +429,25 @@ export function createDemo(backend: Backend) {
     });
   }
 
+  /** For wallet adapters: fill the envelope of a transaction of the connected account. */
+  async function prepare(tx: UnsignedTx): Promise<TxJson> {
+    return envelope(tx);
+  }
+
+  /** For wallet adapters: sign as the account's own authority (passkey, device or master key). */
+  async function signAsAccount(tx: TxJson): Promise<TxJson> {
+    if (fullAuth === null) throw new Error("No account is connected");
+    return fullAuth.sign(tx);
+  }
+
+  function accountPublicKey(): string | null {
+    return fullAuth?.publicKey ?? null;
+  }
+
+  function disconnect(): void {
+    reset();
+  }
+
   /** Simulated clock only: let ledger time pass. */
   async function advance(seconds: number): Promise<void> {
     backend.clock?.advance(seconds);
@@ -425,6 +471,10 @@ export function createDemo(backend: Backend) {
     runAttack,
     advance,
     tick,
+    prepare,
+    signAsAccount,
+    accountPublicKey,
+    disconnect,
     sink,
     victim,
     /** Drops for an amount of XRP, for the forms. */

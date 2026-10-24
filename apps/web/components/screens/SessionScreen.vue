@@ -67,7 +67,11 @@ const canOpen = computed(
     (form.mode !== "P" || (form.permissions.length > 0 && !tooMany.value)),
 );
 const openLabel = computed(() =>
-  state.profile === "ledger" ? "Open on the Ledger" : "Open with the passkey",
+  state.profile === "ledger"
+    ? "Open on the Ledger"
+    : state.profile === "demo"
+      ? "Open with the demo master key"
+      : "Open with the passkey",
 );
 
 async function open(): Promise<void> {
