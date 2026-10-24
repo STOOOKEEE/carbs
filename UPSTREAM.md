@@ -2,10 +2,10 @@
 
 carbs builds on two upstream code bases. They are **imported unmodified, each in its own commit**, so that `git diff <import-commit> HEAD -- <directory>` shows our work and nothing else. There is no fork and no submodule (see the build specification, section 4).
 
-| Directory | Upstream | Branch | Commit | Imported in | Licence |
-|---|---|---|---|---|---|
-| `rippled/` | https://github.com/XRPLF/rippled | `alphanet` | `68bd02b64723112dfc08acdecc803c8ed0980ca2` (2026-10-16, "compose: alphanet from XRPLF/rippled@3.4.1 @ 00e64075") | `516f6a5` | ISC, `rippled/LICENSE.md` |
-| `ledger-app/` | https://github.com/LedgerHQ/app-xrp | `master` | `7b5185ff09b4b3d15df242b156a6aaadfc99f555` (v2.8.2) | `c7bcb68` | Apache-2.0, `ledger-app/LICENSE` |
+| Directory     | Upstream                            | Branch     | Commit                                                                                                           | Imported in | Licence                          |
+| ------------- | ----------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- | ----------- | -------------------------------- |
+| `rippled/`    | https://github.com/XRPLF/rippled    | `alphanet` | `68bd02b64723112dfc08acdecc803c8ed0980ca2` (2026-10-16, "compose: alphanet from XRPLF/rippled@3.4.1 @ 00e64075") | `516f6a5`   | ISC, `rippled/LICENSE.md`        |
+| `ledger-app/` | https://github.com/LedgerHQ/app-xrp | `master`   | `7b5185ff09b4b3d15df242b156a6aaadfc99f555` (v2.8.2)                                                              | `c7bcb68`   | Apache-2.0, `ledger-app/LICENSE` |
 
 ## How an import was made
 
