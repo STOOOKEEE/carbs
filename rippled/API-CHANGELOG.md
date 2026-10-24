@@ -24,6 +24,11 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 
 ## Unreleased
 
+### Additions
+
+- `ledger_entry`: With the `SigningSessions` amendment, a `signing_session` request field returns a `SigningSession` entry, either by index (a hex string) or by an object with `account` and `session_key` (both addresses); a missing or invalid address returns `malformedRequest` or `malformedAddress`.
+- `account_objects`: The `type` filter accepts `signing_session`.
+
 ### Bugfixes
 
 - `submit`: With `fixPasskeyChallenge` enabled, a transaction signed through WebAuthn (`PasskeySignature`) is no longer refused with `invalidTransaction` ("fails local checks: Invalid signature.") on a server where `char` is signed: the WebAuthn challenge is now compared with the signing data byte for byte. Before the amendment is enabled, a refused WebAuthn transaction is answered "fails local checks: Invalid signature." each time it is submitted, instead of the cached "Transaction has bad signature."

@@ -2091,6 +2091,16 @@ class MPToken_test : public beast::unit_test::Suite
                 jv[sfFeeAmountDelta.fieldName] = mpt.getJson(JsonOptions::Values::None);
                 test(jv, sfFeeAmountDelta.fieldName);
             }
+            // SigningSessionSet
+            {
+                json::Value jv;
+                jv[jss::TransactionType] = jss::SigningSessionSet;
+                jv[jss::Account] = alice.human();
+                jv[sfSessionKey.fieldName] = carol.human();
+                jv[sfSessionDuration.fieldName] = 60;
+                jv[sfSessionCap.fieldName] = mpt.getJson(JsonOptions::Values::None);
+                test(jv, sfSessionCap.fieldName);
+            }
         }
         BEAST_EXPECT(txWithAmounts.empty());
     }

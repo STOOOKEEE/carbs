@@ -15,6 +15,7 @@
 #include <test/jtx/offer.h>
 #include <test/jtx/pay.h>
 #include <test/jtx/permissioned_domains.h>
+#include <test/jtx/session.h>
 #include <test/jtx/sponsor.h>
 #include <test/jtx/ticket.h>
 #include <test/jtx/token.h>
@@ -95,6 +96,7 @@ std::vector<std::pair<json::StaticString, FieldType>> gMappings{
     {jss::oracle_document_id, FieldType::UInt32Field},
     {jss::owner, FieldType::AccountField},
     {jss::seq, FieldType::UInt32Field},
+    {jss::session_key, FieldType::AccountField},
     {jss::sponsor, FieldType::AccountField},
     {jss::sponsee, FieldType::AccountField},
     {jss::subject, FieldType::AccountField},
@@ -958,6 +960,58 @@ class LedgerEntry_test : public beast::unit_test::Suite
                 {
                     {.fieldName = jss::account, .malformedErrorMsg = "malformedAddress"},
                     {.fieldName = jss::authorize, .malformedErrorMsg = "malformedAddress"},
+                });
+        }
+    }
+
+    void
+    testSigningSession()
+    {
+        testcase("Signing Session");
+
+        using namespace test::jtx;
+
+        Env env{*this};
+        Account const alice{"alice"};
+        Account const key{"key"};
+        env.fund(XRP(10000), alice);
+        env.close();
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+        env.close();
+        std::string const ledgerHash{to_string(env.closed()->header().hash)};
+        std::string sessionIndex;
+        {
+            // Request by account and session key
+            json::Value jvParams;
+            jvParams[jss::signing_session][jss::account] = alice.human();
+            jvParams[jss::signing_session][jss::session_key] = key.human();
+            jvParams[jss::ledger_hash] = ledgerHash;
+            json::Value const jrr =
+                env.rpc("json", "ledger_entry", to_string(jvParams))[jss::result];
+            BEAST_EXPECT(jrr[jss::node][sfLedgerEntryType.jsonName] == jss::SigningSession);
+            BEAST_EXPECT(jrr[jss::node][sfAccount.jsonName] == alice.human());
+            BEAST_EXPECT(jrr[jss::node][sfSessionKey.jsonName] == key.human());
+            sessionIndex = jrr[jss::node][jss::index].asString();
+        }
+        {
+            // Request by index.
+            json::Value jvParams;
+            jvParams[jss::signing_session] = sessionIndex;
+            jvParams[jss::ledger_hash] = ledgerHash;
+            json::Value const jrr =
+                env.rpc("json", "ledger_entry", to_string(jvParams))[jss::result];
+            BEAST_EXPECT(jrr[jss::node][sfLedgerEntryType.jsonName] == jss::SigningSession);
+            BEAST_EXPECT(jrr[jss::node][sfSessionKey.jsonName] == key.human());
+        }
+
+        {
+            // Check all malformed cases
+            runLedgerEntryTest(
+                env,
+                jss::signing_session,
+                {
+                    {.fieldName = jss::account, .malformedErrorMsg = "malformedAddress"},
+                    {.fieldName = jss::session_key, .malformedErrorMsg = "malformedAddress"},
                 });
         }
     }
@@ -2745,6 +2799,7 @@ public:
         testPayChan();
         testRippleState();
         testSignerList();
+        testSigningSession();
         testSponsorship();
         testTicket();
         testDID();

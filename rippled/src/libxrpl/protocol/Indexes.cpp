@@ -119,6 +119,7 @@ enum class LedgerNameSpace : std::uint16_t {
     CouponSchedule = 'M',
     Subscription = 'U',
     TokenIssuance = 'X',
+    SigningSession = 'z',
 
     // No longer used or supported. Left here to reserve the space to avoid accidental reuse.
     Contract [[deprecated]] = 'c',
@@ -555,6 +556,12 @@ Keylet
 delegate(AccountID const& account, AccountID const& authorizedAccount) noexcept
 {
     return {ltDELEGATE, indexHash(LedgerNameSpace::Delegate, account, authorizedAccount)};
+}
+
+Keylet
+signingSession(AccountID const& account, AccountID const& sessionKey) noexcept
+{
+    return {ltSIGNING_SESSION, indexHash(LedgerNameSpace::SigningSession, account, sessionKey)};
 }
 
 Keylet

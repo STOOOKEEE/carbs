@@ -570,6 +570,7 @@ JSS(server_state);                // out: NetworkOPs
 JSS(server_state_duration_us);    // out: NetworkOPs
 JSS(server_status);               // out: NetworkOPs
 JSS(server_version);              // out: NetworkOPs
+JSS(session_key);                 // in: LedgerEntry SigningSession
 JSS(settle_delay);                // out: AccountChannels
 JSS(severity);                    // in: LogLevel
 JSS(shares);                      // out: VaultInfo
