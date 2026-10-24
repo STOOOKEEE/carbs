@@ -27,6 +27,8 @@ jobs:
       - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Static build of the web app
+        run: pnpm --filter web generate
 
 # Not in CI on purpose, because they need the daemon build and a device:
 #   rippled/      ./xrpld --unittest=SigningSessions plus the upstream suites (see docs/ARCHITECTURE.md)

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { externalizeInlineScripts, loadInlineScript, storeInlineScript } from "./inline-scripts.ts";
+import {
+  externalizeInlineScripts,
+  extractEmbeddedScripts,
+  loadInlineScript,
+  storeInlineScript,
+} from "./inline-scripts.ts";
 
 test("an inline script becomes a same-origin file that serves the same body", () => {
   const body = 'window.__NUXT__={};window.__NUXT__.config={public:{defaultNetwork:"testnet"}}';
@@ -25,4 +30,15 @@ test("the file name is derived from the body, so the same body gives the same fi
 test("only names produced by storeInlineScript are served", () => {
   assert.equal(loadInlineScript("../../etc/passwd"), undefined);
   assert.equal(loadInlineScript("00000000000000000000000000000000.js"), undefined);
+});
+
+test("prerender: the body travels with the page and is extracted into a file", () => {
+  const body = "window.__NUXT__={}";
+  const embedded = externalizeInlineScripts(`<script>${body}</script>`, true);
+  assert.match(embedded, /data-carbs-body="/);
+  const { html, files } = extractEmbeddedScripts(embedded);
+  assert.doesNotMatch(html, /data-carbs-body/);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].body, body);
+  assert.ok(html.includes(`/_carbs/inline/${files[0].name}`));
 });
