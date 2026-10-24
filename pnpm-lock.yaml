@@ -33,6 +33,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@carbs/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
       '@carbs/sessions':
         specifier: workspace:*
         version: link:../../packages/core

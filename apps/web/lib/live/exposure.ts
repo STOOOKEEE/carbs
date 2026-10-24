@@ -88,8 +88,12 @@ export class LiveExposure implements ExposurePort {
   constructor(private readonly clients: LiveClients) {}
 
   async check(address: string, network: NetworkName): Promise<ExposureReport> {
+    return fromCoreReport(await this.checkRaw(address, network), network);
+  }
+
+  /** The report as core made it (the migration's guard needs it). */
+  async checkRaw(address: string, network: NetworkName): Promise<CoreReport> {
     const defs = await this.clients.definitions(network);
-    const report = await checkExposure(address, this.clients.client(network), defs);
-    return fromCoreReport(report, network);
+    return checkExposure(address, this.clients.client(network), defs);
   }
 }

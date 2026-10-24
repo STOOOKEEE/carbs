@@ -3,12 +3,20 @@ import { computed, ref } from "vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
-import { useBackend, useLiveExposure, useMigration, useNetwork } from "~/lib/context";
+import {
+  useBackend,
+  useLiveExposure,
+  useLiveMigration,
+  useMigration,
+  useNetwork,
+} from "~/lib/context";
 import { shortHex } from "~/lib/format";
+import { explorerAccountUrl, explorerTxUrl } from "~/lib/networks";
 import type { ExposureReport, NetworkName } from "~/lib/ports";
 
 const backend = useBackend();
-const migration = useMigration();
+const simulatedMigration = useMigration();
+const liveMigration = useLiveMigration();
 const liveExposure = useLiveExposure();
 /** Live reads of the real nodes, or the simulated histories (fixtures below). */
 const source = ref<"live" | "simulated">("live");
@@ -17,7 +25,6 @@ const quantumNetworks = computed(() => {
   const all = networkStore.networks();
   return [all.alphanet, all.mainnet];
 });
-const mstate = migration.state;
 
 const address = ref("");
 const network = ref<NetworkName>("alphanet");
@@ -27,6 +34,16 @@ const checkError = ref<string | null>(null);
 
 const readOnly = computed(() => network.value === "mainnet");
 const simulated = computed(() => backend.mode === "simulated");
+/** The migration follows the Data switch: the real AlphaNet, or the simulation. */
+const migration = computed(() => (source.value === "live" ? liveMigration : simulatedMigration));
+const mstate = computed(() => migration.value.state);
+const isLive = computed(() => source.value === "live");
+const alphanet = computed(() => networkStore.networks().alphanet);
+
+function explorerFor(hash: string): string | null {
+  return isLive.value ? explorerTxUrl(alphanet.value, hash) : null;
+}
+
 const exposurePort = computed(() => (source.value === "live" ? liveExposure : backend.exposure));
 
 const STATUS_TEXT: Record<ExposureReport["status"], string> = {
@@ -176,7 +193,15 @@ async function useFixture(value: string): Promise<void> {
     <section class="panel mt-6 space-y-4" data-testid="migration">
       <div class="flex flex-wrap items-center gap-3">
         <h2 class="panel-title">Migrate with the Ledger</h2>
-        <SimBadge v-if="simulated" title="The device and the node are simulated" />
+        <SimBadge v-if="!isLive" title="The device and the node are simulated" />
+        <template v-else>
+          <SimBadge
+            title="The device is a software double of the Stax; the node's answers are real"
+          />
+          <span class="text-xs text-muted-foreground" data-testid="live-note"
+            >device simulated · AlphaNet node real</span
+          >
+        </template>
       </div>
       <p v-if="readOnly" class="text-muted-foreground" data-testid="read-only">
         Mainnet is read-only here: the migration runs on the AlphaNet, on a fresh account.
@@ -195,7 +220,18 @@ async function useFixture(value: string): Promise<void> {
           Start with a fresh AlphaNet account
         </button>
         <template v-if="mstate.address">
-          <p class="mono" data-testid="migration-address">{{ mstate.address }}</p>
+          <p class="mono" data-testid="migration-address">
+            <a
+              v-if="isLive"
+              :href="explorerAccountUrl(alphanet, mstate.address) ?? undefined"
+              target="_blank"
+              rel="noreferrer"
+              class="underline"
+              data-testid="account-link"
+              >{{ mstate.address }}</a
+            >
+            <template v-else>{{ mstate.address }}</template>
+          </p>
           <p v-if="mstate.before" class="text-sm">
             Before:
             <span
@@ -222,11 +258,32 @@ async function useFixture(value: string): Promise<void> {
                   data-testid="prove-recoverable"
                   @click="migration.proveRecoverable()"
                 >
-                  Derive the key twice to prove it is recoverable
+                  {{
+                    isLive
+                      ? "Show the simulated device's seed to save"
+                      : "Derive the key twice to prove it is recoverable"
+                  }}
                 </button>
                 <span v-if="mstate.recoverableProven" class="ml-2 text-ok" data-testid="recoverable"
                   >proven</span
                 >
+                <template v-if="isLive && mstate.recoverySeed">
+                  <p class="text-muted-foreground">
+                    The ML-DSA-44 key of this throw-away account comes from this seed. Without it
+                    the account is locked for good after step 3.
+                  </p>
+                  <code class="mono block" data-testid="recovery-seed">{{
+                    mstate.recoverySeed
+                  }}</code>
+                  <label class="flex items-center gap-2">
+                    <input
+                      v-model="mstate.recoveryConfirmed"
+                      type="checkbox"
+                      data-testid="seed-saved"
+                    />
+                    I saved this seed
+                  </label>
+                </template>
                 <label class="flex items-center gap-2">
                   <input
                     v-model="mstate.authoritiesReviewed"
@@ -252,7 +309,12 @@ async function useFixture(value: string): Promise<void> {
               >
                 {{ step.refusal }}
               </p>
-              <ResultView v-if="step.result" :result="step.result" :simulated="simulated" />
+              <ResultView
+                v-if="step.result"
+                :result="step.result"
+                :simulated="!isLive"
+                :explorer-url="isLive ? explorerFor(step.result.hash) : undefined"
+              />
             </li>
           </ol>
           <p v-if="mstate.after" class="text-sm" data-testid="after">
