@@ -131,7 +131,7 @@ The quantum exposure check (`packages/core/src/quantum`) is tested with recorded
 
 ## Limits and roadmap
 
-Quantum-safe by default (decisions D11 and D16) means that the default profile, the Ledger account, has no classical key able to sign and uses ML-DSA-44 session keys. Section 16 of the specification gives the reason and the code behind each limit below.
+Quantum-safe by default (decisions D11 and D16) means that the default profile, the Ledger account, has its master key disabled and no passkey, and uses ML-DSA-44 session keys. It holds while the account has no other authority that survives `asfDisableMaster` (a signer list, a delegate, a beneficiary key), and the session key type is a client policy that neither the ledger nor the device enforces. Section 16 of the specification gives the reason and the code behind each limit below.
 
 | Limit                                                                                   | Bounded today by                                                        | Roadmap                                                            |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |

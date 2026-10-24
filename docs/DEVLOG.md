@@ -115,6 +115,13 @@ Documentation only: no protocol, client or device code changed.
 
   The numbers in brackets are lines of that header. The app does not use `SessionSpent` (an entry field), the entry type, the keylet or the result codes. Its id `0xFD` for the synthetic "Note" row (line 32) is not an XRPL field: VL 253 is free on the public AlphaNet and in the imported tree, whose highest VL field is 54 (`sfClientDataJSON`, `rippled/include/xrpl/protocol/detail/sfields.macro:548`).
 
+- **Review gate, round 1** (on #16, #17 and #18 together): its findings on this part are applied.
+  - §6.14 also cites where the build asserts the 1 312-byte size, the signing side and the jtx signer.
+  - The D14 table now cites the full fee formula and states that no local check limits the size.
+  - UNVERIFIED item 1 now says the AlphaNet accepted device signatures. A new item covers `@noble/post-quantum` signatures, which no node has checked yet.
+  - The case 20 refusals name their codes, and three cases are added.
+  - §7.7 gains the status words, the rule that the context is cleared when the instruction changes, the key derived on chunk 0, the signature length answer, and the devices the path is built for. The stale `LEDGER_ASSERT` sentence is gone.
+
 ### Tickets and sessions, a design (D15)
 
 Documentation only, and a proposal: ADR 0010 is `Proposed`, and nothing in §6 of the spec changes until the owner adopts an option.
@@ -128,6 +135,14 @@ Documentation only, and a proposal: ADR 0010 is `Proposed`, and nothing in §6 o
   It recommends option 3 and its rule for sessions without a range, and rejects option 2.
 
 - **Every new code an option would need is free** on the public AlphaNet (`server_definitions` `hash` `34614C84…C3C5`, the hash of spike K5): UINT32 115 and 116, ACCOUNT 35, `tef` -169, and no flag defined for `SigningSessionSet`. It is free in the imported tree too, with the commands and output in the ADR. Nothing is allocated.
+- **Device-track watch:** `git fetch --prune` shows `develop` holding the three device-track branches (merge `695e6df`). Open drafts #7, #10 and #11 are those branches. No number in `ledger-app/src/xrp/signing_session.h` changes, so there is nothing to adapt.
+- **Review gate, round 1**, on this part. ADR 0010 is fixed:
+  - the line that names `TicketCount` in the app is corrected;
+  - option 1 notes that mode A can also lock tickets, and gives the owner count when a `TicketCreate` uses a ticket;
+  - option 2 lists every code of the signer check;
+  - option 3 exempts the own close, rejects an overflowing range, names `terPRE_TICKET`, says that opening does not check the tickets, and cites the code it would touch;
+  - the "if adopted" list is completed, and the ADR gains its Decision and Consequences parts.
+
 - **Device-track watch:** `git fetch --prune` shows `develop` holding the three device-track branches (merge `695e6df`). Open drafts #7, #10 and #11 are those branches. No number in `ledger-app/src/xrp/signing_session.h` changes, so there is nothing to adapt.
 
 ### Limits and roadmap (D16)
@@ -145,4 +160,8 @@ Documentation only.
   - `Batch` cannot migrate keys atomically;
   - 36 KB of device RAM.
 - **Batch, read in code.** The observation of the device track (an all-or-nothing `Batch` with `asfDisableMaster` returns `tesSUCCESS` and applies nothing) matches the code. An inner transaction has no `SigningPubKey` (`rippled/src/libxrpl/tx/transactors/system/Batch.cpp:279-285`), and `asfDisableMaster` needs the transaction's own key to be the master key (`rippled/src/libxrpl/tx/transactors/account/AccountSet.cpp:246-256`, `:307-313`).
-- **Stale P5 text updated.** §6.14 and §15 still called P5 unverified. They now give the N1 result (SIMULATED, a software authenticator) and the fix. §6.12 adds `fixPasskeyChallenge` to the standalone features, as `infra/README.md` already does.
+- **Stale P5 text updated.** §6.14 and §15 still called P5 unverified. They now give the N1 result (SIMULATED, a software authenticator) and the fix. §6.12 adds `fixPasskeyChallenge` to the standalone features, as `infra/README.md` already does.- **Review gate, round 1** (`VERDICT: CHANGES REQUIRED`, two blocking findings, both applied):
+  - Row 6 of §16 no longer says that side-channel attacks need the device in hand. The design claims nothing against them, and timing seen by a compromised host is **UNVERIFIED**.
+  - The intro of §16 no longer says that no classical key can sign. The master key is disabled, as the AlphaNet's `tefMASTER_DISABLED` shows. The claim holds only while the account has no signer list, delegate or beneficiary key, and the ML-DSA-44 session key is a client policy that neither the ledger nor the device enforces.
+  - The other blocking finding, a wrong line in ADR 0010, is fixed in that part.
+  - Also fixed: N9 lists six features; the P5 paragraph cites the current lines; the §13 row on P5 records that it happened; `README.md` says "by default"; `docs/PLAN-CHECK.md` no longer calls the ML-DSA instructions proposals.
