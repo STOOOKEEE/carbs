@@ -1,7 +1,6 @@
 #include <xrpl/tx/transactors/session/SigningSessionDelete.h>
 
 #include <xrpl/basics/Log.h>
-#include <xrpl/basics/chrono.h>
 #include <xrpl/beast/utility/Journal.h>
 #include <xrpl/ledger/ApplyView.h>
 #include <xrpl/ledger/ReadView.h>
@@ -14,6 +13,7 @@
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TER.h>
 #include <xrpl/protocol/XRPAmount.h>
+#include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
 
 namespace xrpl {
@@ -48,8 +48,7 @@ SigningSessionDelete::preclaim(PreclaimContext const& ctx)
 
     // Any account may clean up a session of another account, once it has
     // expired: an expired session is unusable and only holds a reserve.
-    if (owner &&
-        ctx.view.parentCloseTime() < NetClock::time_point{NetClock::duration{(*sle)[sfExpiration]}})
+    if (owner && !isSessionExpired(ctx.view, *sle))
     {
         JLOG(ctx.j.trace()) << "SigningSessionDelete: the session has not expired";
         return tecNO_PERMISSION;

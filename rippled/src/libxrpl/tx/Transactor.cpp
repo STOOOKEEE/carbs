@@ -40,6 +40,7 @@
 #include <xrpl/server/LoadFeeTrack.h>
 #include <xrpl/tx/ApplyContext.h>
 #include <xrpl/tx/SignerEntries.h>
+#include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/apply.h>
 #include <xrpl/tx/applySteps.h>
 #include <xrpl/tx/invariants/InvariantRunner.h>
@@ -1048,6 +1049,86 @@ Transactor::checkSign(PreclaimContext const& ctx)
     auto const idAccount = ctx.tx.isFieldPresent(sfDelegate) ? ctx.tx.getAccountID(sfDelegate)
                                                              : ctx.tx.getAccountID(sfAccount);
     return checkSign(ctx.view, ctx.flags, ctx.parentBatchId, idAccount, ctx.tx, ctx.j);
+}
+
+NotTEC
+Transactor::checkSession(
+    PreclaimContext const& ctx,
+    Keylet const& sessionKeylet,
+    bool overridesCheckSign,
+    std::function<XRPAmount()> const& baseFee,
+    GranularSemantics const& granularSemantics)
+{
+    auto const session = ctx.view.read(sessionKeylet);
+    if (!session)
+        return tefINTERNAL;  // LCOV_EXCL_LINE
+
+    // Transactor::checkSign refuses pseudo-accounts, and this path replaces
+    // it. Its other refusal, an unknown key type, is part of the predicate.
+    if (isPseudoAccount(ctx.view, ctx.tx.getAccountID(sfAccount)))
+        return tefBAD_AUTH;
+
+    bool const ownClose = isSessionOwnClose(ctx.tx);
+
+    // 1. Eligibility. Every refusal is a tef: a retriable ter would keep the
+    // transaction in the node's retry loop.
+    if (!ownClose)
+    {
+        auto const type = ctx.tx.getTxnType();
+        if (overridesCheckSign)
+            return tefSESSION_TX_NOT_ALLOWED;
+
+        if (session->isFlag(lsfAllTransactions))
+        {
+            if (!isSessionEligibleType(type, ctx.view.rules()))
+                return tefSESSION_TX_NOT_ALLOWED;
+        }
+        else if (session->isFieldPresent(sfPermissions))
+        {
+            // Mode P: the XLS-75 sequence of checkPermission, with the session
+            // entry in place of the delegate entry.
+            // The type must still be one mode A could sign, under the
+            // rules of this ledger.
+            if (!isSessionEligibleType(type, ctx.view.rules()))
+                return tefSESSION_TX_NOT_ALLOWED;
+
+            if (!isTesSuccess(checkTxPermission(session, ctx.tx)))
+            {
+                if (!Permission::getInstance().hasGranularPermissions(type))
+                    return tefSESSION_TX_NOT_ALLOWED;
+
+                auto const held = getGranularPermission(session, type);
+                if (held.empty() || !Permission::getInstance().checkGranularSandbox(ctx.tx, held))
+                    return tefSESSION_TX_NOT_ALLOWED;
+
+                if (!isTesSuccess(granularSemantics(ctx.view, ctx.tx, held)))
+                    return tefSESSION_TX_NOT_ALLOWED;
+            }
+        }
+        else
+        {
+            // Mode C signs nothing until its whitelist and its accounting
+            // land (N5).
+            return tefSESSION_TX_NOT_ALLOWED;
+        }
+    }
+
+    // 2. A rejected transaction held and retried must not land under a later
+    // session opened with the same key.
+    auto const lastLedger = ctx.tx[~sfLastLedgerSequence];
+    if (!lastLedger || *lastLedger > ctx.view.seq() + kSessionMaxLedgerWindow)
+        return tefSESSION_TX_NOT_ALLOWED;
+
+    // 3. Expiry, except for the own close.
+    if (!ownClose && isSessionExpired(ctx.view, *session))
+        return tefSESSION_EXPIRED;
+
+    // 4. Fee ceiling, the own close included: what the type requires, plus a
+    // bounded margin.
+    if (ctx.tx[sfFee].xrp() > baseFee() + ctx.view.fees().base * kSessionFeeMultiple)
+        return tefSESSION_LIMIT;
+
+    return tesSUCCESS;
 }
 
 NotTEC
