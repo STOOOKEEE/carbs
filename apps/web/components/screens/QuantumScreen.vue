@@ -3,12 +3,15 @@ import { computed, ref } from "vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
-import { useBackend, useMigration, useNetwork } from "~/lib/context";
+import { useBackend, useLiveExposure, useMigration, useNetwork } from "~/lib/context";
 import { shortHex } from "~/lib/format";
 import type { ExposureReport, NetworkName } from "~/lib/ports";
 
 const backend = useBackend();
 const migration = useMigration();
+const liveExposure = useLiveExposure();
+/** Live reads of the real nodes, or the simulated histories (fixtures below). */
+const source = ref<"live" | "simulated">("live");
 const networkStore = useNetwork();
 const quantumNetworks = computed(() => {
   const all = networkStore.networks();
@@ -24,6 +27,7 @@ const checkError = ref<string | null>(null);
 
 const readOnly = computed(() => network.value === "mainnet");
 const simulated = computed(() => backend.mode === "simulated");
+const exposurePort = computed(() => (source.value === "live" ? liveExposure : backend.exposure));
 
 const STATUS_TEXT: Record<ExposureReport["status"], string> = {
   exposed: "Exposed",
@@ -35,7 +39,7 @@ async function check(): Promise<void> {
   checking.value = true;
   checkError.value = null;
   try {
-    report.value = await backend.exposure.check(address.value.trim(), network.value);
+    report.value = await exposurePort.value.check(address.value.trim(), network.value);
   } catch (error) {
     checkError.value = error instanceof Error ? error.message : String(error);
   } finally {
@@ -77,6 +81,29 @@ async function useFixture(value: string): Promise<void> {
           </select>
         </label>
       </div>
+      <fieldset class="flex flex-wrap items-center gap-4 text-sm">
+        <legend class="eyebrow mb-1">Data</legend>
+        <label class="flex items-center gap-2">
+          <input
+            v-model="source"
+            type="radio"
+            name="source"
+            value="live"
+            data-testid="source-live"
+          />
+          Live: read the real node (read-only)
+        </label>
+        <label class="flex items-center gap-2">
+          <input
+            v-model="source"
+            type="radio"
+            name="source"
+            value="simulated"
+            data-testid="source-simulated"
+          />
+          Simulated histories <SimBadge />
+        </label>
+      </fieldset>
       <div class="flex flex-wrap items-center gap-2">
         <button
           class="btn btn-primary"
@@ -86,18 +113,19 @@ async function useFixture(value: string): Promise<void> {
         >
           Check exposure
         </button>
-        <SimBadge v-if="simulated" />
-        <span v-if="simulated" class="text-sm text-muted-foreground">Try:</span>
-        <button
-          v-for="fixture in backend.fixtures"
-          :key="fixture.id"
-          type="button"
-          class="btn"
-          :data-testid="`fixture-${fixture.id}`"
-          @click="useFixture(fixture.address)"
-        >
-          {{ fixture.label }}
-        </button>
+        <template v-if="source === 'simulated'">
+          <span class="text-sm text-muted-foreground">Try:</span>
+          <button
+            v-for="fixture in backend.fixtures"
+            :key="fixture.id"
+            type="button"
+            class="btn"
+            :data-testid="`fixture-${fixture.id}`"
+            @click="useFixture(fixture.address)"
+          >
+            {{ fixture.label }}
+          </button>
+        </template>
       </div>
       <p v-if="checkError" class="text-danger" role="alert">{{ checkError }}</p>
     </form>
