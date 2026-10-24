@@ -36,14 +36,17 @@ function connect(): void {
     }
   });
 
-  socket.addEventListener("close", () => {
-    console.error(`closer: connection closed, retrying in ${RECONNECT_DELAY_MS} ms`);
+  // A failed connection reports "error" without "close" in Node's WebSocket:
+  // retry once from whichever comes first.
+  let retrying = false;
+  const retry = (reason: string) => {
+    if (retrying) return;
+    retrying = true;
+    console.error(`closer: ${reason}, retrying in ${RECONNECT_DELAY_MS} ms`);
     setTimeout(connect, RECONNECT_DELAY_MS);
-  });
-
-  socket.addEventListener("error", () => {
-    console.error(`closer: cannot reach ${adminUrl}`);
-  });
+  };
+  socket.addEventListener("close", () => retry("connection closed"));
+  socket.addEventListener("error", () => retry(`cannot reach ${adminUrl}`));
 }
 
 connect();
