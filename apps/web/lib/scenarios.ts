@@ -158,7 +158,7 @@ export const ATTACKS: readonly Attack[] = [
   },
   {
     id: "no-last-ledger",
-    title: "Sign without a deadline",
+    title: "Sign without a last ledger",
     story: "Omit LastLedgerSequence so the transaction could be held and replayed later.",
     type: "Payment",
     needsMode: null,

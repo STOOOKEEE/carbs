@@ -323,6 +323,11 @@ Documentation only.
 - **Not yet: a session-signed transaction.** The session path is N3 / N4 / N4b, not merged; until then the node authorizes a session key like any other key, so every transaction it signs gets `tefBAD_AUTH`, "Transaction's public key is not authorized." (the P-256 `Payment` `5AD00254…`, the ML-DSA-44 `Payment` `B1F50D8D…`; also the `SetRegularKey`, `PasskeyListSet`, over-cap `Payment` and own close attempts). The spike runs again once N4 is merged.
 - **Device-track watch:** the device track's draft #29 (based on its own branch, not `develop`) adds `SessionMaxPerTx` (AMOUNT 49), `SessionWitness` (ACCOUNT 35) and `tefSESSION_NO_WITNESS`, a design that is not in the spec; GOAL-1 left those codes free. The client looks every identifier up by name, so nothing changes here unless the owner adopts it.
 
+## 2026-10-24: hygiene pass (web app)
+
+- **Production Node server checked over HTTP** (`nuxt build`, then `node .output/server/index.mjs`): the Content-Security-Policy and the other headers are sent, the page holds no executable inline script, `/_carbs/inline/<hash>.js` is served as `text/javascript`, and the meta fallback is present. The dev server and the static build were checked earlier. No browser was driven.
+- **Wording and paths:** the import recipe in `UPSTREAM.md` no longer carries an absolute path, and an attack title that said "deadline" now says "last ledger" (it is `LastLedgerSequence`).
+
 ### Transactions found by account and sequence
 
 - FIANSO-SPEC.md section 8.3 asks the client to identify a transaction by `(Account, Sequence)`, not by hash, while P-256 malleability exists (the node does not enforce low-S, so a relay can re-encode a P-256 signature and change the id). `submitAndWait` waited by hash only; with `WaitOptions.identity` (set by `submitSignedAndWait`, which the migration and the passkey wallet now use) it also looks the transaction up in `account_tx` once the account's validated sequence has moved past it (or by `TicketSequence`), and returns the id the ledger holds. Tested with a recorded answer whose id differs from ours.
