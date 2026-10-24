@@ -258,6 +258,10 @@ inline constexpr FlagValue tfUniversalMask = ~tfUniversal;
                                                                                                                                                                \
     TRANSACTION(SubscriptionSet,                        /* True, delete the subscription on the first successful claim */                                      \
         TF_FLAG(tfSingleUse, 0x00010000),                                                                                                                      \
+        MASK_ADJ(0))                                                                                                                                           \
+                                                                                                                                                               \
+    TRANSACTION(SigningSessionSet,                      /* True, mode A: the session signs every delegable type but the excluded ones */                      \
+        TF_FLAG(tfAllTransactions, 0x00010000),                                                                                                                \
         MASK_ADJ(0))
 
 // clang-format on

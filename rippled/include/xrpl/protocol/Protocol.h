@@ -499,6 +499,23 @@ constexpr std::size_t kMaxTrim = 25;
 constexpr std::size_t kPermissionMaxSize = 10;
 
 /**
+ * The longest a signing session may last, in seconds.
+ */
+constexpr std::uint32_t kMaxSessionDuration = 600;
+
+/**
+ * How many base fee units a session-signed transaction may pay on top of
+ * the fee its type requires.
+ */
+constexpr std::uint32_t kSessionFeeMultiple = 1000;
+
+/**
+ * How far ahead of the current ledger a session-signed transaction's
+ * LastLedgerSequence may be.
+ */
+constexpr std::uint32_t kSessionMaxLedgerWindow = 256;
+
+/**
  * The maximum number of transactions that can be in a batch.
  */
 constexpr std::size_t kMaxBatchTxCount = 8;
