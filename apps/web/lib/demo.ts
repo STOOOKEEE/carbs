@@ -404,6 +404,9 @@ export function createDemo(backend: Backend) {
       const key = state.sessionKey;
       if (action === undefined) throw new Error(`Unknown action ${id}`);
       if (key === null) throw new Error("Open a session first");
+      // On a real ledger the payee, the issuer and the destination of these actions must exist, and
+      // a payment below the reserve cannot create one: fund the counterparty (not session-signed).
+      await ensureAccount(sink);
       const result = await submitWith(key, action.build(scenarioContext()));
       counter += 1;
       const entry: LogEntry = {
@@ -419,8 +422,13 @@ export function createDemo(backend: Backend) {
     });
   }
 
+  /** An account that must exist on the ledger before a transaction can name it. */
+  async function ensureAccount(address: string): Promise<void> {
+    if ((await backend.node.accountInfo(address)) === null) await backend.node.fundAccount(address);
+  }
+
   async function ensureVictim(): Promise<void> {
-    if ((await backend.node.accountInfo(victim)) === null) await backend.node.fundAccount(victim);
+    await ensureAccount(victim);
   }
 
   async function runAttack(id: string): Promise<LogEntry | null> {

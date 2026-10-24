@@ -157,6 +157,65 @@ report(
   await send({ TransactionType: "AccountSet", Account: w.address }, w.master, node, defs),
 );
 
+console.log("\n== Session opened by the passkey (W2), mode A, 600 s; K1 on our node ==");
+const keyA = await createSessionKey();
+const openA = await submitWithPasskey(
+  buildSessionSet(
+    {
+      account: w.address,
+      sessionKey: keyA.address,
+      durationSec: 600,
+      mode: { kind: "all" },
+      common: await fetchCommonFields(node, w.address),
+    },
+    defs,
+  ),
+  passkey,
+  node,
+  defs,
+);
+report("SigningSessionSet (mode A) by passkey", openA.result);
+const pay = (amount: string): TxJson => ({
+  TransactionType: "Payment",
+  Account: w.address,
+  Destination: dest.address,
+  Amount: amount,
+});
+report("Payment 1 XRP, P-256 session key", await sessionTx(pay("1000000"), keyA));
+report(
+  "SetRegularKey, session key",
+  await sessionTx(
+    { TransactionType: "SetRegularKey", Account: w.address, RegularKey: dest.address },
+    keyA,
+  ),
+);
+report("PasskeyListSet, session key", await sessionTx(buildPasskeyListSetFor(w.address), keyA));
+report(
+  "AccountSet, session key",
+  await sessionTx({ TransactionType: "AccountSet", Account: w.address }, keyA),
+);
+const nested = await createSessionKey();
+report(
+  "SigningSessionSet, session key",
+  await sessionTx(
+    {
+      TransactionType: "SigningSessionSet",
+      Account: w.address,
+      SessionKey: nested.address,
+      SessionDuration: 60,
+      Flags: defs.transactionFlag("SigningSessionSet", "tfAllTransactions"),
+    },
+    keyA,
+  ),
+);
+report(
+  "own close (mode A), session key",
+  await sessionTx(
+    { TransactionType: "SigningSessionDelete", Account: w.address, SessionKey: keyA.address },
+    keyA,
+  ),
+);
+
 console.log("\n== Session opened by the passkey (W2), mode C, 20 XRP, 600 s ==");
 const sessionKey = await createSessionKey();
 const mode: SessionMode = { kind: "cap", capDrops: 20_000_000n };
