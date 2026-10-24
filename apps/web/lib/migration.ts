@@ -9,16 +9,15 @@
  * Fresh accounts only.
  */
 import { reactive } from "vue";
-import { DEFAULT_FEE_DROPS, LAST_LEDGER_OFFSET, TF_FULLY_CANONICAL_SIG } from "./constants";
+import { TF_FULLY_CANONICAL_SIG } from "./constants";
 import {
   DeviceRejectedError,
   type Backend,
   type ExposureReport,
   type NodeResult,
   type TxJson,
+  type UnsignedTx,
 } from "./ports";
-import * as build from "./tx-builders";
-import type { UnsignedTx } from "./tx-builders";
 
 export type StepStatus = "todo" | "ok" | "failed" | "refused";
 
@@ -32,11 +31,24 @@ export interface MigrationStep {
   refusal: string | null;
 }
 
+/** What the Quantum screen needs from a migration, simulated or live. */
+export interface MigrationController {
+  kind: "simulated" | "live";
+  state: MigrationState;
+  start(): Promise<void>;
+  proveRecoverable(): Promise<void>;
+  runStep(id: 1 | 2 | 3): Promise<void>;
+}
+
 export interface MigrationState {
   address: string | null;
   steps: MigrationStep[];
   recoverableProven: boolean;
   authoritiesReviewed: boolean;
+  /** Live run only: the seed of the SIMULATED device, shown so the person can save it. */
+  recoverySeed: string | null;
+  /** Live run only: the person confirmed saving that seed. */
+  recoveryConfirmed: boolean;
   before: ExposureReport | null;
   after: ExposureReport | null;
   busy: boolean;
@@ -50,11 +62,14 @@ const STEP_TEMPLATES: readonly Pick<MigrationStep, "id" | "title" | "signedBy">[
 ];
 
 export function createMigration(backend: Backend) {
+  const build = backend.builders;
   const state = reactive<MigrationState>({
     address: null,
     steps: [],
     recoverableProven: false,
     authoritiesReviewed: false,
+    recoverySeed: null,
+    recoveryConfirmed: false,
     before: null,
     after: null,
     busy: false,
@@ -97,15 +112,12 @@ export function createMigration(backend: Backend) {
   }
 
   async function envelope(tx: UnsignedTx): Promise<TxJson> {
-    const account = await backend.node.accountInfo(tx.Account);
-    const server = await backend.node.serverInfo();
+    const common = await backend.node.commonFields(tx.Account);
     const out: TxJson = {
       ...tx,
-      Fee: DEFAULT_FEE_DROPS,
+      ...common,
       Flags: ((tx.Flags ?? 0) | TF_FULLY_CANONICAL_SIG) >>> 0,
-      LastLedgerSequence: server.ledgerIndex + 1 + LAST_LEDGER_OFFSET,
     };
-    if (account !== null) out.Sequence = account.sequence;
     return out;
   }
 
@@ -164,7 +176,14 @@ export function createMigration(backend: Backend) {
     });
   }
 
-  return { state, start, proveRecoverable, runStep };
+  const controller: MigrationController = {
+    kind: "simulated",
+    state,
+    start,
+    proveRecoverable,
+    runStep,
+  };
+  return controller;
 }
 
-export type Migration = ReturnType<typeof createMigration>;
+export type Migration = MigrationController;

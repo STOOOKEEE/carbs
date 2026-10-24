@@ -5,23 +5,9 @@
  * which fill the same fields from `server_definitions`.
  */
 import { ASF_DISABLE_MASTER, TF_ALL_TRANSACTIONS } from "./constants";
-import type { SessionMode } from "./ports";
+import type { SessionParams, TxBuilders, UnsignedTx } from "./ports";
 
-/** A transaction before the envelope (Sequence, Fee, LastLedgerSequence) and the signature. */
-export interface UnsignedTx {
-  TransactionType: string;
-  Account: string;
-  Fee?: string;
-  Flags?: number;
-  [field: string]: unknown;
-}
-
-export interface SessionParams {
-  mode: SessionMode;
-  durationSec: number;
-  permissions: readonly string[];
-  capDrops: number;
-}
+export type { SessionParams, UnsignedTx } from "./ports";
 
 export function sessionSet(account: string, sessionKey: string, params: SessionParams): UnsignedTx {
   const tx: UnsignedTx = {
@@ -101,3 +87,19 @@ export function accountSetDisableMaster(account: string): UnsignedTx {
 export function accountSetNoop(account: string): UnsignedTx {
   return { TransactionType: "AccountSet", Account: account };
 }
+
+/** The simulated shapes of every transaction the screens build. */
+export const simBuilders: TxBuilders = {
+  sessionSet,
+  sessionDelete,
+  payment,
+  offerCreate,
+  trustSet,
+  ticketCreate,
+  nftMint,
+  checkCreate,
+  setRegularKey,
+  passkeyListSet,
+  accountSetDisableMaster,
+  accountSetNoop,
+};

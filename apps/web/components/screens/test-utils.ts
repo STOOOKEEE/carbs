@@ -12,6 +12,7 @@ import {
   DEMO_KEY,
   DEVICE_PROMPT_KEY,
   LIVE_EXPOSURE_KEY,
+  LIVE_MIGRATION_KEY,
   MIGRATION_KEY,
   NETWORK_KEY,
   WALLETS_KEY,
@@ -24,16 +25,23 @@ export function mountScreen(
     autoApprove?: boolean;
     network?: NetworkStoreOptions;
     clientFactory?: ClientFactory;
+    fetcher?: typeof fetch;
   } = {},
 ) {
-  const ctx: AppContext = createAppContext(options.network, options.clientFactory);
+  const ctx: AppContext = createAppContext(options.network, {
+    ...(options.clientFactory === undefined ? {} : { clientFactory: options.clientFactory }),
+    ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
+  });
   const adapters = createWalletAdapters(
     { backend: ctx.backend, demo: ctx.demo, network: ctx.network },
     softwarePasskeySource(),
   );
   const manager = new WalletManager({ adapters, autoConnect: false, logger: { level: "error" } });
   const wallets = createWalletsApi(manager, adapters, ctx.backend, true);
-  if (options.autoApprove !== false) ctx.backend.simDevice.setApprover(async () => true);
+  if (options.autoApprove !== false) {
+    ctx.backend.simDevice.setApprover(async () => true);
+    ctx.prompt.approver = async () => true;
+  }
   const wrapper = mount(component, {
     global: {
       stubs: { NuxtLink: RouterLinkStub },
@@ -45,6 +53,7 @@ export function mountScreen(
           app.provide(DEVICE_PROMPT_KEY, ctx.prompt);
           app.provide(NETWORK_KEY, ctx.network);
           app.provide(LIVE_EXPOSURE_KEY, ctx.liveExposure);
+          app.provide(LIVE_MIGRATION_KEY, ctx.liveMigration);
           app.provide(WALLETS_KEY, wallets);
         },
       ],

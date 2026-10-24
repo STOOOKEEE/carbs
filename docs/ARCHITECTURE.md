@@ -26,7 +26,7 @@ Two account profiles share this engine (decisions D13 and D14, [ADR 0011](adr/00
 ```mermaid
 graph TB
     subgraph Browser
-        W["apps/web<br/>Account, Session, Actions, Attack"]
+        W["apps/web<br/>Account, Session, Actions, Attack, Quantum"]
         C["packages/core (@carbs/sessions)<br/>definitions, encoding, session keys, node client"]
         L["packages/ledger (@carbs/ledger)<br/>DMK preview, custom APDUs for ML-DSA"]
         K["Session key, fresh per session<br/>ML-DSA-44 (Ledger account)<br/>or non-extractible P-256 (Mac account)"]
@@ -51,11 +51,33 @@ graph TB
 | `ledger-app/`     | Clear signing of `SigningSessionSet` and `SigningSessionDelete` on the Stax; ML-DSA-44 signing of XRPL transactions (post-quantum root); stretch: P-256 signing | C                        | upstream `LedgerHQ/app-xrp` (imported), `ledger-secure-sdk` |
 | `packages/core`   | Everything a client needs that is not UI: sessions, signing, the quantum exposure check and migration; no DOM state, no framework                               | TypeScript               | `xrpl`, `ripple-binary-codec`, `@noble/*`                   |
 | `packages/ledger` | Optional library over the Device Management Kit (preview, custom commands)                                                                                      | TypeScript               | `@ledgerhq/device-management-kit`, `device-signer-kit-xrp`  |
-| `apps/web`        | The demo screens                                                                                                                                                | TypeScript, Vue 3 / Nuxt | `packages/core`, `packages/ledger`                          |
+| `apps/web`        | The demo screens (Account, Session, Actions, Attack, Quantum) and the wallet entry                                                                              | TypeScript, Vue 3 / Nuxt | `packages/core`, `packages/ledger`                          |
 | `infra/`          | Run the daemon and the demo locally                                                                                                                             | config, TypeScript       | `rippled/`                                                  |
 | `docs/`           | Architecture, decisions, DEVLOG, Ledger feedback                                                                                                                | Markdown                 |                                                             |
 
 **Dependency rules.** `apps/web` may import `packages/*`; `packages/core` imports no other workspace package and never touches the DOM; `packages/ledger` imports `packages/core` (encoding, signers) and nothing else of the workspace; nothing imports from `rippled/` or `ledger-app/` (they talk through the wire formats below). Protocol codes are never copied into TypeScript: they come from `server_definitions` at run time.
+
+## The web app (`apps/web`)
+
+A Nuxt 3 single-page app (`ssr: false`), generated from the `create-xrp` template ([ADR 0007](adr/0007-front-from-create-xrp.md), `UPSTREAM.md`), styled from one token file, `assets/tokens.css` (the README of the app lists the knobs). It builds to a static site (`pnpm --filter web generate`, deployment notes in [`DEPLOY.md`](DEPLOY.md)).
+
+**Ports.** The five screens depend on four small interfaces only (`apps/web/lib/ports.ts`): `NodePort` (submit, account state, sessions, history), `DevicePort` (the Stax: public keys, review lines, signing), `WalletPort` (master key, passkey, session keys) and `ExposurePort` (the quantum exposure report). Account state always comes from the node, never from local state; every refusal shown is the node's result code, with one sentence and the rule that produced it (`lib/result-codes.ts`).
+
+**What is real and what is SIMULATED.** Both implementations exist side by side and the interface says which one answers, with a striped SIMULATED badge:
+
+| Piece                             | Simulated (`lib/sim/`)                                                                | Live (`lib/live/`)                                                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Node for Session, Actions, Attack | follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals; no consensus | not yet: waits for the amendment node (milestone M3)                                                               |
+| Quantum exposure check            | histories written for the fixtures                                                    | `checkExposure` of `@carbs/sessions` on the public AlphaNet and on mainnet (read-only)                             |
+| Quantum migration                 | the simulated node and Stax                                                           | a fresh AlphaNet account, signed in the page, validated and linked to the explorer; **the device stays SIMULATED** |
+| Ledger Stax                       | review lines of spec 7.3                                                              | the contract-following software device of `@carbs/ledger`; the real Stax needs the device track's real flow        |
+| Passkey                           | the software authenticator of `@carbs/sessions` (real P-256, no prompt)               | the browser's WebAuthn, when the person presses Connect                                                            |
+
+**Wallet entry.** The Connect wallet modal lists three adapters against the `WalletAdapter` interface of xrpl-connect 1.0.0: Ledger Stax (Device Management Kit only), Passkey (this Mac) and a throw-away Demo account. No API key, no third-party wallet.
+
+**Security headers.** A Content-Security-Policy with `script-src 'self'` (no `unsafe-inline`, no hash, no third-party script, font or image) built from the configured networks and explorers (`lib/csp.ts`, `lib/networks.ts`); Nuxt's inline runtime-config script is moved into a same-origin file by a Nitro plugin, in the dev server, the Node server and the static build. A page served over https only accepts `wss://` and `https://` node URLs.
+
+**Tests.** Component tests for every screen, the wallet entry and the device modal; the simulated node against the cases of spec 6.15; the live migration and exposure against recorded and fake nodes; the CSP, networks and sources scanned for banned dependencies. Typecheck covers `apps/web` through `nuxt typecheck`. No browser end-to-end test.
 
 ## Interfaces
 

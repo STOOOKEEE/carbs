@@ -119,7 +119,10 @@ export class RpcError extends Error {
     readonly method: string,
     readonly error: string,
     readonly errorMessage: string,
+    /** `error_exception`, where the node explains a local-check refusal. */
+    readonly exception: string = "",
   ) {
-    super(`${method}: ${error}${errorMessage ? ` (${errorMessage})` : ""}`);
+    const detail = [errorMessage, exception].filter((t) => t.length > 0).join("; ");
+    super(`${method}: ${error}${detail ? ` (${detail})` : ""}`);
   }
 }
