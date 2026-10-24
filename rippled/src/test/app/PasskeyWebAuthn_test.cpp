@@ -6,12 +6,14 @@
 #include <test/jtx/pay.h>
 #include <test/jtx/rpc.h>
 #include <test/jtx/sig.h>
+#include <test/jtx/utility.h>
 #include <test/jtx/webauthn.h>
 
 #include <xrpld/app/misc/Transaction.h>
 
 #include <xrpl/basics/StringUtilities.h>
 #include <xrpl/basics/base64.h>
+#include <xrpl/basics/strHex.h>
 #include <xrpl/beast/unit_test/suite.h>
 #include <xrpl/core/HashRouter.h>
 #include <xrpl/json/json_reader.h>
@@ -19,7 +21,9 @@
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/KeyType.h>
 #include <xrpl/protocol/SField.h>
+#include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TER.h>
+#include <xrpl/protocol/jss.h>
 #include <xrpl/server/NetworkOPs.h>
 #include <xrpl/tx/apply.h>
 
@@ -302,15 +306,30 @@ class PasskeyWebAuthn_test : public beast::unit_test::Suite
 
         // Signed through WebAuthn: not kept before the fix, kept after it.
         auto const webAuthn = postFix.jt(pay(alice, bob, XRP(1)), WebAuthnSig(passkey, kPasskeyId));
+        if (!BEAST_EXPECT(webAuthn.stx))
+            return;
         BEAST_EXPECT(!isSignatureVerdictCacheable(*webAuthn.stx, preFixRules));
         BEAST_EXPECT(isSignatureVerdictCacheable(*webAuthn.stx, postFixRules));
 
         // Signed by the same passkey without WebAuthn, and by the master key:
         // the comparison is not involved, so the verdict is kept.
         auto const rawPasskey = postFix.jt(pay(alice, bob, XRP(1)), Sig(passkey));
-        BEAST_EXPECT(isSignatureVerdictCacheable(*rawPasskey.stx, preFixRules));
         auto const master = postFix.jt(pay(alice, bob, XRP(1)));
+        if (!BEAST_EXPECT(rawPasskey.stx && master.stx))
+            return;
+        BEAST_EXPECT(isSignatureVerdictCacheable(*rawPasskey.stx, preFixRules));
         BEAST_EXPECT(isSignatureVerdictCacheable(*master.stx, preFixRules));
+
+        // sfPasskeySignature next to a key that is not P-256, or next to no
+        // key at all as in a multi-signed transaction: the WebAuthn branch is
+        // not taken, so the verdict is kept.
+        auto const withKey = [&](std::string const& signingPubKey) {
+            auto jv = webAuthn.jv;
+            jv[jss::SigningPubKey] = signingPubKey;
+            return STTx(test::jtx::parse(jv));
+        };
+        BEAST_EXPECT(isSignatureVerdictCacheable(withKey(strHex(alice.pk().slice())), preFixRules));
+        BEAST_EXPECT(isSignatureVerdictCacheable(withKey(""), preFixRules));
     }
 
     void
@@ -327,6 +346,8 @@ class PasskeyWebAuthn_test : public beast::unit_test::Suite
         setUp(env, alice, bob, passkey);
 
         auto jt = env.jt(pay(alice, bob, XRP(100)), WebAuthnSig(passkey, kPasskeyId));
+        if (!BEAST_EXPECT(jt.stx))
+            return;
         auto const id = jt.stx->getTransactionID();
 
         std::string reason;

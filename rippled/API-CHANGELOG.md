@@ -26,7 +26,7 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 
 ### Bugfixes
 
-- `submit`: With `fixPasskeyChallenge` enabled, a transaction signed through WebAuthn (`PasskeySignature`) is no longer refused with `invalidTransaction` ("fails local checks: Invalid signature.") on a server where `char` is signed: the WebAuthn challenge is now compared with the signing data byte for byte.
+- `submit`: With `fixPasskeyChallenge` enabled, a transaction signed through WebAuthn (`PasskeySignature`) is no longer refused with `invalidTransaction` ("fails local checks: Invalid signature.") on a server where `char` is signed: the WebAuthn challenge is now compared with the signing data byte for byte. Before the amendment is enabled, a refused WebAuthn transaction is answered "fails local checks: Invalid signature." each time it is submitted, instead of the cached "Transaction has bad signature."
 
 ## XRP Ledger server version 3.4.0
 

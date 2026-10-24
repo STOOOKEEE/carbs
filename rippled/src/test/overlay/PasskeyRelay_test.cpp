@@ -64,6 +64,8 @@ class PasskeyRelay_test : public beast::unit_test::Suite
         env.close();
 
         auto const jt = env.jt(pay(alice, bob, XRP(100)), WebAuthnSig(passkey, kPasskeyId));
+        if (!BEAST_EXPECT(jt.stx))
+            return;
         auto const id = jt.stx->getTransactionID();
 
         PeerTest::resetId();
@@ -80,7 +82,12 @@ class PasskeyRelay_test : public beast::unit_test::Suite
 
         BEAST_EXPECT(!any(env.app().getHashRouter().getFlags(id) & HashRouterFlags::BAD));
         if constexpr (!std::is_signed_v<char>)
+        {
+            // Where char is unsigned the relayed copy is accepted as it is.
+            env.close();
+            BEAST_EXPECT(env.balance(bob) == XRP(1100));
             return;
+        }
 
         // The relayed copy was checked and refused ...
         BEAST_EXPECT(refusedByPeer);

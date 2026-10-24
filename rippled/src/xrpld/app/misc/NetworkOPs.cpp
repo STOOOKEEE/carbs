@@ -1733,8 +1733,11 @@ NetworkOPsImp::apply(std::unique_lock<std::mutex>& batchLock)
 
             // A WebAuthn passkey signature refused before fixPasskeyChallenge
             // may be good once it is enabled (see isSignatureVerdictCacheable):
-            // do not mark it BAD until then. preProcessTransaction refuses such
-            // a transaction first, under the same rules, so this is defensive.
+            // do not mark it BAD until then. Every transaction here passed
+            // preProcessTransaction, now or, for a held one, under earlier
+            // rules, which cannot have more of the fix; this guard only matters
+            // if the rules lose the fix, as when the last closed ledger
+            // switches.
             if (isTemMalformed(e.result) &&
                 isSignatureVerdictCacheable(*e.transaction->getSTransaction(), newOL->rules()))
             {

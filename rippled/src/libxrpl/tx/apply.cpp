@@ -199,7 +199,9 @@ isSignatureVerdictCacheable(STTx const& tx, Rules const& rules)
     // fixPasskeyChallenge: a P-256 SigningPubKey with sfPasskeySignature (see
     // verifySigObject in STTx.cpp). Both are fixed for a transaction ID:
     // SigningPubKey is signed, and sfPasskeySignature, although not signed, is
-    // part of the ID.
+    // part of the ID. Only the top level is read: no inner object format
+    // allows sfPasskeySignature (InnerObjectFormats.cpp), which the Batch
+    // signer helpers of STTx.cpp rely on too. Revisit both if that changes.
     if (rules.enabled(fixPasskeyChallenge) || !tx.isFieldPresent(sfPasskeySignature))
         return true;
     return publicKeyType(makeSlice(tx.getSigningPubKey())) != KeyType::P256;
