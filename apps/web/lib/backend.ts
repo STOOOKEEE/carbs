@@ -1,8 +1,11 @@
+import { SIM_SINK_SEED, SIM_VICTIM_SEED } from "./constants";
 import type { Backend } from "./ports";
 import { SimulatedDevice } from "./sim/device";
 import { SimulatedExposure } from "./sim/exposure";
 import { seedFixtures, type Fixture } from "./sim/fixtures";
+import { accountIdOf } from "./sim/keys";
 import { SimulatedNode, type SimulatedNodeOptions } from "./sim/node";
+import { simBuilders } from "./tx-builders";
 import { SimulatedWallet } from "./sim/wallet";
 
 export interface SimBackend extends Backend {
@@ -26,6 +29,8 @@ export function createSimBackend(options: SimulatedNodeOptions = {}): SimBackend
     simDevice: device,
     wallet: new SimulatedWallet(),
     exposure: new SimulatedExposure(node),
+    builders: simBuilders,
+    counterparties: { sink: accountIdOf(SIM_SINK_SEED), victim: accountIdOf(SIM_VICTIM_SEED) },
     clock: node,
     fixtures,
   };

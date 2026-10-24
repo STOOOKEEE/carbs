@@ -9,16 +9,15 @@
  * Fresh accounts only.
  */
 import { reactive } from "vue";
-import { DEFAULT_FEE_DROPS, LAST_LEDGER_OFFSET, TF_FULLY_CANONICAL_SIG } from "./constants";
+import { TF_FULLY_CANONICAL_SIG } from "./constants";
 import {
   DeviceRejectedError,
   type Backend,
   type ExposureReport,
   type NodeResult,
   type TxJson,
+  type UnsignedTx,
 } from "./ports";
-import * as build from "./tx-builders";
-import type { UnsignedTx } from "./tx-builders";
 
 export type StepStatus = "todo" | "ok" | "failed" | "refused";
 
@@ -63,6 +62,7 @@ const STEP_TEMPLATES: readonly Pick<MigrationStep, "id" | "title" | "signedBy">[
 ];
 
 export function createMigration(backend: Backend) {
+  const build = backend.builders;
   const state = reactive<MigrationState>({
     address: null,
     steps: [],
@@ -112,15 +112,12 @@ export function createMigration(backend: Backend) {
   }
 
   async function envelope(tx: UnsignedTx): Promise<TxJson> {
-    const account = await backend.node.accountInfo(tx.Account);
-    const server = await backend.node.serverInfo();
+    const common = await backend.node.commonFields(tx.Account);
     const out: TxJson = {
       ...tx,
-      Fee: DEFAULT_FEE_DROPS,
+      ...common,
       Flags: ((tx.Flags ?? 0) | TF_FULLY_CANONICAL_SIG) >>> 0,
-      LastLedgerSequence: server.ledgerIndex + 1 + LAST_LEDGER_OFFSET,
     };
-    if (account !== null) out.Sequence = account.sequence;
     return out;
   }
 

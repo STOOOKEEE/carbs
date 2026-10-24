@@ -7,6 +7,8 @@
  */
 import {
   ASF_DISABLE_MASTER,
+  DEFAULT_FEE_DROPS,
+  LAST_LEDGER_OFFSET,
   MAX_SESSION_DURATION_SEC,
   PERMISSION_MAX_SIZE,
   SESSION_FEE_MULTIPLE,
@@ -25,6 +27,8 @@ import type {
   AccountInfo,
   AccountObjects,
   AccountTxPage,
+  CommonFields,
+  CommonFieldsOptions,
   HistoryEntry,
   NodePort,
   NodeResult,
@@ -243,6 +247,16 @@ export class SimulatedNode implements NodePort, SimClock {
       createdLedger: account.createdLedger,
       truncated: false,
     };
+  }
+
+  async commonFields(account: string, options: CommonFieldsOptions = {}): Promise<CommonFields> {
+    const info = this.accounts.get(account);
+    const common: CommonFields = { Fee: options.fee ?? DEFAULT_FEE_DROPS };
+    if (info !== undefined) common.Sequence = info.sequence;
+    if (options.omitLastLedger !== true) {
+      common.LastLedgerSequence = this.openLedger() + LAST_LEDGER_OFFSET;
+    }
+    return common;
   }
 
   explorerUrl(): string | null {
