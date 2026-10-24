@@ -13,4 +13,5 @@ One short file per decision that is expensive to reverse. Format: Status, Contex
 | [0007](0007-front-from-create-xrp.md)                      | The web app starts from the `create-xrp` Nuxt template                                     | Accepted                             |
 | [0008](0008-post-quantum-root-classical-or-pq-sessions.md) | A post-quantum root on the device; session keys are P-256 by default and ML-DSA when asked | Accepted; superseded in part by 0011 |
 | [0009](0009-licence.md)                                    | Apache-2.0 for the code written here                                                       | Accepted                             |
+| [0010](0010-tickets-for-multisig-coordination.md)          | How sessions use tickets, which serve multisig coordination                                | Proposed                             |
 | [0011](0011-two-account-profiles.md)                       | Two account profiles; a Ledger account uses ML-DSA-44 session keys                         | Accepted                             |
