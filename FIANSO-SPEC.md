@@ -63,6 +63,7 @@ Taken by Sofiane, **for the whole team**.
 | **D12** | Licence | **Apache-2.0** for the code written here (the `ledger-app/` base is Apache-2.0); changes meant for `rippled/` follow its ISC licence. See `LICENSE` and the README. |
 | **D13** | Account profiles | **Two profiles, one session engine** ([ADR 0011](docs/adr/0011-two-account-profiles.md), §8.5). **Ledger account**: master key disabled, `RegularKey` = the device's ML-DSA-44 key, **never a passkey** (a passkey has full authority and cannot be replaced or removed, so it would defeat the device and the post-quantum root); every transaction made with the account's own authority, session openings included, is signed on the device; its session keys are ML-DSA-44 keys generated in the client. **Mac account**: master key and a passkey; sessions are opened by the passkey; the session key is a non-extractible P-256 WebCrypto key. |
 | **D14** | ML-DSA-44 session keys | **The amendment accepts them.** Nothing in it depends on the key type of a session key; the code path, and the tests that settle what is still unverified, are in §6.14. Case 20 with ML-DSA-44 belongs to N4. |
+| **D15** | Tickets and sessions | **Tickets serve multisig coordination**: collecting signatures out of order without blocking the account sequence. How sessions should use tickets is a **proposal, not adopted**: [ADR 0010](docs/adr/0010-tickets-for-multisig-coordination.md) (three options, codes checked free, a recommendation). Nothing is implemented for it, and §6 is unchanged until an option is adopted. |
 
 ---
 
@@ -726,7 +727,7 @@ Rehearse three times on a real passkey and the real Stax. Figures in the pitch a
 | Rejected `tef` tx held and replayed under a reopened session | unexpected execution | mandatory `LastLedgerSequence` within 256 ledgers (protocol rule) |
 | P-256 malleability | modifiable tx id | low-S and strict DER client-side; identify by `(Account, Sequence)` |
 
-**Not claimed**: that mode A protects funds (it protects **control**); that Face ID is post-quantum; that alphanet passkeys are defect-free; that a Mac account is post-quantum (its master key, passkey and session keys are classical); that a Ledger account's session key is out of reach of the page (it is extractable); that the Ledger screen proves the session key belongs to the right page (it proves the **rules**, not who holds the key). Beneficiary: a session-signed transaction counts as owner activity for the beneficiary time lock and no session can be created for the beneficiary key. Contention: session transactions share the account's sequence space; tickets do not change authority.
+**Not claimed**: that mode A protects funds (it protects **control**); that Face ID is post-quantum; that alphanet passkeys are defect-free; that a Mac account is post-quantum (its master key, passkey and session keys are classical); that a Ledger account's session key is out of reach of the page (it is extractable); that the Ledger screen proves the session key belongs to the right page (it proves the **rules**, not who holds the key). Beneficiary: a session-signed transaction counts as owner activity for the beneficiary time lock and no session can be created for the beneficiary key. Contention: session transactions share the account's sequence space; tickets do not change authority. Tickets serve multisig coordination (D15); today a session-signed transaction may consume any ticket of the account, including one an in-flight multi-signed transaction needs, and ADR 0010 proposes how to prevent it.
 
 ---
 
@@ -796,6 +797,7 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 2. UNVERIFIED on this device: loading route on a Stax, the smaller-buffer build variant and its real RAM, `MLDSA_internal_keygen` linkage in an app-xrp build, the exact DMK 1.11 send-APDU API, a new P2 value for P-256 (L6), the rendering of 10 permission lines.
 3. Not yet shown by a test: the WebAuthn challenge comparison (P5, read in code, regression test pending), the exposure search cost (K7), the AlphaNet accepting the migration order (K3 extended), and whether the base builds.
 4. XLS-Sessions final text from the implementation.
+5. **ADR 0010** (tickets and sessions, D15): adopt an option before N2 if it adds a field (option 3 adds UINT32 115), or its rule alone before N4 (it changes case 13).
 
 ---
 
