@@ -4,8 +4,8 @@
 |---|---|
 | **Author** | Sofiane ("fianso", [@STOOOKEEE](https://github.com/STOOOKEEE)). |
 | **Status** | **Draft of a possible next version.** [`FIANSO-SPEC.md`](FIANSO-SPEC.md) (v0, on `main`) remains the reference until a decision says otherwise. This file lives on the personal branch `fianso/spec-v1`. Nothing here is decided; items needing a decision are listed in [§9](#9-decisions-to-take-for-v1). |
-| **Written** | 2026-10-24, before the hackathon kickoff. Documentation only, no implementation code. |
-| **Relation to v0** | v1 keeps everything in v0 (protocol, Ledger clear signing, client, spikes, conventions) and **adds what makes it useful to the whole XRPL community** instead of one demo. Sections not repeated here are unchanged. |
+| **Written** | 2026-10-24, around noon ET, after the 10:00 ET kickoff and before any implementation code. Documentation only. |
+| **Relation to v0** | v1 keeps everything in v0 (protocol, Ledger clear signing, client, spikes, conventions) and **adds what makes it useful to the whole XRPL community** instead of one demo. Sections not repeated here are unchanged. Note that v1 was written after the kickoff, like v0 (see the README, "Before the kickoff / During the hackathon"). |
 
 ---
 
