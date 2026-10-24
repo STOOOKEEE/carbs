@@ -11,7 +11,14 @@ import {
 } from "@carbs/ledger";
 
 import { element, guarded } from "./dom.ts";
-import { type TxJson, accountInfo, autofill, read, submitAndWait } from "./ledger.ts";
+import {
+  type SubmittedTx,
+  type TxJson,
+  accountInfo,
+  autofill,
+  read,
+  submitAndWait,
+} from "./ledger.ts";
 import { explorerLink, log, logError } from "./log.ts";
 import { type Connection, requestFunding } from "./account.ts";
 
@@ -55,7 +62,18 @@ async function accountState(
   };
 }
 
-async function signAndSubmit(connection: Connection, tx: TxJson, withPq: boolean): Promise<void> {
+/** The connected Stax account, and whether its account is now controlled by its ML-DSA key. */
+export function staxAccount(): { address: string; postQuantum: boolean } | undefined {
+  if (ledger === undefined) return undefined;
+  return { address: ledger.account.address, postQuantum: ui.payPq.checked };
+}
+
+/** Signs a transaction of the Stax account on the device (classical or ML-DSA key) and submits it. */
+export async function signAndSubmitWithStax(
+  connection: Connection,
+  tx: TxJson,
+  withPq: boolean,
+): Promise<SubmittedTx> {
   if (ledger === undefined) throw new Error("connect the Ledger first");
   const filled = await autofill(connection.node, connection.defs, {
     ...tx,
@@ -72,6 +90,7 @@ async function signAndSubmit(connection: Connection, tx: TxJson, withPq: boolean
     `${String(tx["TransactionType"])} signé ${withPq ? "en ML-DSA-44" : "avec la clé classique"} sur la Stax :`,
     submitted,
   );
+  return submitted;
 }
 
 export async function refreshLedgerPanel(connection: Connection | undefined): Promise<void> {
@@ -140,12 +159,12 @@ export function setupLedgerPanel(
     run(async () => {
       const connection = getConnection();
       if (connection === undefined || pqKey === undefined) return;
-      await signAndSubmit(
+      await signAndSubmitWithStax(
         connection,
         { TransactionType: "SetRegularKey", RegularKey: pqKey.address },
         false,
       );
-      await signAndSubmit(
+      await signAndSubmitWithStax(
         connection,
         { TransactionType: "AccountSet", SetFlag: ASF_DISABLE_MASTER },
         false,
@@ -161,7 +180,7 @@ export function setupLedgerPanel(
       const amount = Number(ui.payAmount.value);
       if (!Number.isFinite(amount) || amount <= 0)
         throw new Error("the amount must be a positive number of XRP");
-      await signAndSubmit(
+      await signAndSubmitWithStax(
         connection,
         {
           TransactionType: "Payment",

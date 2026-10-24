@@ -90,6 +90,74 @@
         </form>
       </section>
 
+      <section id="session-section">
+        <h2>Sessions de signature</h2>
+        <p class="muted">
+          Une validation (Touch ID ou Stax) ouvre une session ; la clé de session signe ensuite sans
+          rien demander, dans les limites que le nœud fait respecter. Mode C : paiements XRP
+          plafonnés.
+        </p>
+        <div id="session-info" class="muted">Aucune session ouverte.</div>
+        <div class="actions">
+          <label
+            >Ouvrir avec
+            <select id="session-opener">
+              <option value="passkey">Touch ID (compte passkey)</option>
+              <option value="stax">Ledger Stax</option>
+            </select></label
+          >
+          <label
+            >Durée (s) <input id="session-duration" type="number" min="1" max="600" value="300"
+          /></label>
+          <label
+            >Plafond total (XRP)
+            <input id="session-cap" type="number" min="0.000001" step="any" value="50"
+          /></label>
+          <label
+            >Max par paiement (XRP)
+            <input id="session-max-per-tx" type="number" min="0.000001" step="any" value="20"
+          /></label>
+          <label class="inline"
+            ><input id="session-witness" type="checkbox" /> exiger un témoin</label
+          >
+          <button id="session-open" type="button">Ouvrir la session</button>
+        </div>
+        <form id="session-pay-form">
+          <label
+            >Destination <input id="session-pay-destination" required placeholder="r…"
+          /></label>
+          <label
+            >Montant (XRP)
+            <input
+              id="session-pay-amount"
+              required
+              type="number"
+              min="0.000001"
+              step="any"
+              value="5"
+          /></label>
+          <button type="submit">Payer avec la clé de session (sans validation)</button>
+        </form>
+        <h3>Attaques</h3>
+        <div class="actions">
+          <button id="attack-regular-key" type="button" class="secondary">
+            Clé volée : changer la RegularKey
+          </button>
+          <button id="attack-per-tx" type="button" class="secondary">
+            Dépasser le max par paiement
+          </button>
+          <button id="attack-no-witness" type="button" class="secondary">
+            Payer sans le témoin
+          </button>
+          <button id="session-close" type="button" class="secondary">
+            Fermer la session (par la clé)
+          </button>
+          <button id="attack-after-close" type="button" class="secondary">
+            Payer après la fermeture
+          </button>
+        </div>
+      </section>
+
       <section>
         <h2>Journal</h2>
         <ol id="log"></ol>

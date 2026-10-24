@@ -6,6 +6,7 @@ import { accountInfo, loadDefinitions, read } from "./ledger.ts";
 import { refreshLedgerPanel, setupLedgerPanel } from "./ledger-panel.ts";
 import { explorerLink, log, logError } from "./log.ts";
 import { NodeClient } from "./rpc.ts";
+import { refreshSessionPanel, setupSessionPanel } from "./session-panel.ts";
 import { type StoredWallet, clearWallet, loadWallet, saveWallet } from "./storage.ts";
 import {
   type Connection,
@@ -75,6 +76,7 @@ async function refreshPasskeyWallet(): Promise<void> {
 async function refresh(): Promise<void> {
   await refreshPasskeyWallet();
   await refreshLedgerPanel(connection);
+  await refreshSessionPanel(connection);
 }
 
 const run = (action: () => Promise<void>) => guarded(action, logError, refresh);
@@ -143,6 +145,11 @@ ui.payForm.addEventListener("submit", (event) => {
 });
 
 setupLedgerPanel(() => connection, refresh);
+setupSessionPanel(
+  () => connection,
+  () => wallet,
+  refresh,
+);
 
 async function start(): Promise<void> {
   const node = await NodeClient.connect(NODE_URL);

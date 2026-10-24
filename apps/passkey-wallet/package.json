@@ -9,7 +9,8 @@
     "build": "vite build",
     "serve": "node server/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "session-demo": "node scripts/session-demo.ts"
   },
   "dependencies": {
     "ripple-binary-codec": "2.11.0",

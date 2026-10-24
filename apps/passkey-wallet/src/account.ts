@@ -91,24 +91,34 @@ export async function lockToPasskey(
   return [regularKey, disableMaster];
 }
 
-/** A payment signed by the passkey (Touch ID): the challenge is the transaction's signing data. */
-export async function payWithPasskey(
+/** Any transaction of the account, signed by its passkey (Touch ID): the challenge is its signing data. */
+export async function signAndSubmitWithPasskey(
   { node, defs }: Connection,
   wallet: StoredWallet,
-  destination: string,
-  amountXrp: number,
+  tx: TxJson,
 ): Promise<SubmittedTx> {
   if (wallet.passkey === undefined) throw new Error("register a passkey first");
-  if (!Number.isFinite(amountXrp) || amountXrp <= 0)
-    throw new Error("the amount must be a positive number of XRP");
-  const drops = Math.round(amountXrp * DROPS_PER_XRP);
   const unsigned = await autofill(node, defs, {
-    TransactionType: "Payment",
+    ...tx,
     Account: wallet.address,
-    Destination: destination,
-    Amount: String(drops),
     SigningPubKey: wallet.passkey.publicKey,
   });
   const signed = await signWithPasskey(wallet.passkey, unsigned, encodeForSigning(unsigned, defs));
   return submitAndWait(node, defs, signed);
+}
+
+/** A payment signed by the passkey. */
+export async function payWithPasskey(
+  connection: Connection,
+  wallet: StoredWallet,
+  destination: string,
+  amountXrp: number,
+): Promise<SubmittedTx> {
+  if (!Number.isFinite(amountXrp) || amountXrp <= 0)
+    throw new Error("the amount must be a positive number of XRP");
+  return signAndSubmitWithPasskey(connection, wallet, {
+    TransactionType: "Payment",
+    Destination: destination,
+    Amount: String(Math.round(amountXrp * DROPS_PER_XRP)),
+  });
 }
