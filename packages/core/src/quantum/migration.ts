@@ -17,7 +17,12 @@ import { bytesToHex, equalBytes } from "../bytes.js";
 import { kDisableMasterFlagName } from "../constants.js";
 import type { Definitions } from "../definitions.js";
 import type { TxJson } from "../encode.js";
-import { fetchCommonFields, submitAndWait, type FinalResult, type NodeClient } from "../node.js";
+import {
+  fetchCommonFields,
+  submitSignedAndWait,
+  type FinalResult,
+  type NodeClient,
+} from "../node.js";
 import { signTransaction, type BytesSigner } from "../sign.js";
 import type { ExposureReport } from "./exposure.js";
 
@@ -187,12 +192,7 @@ async function runStep(
 ): Promise<FinalResult> {
   const common = await fetchCommonFields(options.node, account);
   const signed = await signTransaction({ ...step.tx, ...common }, signer, options.defs);
-  const result = await submitAndWait(
-    options.node,
-    signed.blob,
-    signed.hash,
-    common.LastLedgerSequence,
-  );
+  const result = await submitSignedAndWait(options.node, signed, common.LastLedgerSequence);
   options.onStep?.(step, result);
   return result;
 }

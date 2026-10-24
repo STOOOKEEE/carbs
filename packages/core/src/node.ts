@@ -329,9 +329,22 @@ export interface FinalResult {
   submit: SubmitResult;
 }
 
+/** Who sent the transaction and which sequence or ticket it consumes. */
+export interface TxIdentity {
+  account: string;
+  sequence: number;
+  ticketSequence?: number;
+}
+
 export interface WaitOptions {
   pollIntervalMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Also find the transaction by `(Account, Sequence)` (or `TicketSequence`) when its hash is not
+   * found: a P-256 signature can be re-encoded on the way (the node does not enforce low-S), which
+   * changes the id but not the sequence it consumes (FIANSO-SPEC.md section 8.3).
+   */
+  identity?: TxIdentity;
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -373,6 +386,10 @@ export async function submitAndWait(
       }
     } catch (error) {
       if (!(error instanceof RpcError && error.error === "txnNotFound")) throw error;
+      if (options.identity) {
+        const found = await findBySequence(node, options.identity);
+        if (found) return { ...found, submit };
+      }
     }
     const network = await getNetworkState(node);
     if (network.currentLedger > lastLedgerSequence + 1) {
@@ -386,6 +403,77 @@ export async function submitAndWait(
     }
     await sleep(interval);
   }
+}
+
+/** Entries of `account_tx` read when looking a transaction up by its sequence. */
+const kSequenceLookupLimit = 20;
+
+/**
+ * The validated transaction of `identity.account` that consumed `identity.sequence` (or its
+ * ticket), once the account's validated sequence has moved past it; `undefined` before that.
+ */
+export async function findBySequence(
+  node: NodeClient,
+  identity: TxIdentity,
+): Promise<Omit<FinalResult, "submit"> | undefined> {
+  if (identity.ticketSequence === undefined) {
+    const state = await getAccountState(node, identity.account, "validated");
+    if (!state || state.sequence <= identity.sequence) return undefined;
+  }
+  const result = await node.request("account_tx", {
+    account: identity.account,
+    ledger_index_min: -1,
+    ledger_index_max: -1,
+    limit: kSequenceLookupLimit,
+  });
+  if (!isObject(result) || !Array.isArray(result["transactions"])) return undefined;
+  for (const entry of result["transactions"]) {
+    if (!isObject(entry) || entry["validated"] === false) continue;
+    const tx = isObject(entry["tx_json"])
+      ? entry["tx_json"]
+      : isObject(entry["tx"])
+        ? entry["tx"]
+        : undefined;
+    const meta = isObject(entry["meta"]) ? entry["meta"] : undefined;
+    if (!tx || !meta || tx["Account"] !== identity.account) continue;
+    const matches =
+      identity.ticketSequence !== undefined
+        ? tx["TicketSequence"] === identity.ticketSequence
+        : tx["Sequence"] === identity.sequence;
+    if (!matches) continue;
+    const hash = typeof entry["hash"] === "string" ? entry["hash"] : tx["hash"];
+    const ledgerIndex =
+      typeof entry["ledger_index"] === "number" ? entry["ledger_index"] : tx["ledger_index"];
+    return {
+      hash: typeof hash === "string" ? hash : "",
+      result: str(meta["TransactionResult"], "TransactionResult"),
+      validated: true,
+      ledgerIndex: typeof ledgerIndex === "number" ? ledgerIndex : undefined,
+    };
+  }
+  return undefined;
+}
+
+/** `submitAndWait` for a signed transaction, found by its hash or by `(Account, Sequence)`. */
+export function submitSignedAndWait(
+  node: NodeClient,
+  signed: { blob: string; hash: string; tx: Record<string, unknown> & { Account: string } },
+  lastLedgerSequence: number,
+  options: Omit<WaitOptions, "identity"> = {},
+): Promise<FinalResult> {
+  return submitAndWait(node, signed.blob, signed.hash, lastLedgerSequence, {
+    ...options,
+    identity: identityOf(signed.tx),
+  });
+}
+
+/** The identity of a signed transaction, for `WaitOptions.identity`. */
+export function identityOf(tx: Record<string, unknown> & { Account: string }): TxIdentity {
+  const sequence = typeof tx["Sequence"] === "number" ? tx["Sequence"] : 0;
+  const ticket = tx["TicketSequence"];
+  return typeof ticket === "number" && sequence === 0
+    ? { account: tx.Account, sequence, ticketSequence: ticket }
+    : { account: tx.Account, sequence };
 }
 
 /** A ledger entry by index, or `undefined` when it does not exist. */
