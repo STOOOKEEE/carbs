@@ -6,12 +6,14 @@
 #include <test/jtx/batch.h>
 #include <test/jtx/delegate.h>
 #include <test/jtx/delivermin.h>
+#include <test/jtx/envconfig.h>
 #include <test/jtx/fee.h>
 #include <test/jtx/flags.h>
 #include <test/jtx/invoice_id.h>
 #include <test/jtx/last_ledger_sequence.h>
 #include <test/jtx/memo.h>
 #include <test/jtx/multisign.h>
+#include <test/jtx/noop.h>
 #include <test/jtx/offer.h>
 #include <test/jtx/owners.h>
 #include <test/jtx/pay.h>
@@ -28,8 +30,12 @@
 #include <test/jtx/txflags.h>
 #include <test/jtx/webauthn.h>
 
+#include <xrpld/app/main/Application.h>
+#include <xrpld/app/misc/TxQ.h>
+
 #include <xrpl/basics/strHex.h>
 #include <xrpl/beast/unit_test.h>
+#include <xrpl/config/Constants.h>
 #include <xrpl/json/to_string.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Firewall.h>
@@ -57,6 +63,7 @@
 #pragma pop_macro("TRANSACTION")
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -1585,6 +1592,161 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.require(Owners(alice, eligible.size() + eligibleGranular.size()));
     }
 
+    // Case 16: the firewall applies to the account, whatever key signs; a
+    // firewall does not stop a session from opening (FirewallAction::Allow).
+    void
+    testFirewall(FeatureBitset features)
+    {
+        testcase("firewall");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, carol{"carol"}, backup{"backup"}, stranger{"stranger"};
+        Account const keyA{"keyA"}, keyC{"keyC"};
+        env.fund(XRP(10000), alice, carol, backup, stranger);
+        env.close();
+        env(firewall::set(alice.id(), carol.id(), backup.id()));
+        env.close();
+        env(session::set(alice, keyA, 600), Txflags(tfAllTransactions));
+        env(session::set(alice, keyC, 600), session::Cap(XRP(100)));
+        env.close();
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        env(pay(alice, stranger, XRP(1)), Sig(keyA), lls(), Ter(tefFIREWALL_BLOCK));
+        env(pay(alice, stranger, XRP(1)), Sig(keyC), lls(), Ter(tefFIREWALL_BLOCK));
+        env(pay(alice, backup, XRP(1)), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, keyC) == XRP(1) + env.current()->fees().base);
+    }
+
+    // Case 22: a queued session-signed payment is dropped when its session
+    // expires, or is deleted, before the queue applies it; it claims no fee.
+    void
+    testQueue(FeatureBitset features)
+    {
+        testcase("transaction queue");
+        using namespace jtx;
+
+        Env env(*this, makeConfig({{Keys::kMinimumTxnInLedgerStandalone, "3"}}), features);
+        Account const alice{"alice"}, bob{"bob"}, carol{"carol"}, dave{"dave"};
+        Account const key1{"key1"}, key2{"key2"};
+        env.fund(XRP(50000), noripple(alice, bob, carol, dave));
+        env.close();
+        env(ticket::create(alice, 1));
+        env.close();
+        auto const ticket = env.seq(alice) - 1;
+
+        // Fill the open ledger past the size the queue expects, so that the
+        // next transaction at the base fee is held.
+        auto fillOpenLedger = [&] {
+            auto const metrics = env.app().getTxQ().getMetrics(*env.current());
+            std::array<Account const*, 3> const fillers{&bob, &carol, &dave};
+            for (std::size_t i = metrics.txInLedger; i <= metrics.txPerLedger; ++i)
+                env(noop(*fillers[i % fillers.size()]));
+        };
+        auto queuedFor = [&](Account const& account) {
+            return env.app().getTxQ().getAccountTxs(account.id()).size();
+        };
+
+        // Expiry: the session ends when the next ledger closes.
+        env(session::set(alice, key1, 20), Txflags(tfAllTransactions));
+        env.close();
+        auto const expiration = (*sessionEntry(env, alice, key1))[sfExpiration];
+        BEAST_EXPECT(parentCloseTime(env) < expiration);
+        fillOpenLedger();
+        auto const balance = env.balance(alice);
+        auto const bobBalance = env.balance(bob);
+        env(pay(alice, bob, XRP(1)),
+            Sig(key1),
+            LastLedgerSeq(env.current()->seq() + 10),
+            Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        env.close();
+        BEAST_EXPECT(parentCloseTime(env) >= expiration);
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(env.balance(bob) == bobBalance);
+
+        // Deletion: the owner closes the session by ticket while the payment
+        // waits in the queue.
+        env(session::set(alice, key2, 600), Txflags(tfAllTransactions));
+        env.close();
+        fillOpenLedger();
+        auto const before = env.balance(alice);
+        env(pay(alice, bob, XRP(1)),
+            Sig(key2),
+            LastLedgerSeq(env.current()->seq() + 10),
+            Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        auto const deleteFee = XRP(1);
+        env(session::del(alice, key2), ticket::Use(ticket), Fee(deleteFee));
+        BEAST_EXPECT(!sessionEntry(env, alice, key2));
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == before - deleteFee);
+    }
+
+    // Case 24: a session cannot sign for a pseudo-account (the refusal of
+    // Transactor::checkSign that the session path redoes). The state is
+    // written into the open ledger: a pseudo-account never opens a session.
+    void
+    testPseudoAccount(FeatureBitset features)
+    {
+        testcase("pseudo-account");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+        env.close();
+
+        env.app().getOpenLedger().modify([&](OpenView& view, beast::Journal) {
+            auto const sle = view.read(keylet::account(alice.id()));
+            if (!sle)
+                return false;
+            auto replacement = std::make_shared<SLE>(*sle);
+            (*replacement)[sfAMMID] = uint256{1};
+            view.rawReplace(replacement);
+            return true;
+        });
+        env(pay(alice, bob, XRP(1)),
+            Sig(key),
+            LastLedgerSeq(env.current()->seq() + 10),
+            Ter(tefBAD_AUTH));
+    }
+
+    // Case 24, the sponsorship decision: a fee sponsor may pay for an
+    // opening; the reserve stays the account's.
+    void
+    testFeeSponsoredOpen(FeatureBitset features)
+    {
+        testcase("fee-sponsored opening");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, sponsor{"sponsor"}, key{"key"};
+        env.fund(XRP(10000), alice, sponsor);
+        env.close();
+        auto const aliceBalance = env.balance(alice);
+        auto const sponsorBalance = env.balance(sponsor);
+        auto const fee = env.current()->fees().base;
+
+        env(session::set(alice, key, 600),
+            Txflags(tfAllTransactions),
+            sponsor::As(sponsor, spfSponsorFee),
+            Sig(sfSponsorSignature, sponsor),
+            Fee(fee * 2));
+        env.close();
+        BEAST_EXPECT(sessionEntry(env, alice, key));
+        env.require(Owners(alice, 1));
+        BEAST_EXPECT(env.balance(alice) == aliceBalance);
+        BEAST_EXPECT(env.balance(sponsor) == sponsorBalance - fee * 2);
+    }
+
 public:
     void
     run() override
@@ -1619,6 +1781,10 @@ public:
         testModeCShapes(all);
         testModeCAccounting(all);
         testModeCAntiDrain(all);
+        testFirewall(all);
+        testQueue(all);
+        testPseudoAccount(all);
+        testFeeSponsoredOpen(all);
         testRegularKeyAndLastLedger(all);
         testModeP(all);
         testKeyTypes(all);
