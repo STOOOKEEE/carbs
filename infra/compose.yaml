@@ -1,0 +1,49 @@
+# The carbs demo stack: standalone xrpld, its ledger closer, and the passkey wallet.
+# Run from infra/: XRPLD_BIN=/path/to/xrpld GENESIS_SEED=… docker compose up -d
+# Ports are published on 127.0.0.1 only; `tailscale serve` (or another TLS proxy) exposes them:
+#   wss://<host>:9448 -> 127.0.0.1:18006 (node), https://<host>:9449 -> 127.0.0.1:18080 (wallet).
+
+services:
+  xrpld:
+    image: debian:trixie-slim
+    # First start: a fresh genesis ledger (--start). Later starts reload the last ledger (--load).
+    command:
+      - sh
+      - -c
+      - >-
+        if [ -d /var/lib/xrpld/db/nudb ];
+        then exec /opt/xrpld/xrpld --conf /etc/xrpld/standalone.cfg -a --load --silent;
+        else exec /opt/xrpld/xrpld --conf /etc/xrpld/standalone.cfg -a --start --silent; fi
+    volumes:
+      - ${XRPLD_BIN:?set XRPLD_BIN to the xrpld binary}:/opt/xrpld/xrpld:ro
+      - ./standalone.cfg:/etc/xrpld/standalone.cfg:ro
+      - xrpld-data:/var/lib/xrpld
+    ports:
+      - "127.0.0.1:18006:6006"
+    restart: unless-stopped
+
+  closer:
+    image: node:22-slim
+    command: ["node", "/infra/closer.ts"]
+    environment:
+      XRPLD_ADMIN_WS: ws://xrpld:6007
+    volumes:
+      - ./closer.ts:/infra/closer.ts:ro
+    depends_on: [xrpld]
+    restart: unless-stopped
+
+  wallet:
+    build:
+      context: ..
+      dockerfile: apps/passkey-wallet/Dockerfile
+    environment:
+      XRPLD_WS: ws://xrpld:6006
+      GENESIS_SEED: ${GENESIS_SEED:?set GENESIS_SEED to the genesis account seed}
+      PORT: "8080"
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on: [xrpld]
+    restart: unless-stopped
+
+volumes:
+  xrpld-data:
