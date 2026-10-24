@@ -11,12 +11,10 @@ import {
   transactionHash,
   type TxJson,
 } from "./encode.js";
-import {
-  alphanetDefinitions,
-  simulatedSessionDefinitions,
-} from "./testing/simulated-definitions.js";
+import { alphanetDefinitions, standaloneDefinitions } from "./testing/simulated-definitions.js";
 
-const defs = simulatedSessionDefinitions();
+/** The node's own definitions (N2 merged), no longer the SIMULATED ones. */
+const defs = standaloneDefinitions();
 
 const payment: TxJson = {
   TransactionType: "Payment",
@@ -53,7 +51,7 @@ describe("encoding", () => {
     expect(() => encodeForDevice({ ...payment, TxnSignature: "00" }, defs)).toThrow(EncodeError);
   });
 
-  it("encodes a SigningSessionSet with the field codes of section 6.1 (SIMULATED definitions)", () => {
+  it("encodes a SigningSessionSet with the field codes of section 6.1 (the node's definitions)", () => {
     const tx: TxJson = {
       TransactionType: "SigningSessionSet",
       Account: payment.Account,

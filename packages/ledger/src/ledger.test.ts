@@ -14,7 +14,7 @@ import {
   signTransaction,
   type TxJson,
 } from "@carbs/sessions";
-import { simulatedSessionDefinitions } from "@carbs/sessions/testing";
+import { standaloneDefinitions } from "@carbs/sessions/testing";
 import { describe, expect, it } from "vitest";
 import {
   DeviceError,
@@ -34,7 +34,7 @@ import { deviceClassicSigner, deviceMlDsaSigner } from "./signers.js";
 import { SimulatedDevice } from "./simulated-device.js";
 import { bip39Seed, deviceMlDsaSeed, slip21Node } from "./slip21.js";
 
-const defs = simulatedSessionDefinitions();
+const defs = standaloneDefinitions();
 const vectors = new URL("../../../ledger-app/tests/standalone/testcases/", import.meta.url);
 /** The address the app's own tests substitute for `OWN_ADDR`. */
 const kOwnAddress = "rTooLkitCksh5mQa67eaa2JaWHDBnHkpy";
