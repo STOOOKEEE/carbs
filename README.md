@@ -15,7 +15,7 @@ On XRPL a key has all the authority of an account or none, and a public key that
 
    A session is opened with **one ordinary signature**, from the Stax (which shows the rules on its screen) or from a passkey. A session key can never change who controls the account.
 
-3. **A quantum exposure check and a one-step migration** for any XRPL account, plus community tooling: a Device Management Kit Ledger adapter for `xrpl-connect`, the `@carbs/sessions` library and a `create-xrp` template.
+3. **A quantum exposure check and a guided migration** for any XRPL account, plus community tooling: a Device Management Kit Ledger adapter for `xrpl-connect`, the `@carbs/sessions` library and a `create-xrp` template.
 
 > **Status: architecture only.** The repository contains the two upstream bases (imported unmodified), the workspace skeleton, CI, the architecture and the specification. There is no amendment, no Ledger clear signing and no client code yet. This README says what exists and changes as it does.
 
@@ -55,7 +55,7 @@ pnpm typecheck
 pnpm test
 ```
 
-The daemon and the Ledger app have their own build and test commands, listed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Commits and pull requests follow the rippled conventions (section 14 of the specification, [`.github/pull_request_template.md`](.github/pull_request_template.md)).
+The daemon and the Ledger app have their own build and test commands: see [`docs/BUILDING.md`](docs/BUILDING.md) (recorded from a working daemon build) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Commits and pull requests follow the rippled conventions (section 14 of the specification, [`.github/pull_request_template.md`](.github/pull_request_template.md)).
 
 ### Ripple DevRel DevEx capture hook (optional, per developer)
 

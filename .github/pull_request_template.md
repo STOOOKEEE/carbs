@@ -3,7 +3,7 @@
 <!--
 A summary of the change. Keep it short; it may become the squash commit body.
 If it is too broad, split it into several PRs.
-Link the task (N, L, W or K number of FIANSO-SPEC.md) or the issue.
+Link the task (N, L, W, K, Q or E number of FIANSO-SPEC.md) or the issue.
 -->
 
 ## Context of Change

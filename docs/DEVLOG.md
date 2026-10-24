@@ -1,6 +1,6 @@
 # DEVLOG
 
-What was done, removed, ignored or simulated, dated. This is the source of the README's prior-work note and of the honesty slide.
+What was done, removed, ignored or simulated, dated. This is the source of the README's prior-work note and of the final presentation.
 
 ## 2026-10-24
 
@@ -11,6 +11,6 @@ What was done, removed, ignored or simulated, dated. This is the source of the R
 - The scope is widened to a post-quantum root on the device, a quantum exposure check with migration, and community tooling (a Device Management Kit adapter for `xrpl-connect`, a `create-xrp` template). The agent payment scene is reserved, not planned.
 - Licence: Apache-2.0 for the code written here.
 - Installed locally and not committed: the Ripple DevRel DevEx capture hook.
-- The previous daemon build of another project was removed from the development machine, and the daemon of this repository is built from `rippled/` (Debug, with the existing Conan cache).
+- The daemon of this repository is built from `rippled/` (Debug, with the existing Conan cache): `xrpld version 3.4.1+DEBUG`; the upstream `PasskeyListSet` suite passes on the imported tree (11 cases, 250 tests, 0 failures). Recipe in `docs/BUILDING.md`.
 - **Not done yet**: the Ledger app has not been built or loaded on the Stax; no spike (K1 to K8) has run; the protocol codes have not been re-checked on the imported tree (spike K5).
 - **Simulated**: nothing.

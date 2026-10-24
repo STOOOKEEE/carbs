@@ -1,7 +1,7 @@
 {
   "name": "carbs",
   "private": true,
-  "description": "Ledger-enforced signing sessions for the XRP Ledger: protocol, Ledger app, client.",
+  "description": "Quantum-safe, delegable signing for the XRP Ledger: a protocol amendment (signing sessions), a Ledger app with an ML-DSA root key, a client library.",
   "packageManager": "pnpm@10.18.3",
   "engines": {
     "node": ">=22.18"
