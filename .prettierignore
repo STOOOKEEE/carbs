@@ -1,0 +1,7 @@
+# Upstream imports are never reformatted (see UPSTREAM.md)
+rippled/
+ledger-app/
+xrpl-devex-hook/
+pnpm-lock.yaml
+FIANSO-SPEC.md
+FIANSO-SPEC-v1.md
