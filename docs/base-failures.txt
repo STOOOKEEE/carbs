@@ -1,7 +1,8 @@
 # Failures of ./xrpld --unittest on the imported tree, one line per failing assertion.
 # Format: suite <tab> count <tab> file:line <tab> message. Each suite was run alone.
 # Regenerate a run in this format and diff it against this file to find new failures.
-# Only with --unittest-jobs=6, passing when run alone: SignatureVerification (1 failure),
+# Only with --unittest-jobs=6, passing when run alone: SignatureVerification (1 failure, the timing
+# assertion at rippled/src/test/app/STTXSigning_test.cpp:73),
 # ValidatorSite (1, "database is locked") and ValidatorSiteV2 (did not complete). Not listed below.
 AMMBinned	1	-	unhandled exception: Number: divide by 0
 AMMBinned	20	rippled/src/test/app/AMMBinned_test.cpp:1029	Got tecINVARIANT_FAILED; Expected tesSUCCESS
