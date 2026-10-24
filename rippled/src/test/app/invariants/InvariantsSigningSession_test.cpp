@@ -17,6 +17,7 @@
 #include <xrpl/protocol/LedgerFormats.h>
 #include <xrpl/protocol/Protocol.h>
 #include <xrpl/protocol/STAmount.h>
+#include <xrpl/protocol/STArray.h>
 #include <xrpl/protocol/TxFlags.h>
 #include <xrpl/protocol/jss.h>
 
@@ -57,6 +58,17 @@ class InvariantsSigningSession_test : public InvariantsBase
                 env(session::set(a1, key(), 600), session::Cap(XRP(100)));
             return true;
         };
+    }
+
+    // The own close of A1's session, signed by its session key.
+    static STTx
+    ownClose()
+    {
+        return STTx{ttSIGNING_SESSION_DELETE, [](STObject& tx) {
+                        tx.setFieldVL(sfSigningPubKey, key().pk().slice());
+                        tx.setAccountID(sfSessionKey, key().id());
+                        tx.setFieldU32(sfLastLedgerSequence, 1000);
+                    }};
     }
 
     // A Payment from A1 to A2 signed by A1's session key.
@@ -168,6 +180,31 @@ class InvariantsSigningSession_test : public InvariantsBase
             TxAccount::A1);
     }
 
+    // Rule 1 with a ticket: the creation adds one to the owner count and the
+    // ticket removes one; a creation that forgot its owner count leaves the
+    // count one lower.
+    void
+    testCreateByTicket()
+    {
+        testcase("rule 1: a creation by ticket");
+        using namespace jtx;
+
+        doInvariantCheck(
+            {{"a signing session was created or deleted without its owner count"}},
+            [](Account const& a1, Account const&, ApplyContext& ac) {
+                auto sle = newSession(a1, parentCloseTime(ac) + 60);
+                sle->setFlag(lsfAllTransactions);
+                ac.view().insert(sle);
+                // The ticket is consumed, the session not counted.
+                return bumpOwnerCount(a1, ac, -1);
+            },
+            XRPAmount{},
+            STTx{ttSIGNING_SESSION_SET, [](STObject& tx) { tx.setFieldU32(sfTicketSequence, 5); }},
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            {},
+            TxAccount::A1);
+    }
+
     // Rule 2: the fields of a session never change, there is exactly one
     // mode, and Expiration is within the maximum duration at creation.
     void
@@ -197,6 +234,43 @@ class InvariantsSigningSession_test : public InvariantsBase
                 open('A'),
                 TxAccount::A1);
         }
+
+        // Permissions, and Account.
+        doInvariantCheck(
+            {{"a signing session changed a field that never changes"}},
+            [](Account const& a1, Account const&, ApplyContext& ac) {
+                auto const sle = ac.view().peek(sessionOf(a1));
+                if (!sle)
+                    return false;
+                STArray permissions(sfPermissions, 1);
+                STObject permission = STObject::makeInnerObject(sfPermission);
+                permission.setFieldU32(sfPermissionValue, ttTRUST_SET + 1);
+                permissions.push_back(std::move(permission));
+                sle->setFieldArray(sfPermissions, permissions);
+                ac.view().update(sle);
+                return true;
+            },
+            XRPAmount{},
+            STTx{ttACCOUNT_SET, [](STObject&) {}},
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            open('P'),
+            TxAccount::A1);
+
+        doInvariantCheck(
+            {{"a signing session changed a field that never changes"}},
+            [](Account const& a1, Account const& a2, ApplyContext& ac) {
+                auto const sle = ac.view().peek(sessionOf(a1));
+                if (!sle)
+                    return false;
+                (*sle)[sfAccount] = a2.id();
+                ac.view().update(sle);
+                return true;
+            },
+            XRPAmount{},
+            STTx{ttACCOUNT_SET, [](STObject&) {}},
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            open('A'),
+            TxAccount::A1);
 
         // The mode flag and the cap.
         doInvariantCheck(
@@ -352,6 +426,30 @@ class InvariantsSigningSession_test : public InvariantsBase
             TxAccount::A1);
     }
 
+    // Rule 3: the own close is exempt from the count, so it never moves it.
+    void
+    testOwnCloseSpent()
+    {
+        testcase("rule 3: the own close does not count");
+        using namespace jtx;
+
+        doInvariantCheck(
+            {{"a signing session's SessionSpent changed outside a transaction it signed"}},
+            [](Account const& a1, Account const&, ApplyContext& ac) {
+                auto const sle = ac.view().peek(sessionOf(a1));
+                if (!sle)
+                    return false;
+                (*sle)[sfSessionSpent] = drops(10);
+                ac.view().update(sle);
+                return true;
+            },
+            XRPAmount{},
+            ownClose(),
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            open('C'),
+            TxAccount::A1);
+    }
+
     // Rule 4: a mode-C session transaction takes no more XRP than its
     // session counts, and creates no reserve the cap does not see.
     void
@@ -397,6 +495,22 @@ class InvariantsSigningSession_test : public InvariantsBase
                 if (!account)
                     return false;
                 (*account)[sfSponsoringOwnerCount] = 1;
+                ac.view().update(account);
+                return true;
+            },
+            XRPAmount{},
+            sessionPayment(),
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            open('C'),
+            TxAccount::A1);
+
+        doInvariantCheck(
+            {{"a mode-C session transaction changed a sponsoring count"}},
+            [](Account const& a1, Account const&, ApplyContext& ac) {
+                auto const account = ac.view().peek(keylet::account(a1.id()));
+                if (!account)
+                    return false;
+                (*account)[sfSponsoringAccountCount] = 1;
                 ac.view().update(account);
                 return true;
             },
@@ -543,8 +657,7 @@ class InvariantsSigningSession_test : public InvariantsBase
             TxAccount::A1);
     }
 
-    // The valid shapes pass: a mode-C payment that counts what it takes, and
-    // an own close.
+    // The valid shape passes: a mode-C payment that counts what it takes.
     void
     testValid()
     {
@@ -576,16 +689,42 @@ class InvariantsSigningSession_test : public InvariantsBase
             TxAccount::A1);
     }
 
+    // The own close of a mode-C session, which deletes it, passes.
+    void
+    testValidOwnClose()
+    {
+        testcase("a valid own close passes");
+        using namespace jtx;
+
+        doInvariantCheck(
+            {},
+            [](Account const& a1, Account const&, ApplyContext& ac) {
+                auto const sle = ac.view().peek(sessionOf(a1));
+                if (!sle)
+                    return false;
+                ac.view().erase(sle);
+                return bumpOwnerCount(a1, ac, -1);
+            },
+            XRPAmount{},
+            ownClose(),
+            {tesSUCCESS, tesSUCCESS},
+            open('C'),
+            TxAccount::A1);
+    }
+
 public:
     void
     run() override
     {
         testCreateAndDelete();
+        testCreateByTicket();
         testFields();
         testSpent();
+        testOwnCloseSpent();
         testOutflow();
         testAuthority();
         testValid();
+        testValidOwnClose();
     }
 };
 

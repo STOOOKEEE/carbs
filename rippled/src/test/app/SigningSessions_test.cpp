@@ -1096,6 +1096,47 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(1) + env.current()->fees().base);
     }
 
+    // The anti-drain loop of N5 (spec 10.1): a leaked mode-C key that only
+    // sends payments failing with a fee-claiming tec burns fees until the
+    // cap stops it; the account loses no more than the cap.
+    void
+    testModeCAntiDrain(FeatureBitset features)
+    {
+        testcase("mode C anti-drain loop");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, carol{"carol"}, key{"key"};
+        env.fund(XRP(10000), alice);
+        env.close();
+        auto const fee = env.current()->fees().base;
+        auto const cap = fee * 10 + drops(1);
+        env(session::set(alice, key, 600), session::Cap(cap));
+        env.close();
+        auto const balance = env.balance(alice);
+
+        int burnt = 0;
+        while (true)
+        {
+            // One drop to an account that does not exist: tecNO_DST_INSUF_XRP.
+            auto const remaining = cap - sessionSpent(env, alice, key);
+            bool const fits = fee + drops(1) <= remaining;
+            env(pay(alice, carol, drops(1)),
+                Sig(key),
+                LastLedgerSeq(env.current()->seq() + 10),
+                Ter(fits ? TER{tecNO_DST_INSUF_XRP} : TER{tefSESSION_LIMIT}));
+            env.close();
+            if (!fits)
+                break;
+            ++burnt;
+            BEAST_EXPECT(burnt <= 10);
+        }
+        BEAST_EXPECT(burnt == 10);
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 10);
+        BEAST_EXPECT(balance - env.balance(alice) == fee * 10);
+        BEAST_EXPECT(balance - env.balance(alice) <= cap);
+    }
+
     // Case 23 and 13: every path that claims a fee counts it, the amount only
     // on success; a payment by ticket applies.
     void
@@ -1577,6 +1618,7 @@ public:
         testModeC(all);
         testModeCShapes(all);
         testModeCAccounting(all);
+        testModeCAntiDrain(all);
         testRegularKeyAndLastLedger(all);
         testModeP(all);
         testKeyTypes(all);

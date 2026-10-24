@@ -192,14 +192,15 @@ ValidSigningSession::finalize(
         auto expected = delta;
         if (owner == account && tx.isFieldPresent(sfTicketSequence))
             --expected;
-        if (expected == 0)
-            continue;
 
-        auto const it = accounts_.find(owner);
-        if (it == accounts_.end() || !it->second.first || !it->second.second ||
-            std::int64_t{(*it->second.second)[sfOwnerCount]} -
-                    std::int64_t{(*it->second.first)[sfOwnerCount]} !=
-                expected)
+        std::int64_t actual = 0;
+        if (auto const it = accounts_.find(owner);
+            it != accounts_.end() && it->second.first && it->second.second)
+        {
+            actual = std::int64_t{(*it->second.second)[sfOwnerCount]} -
+                std::int64_t{(*it->second.first)[sfOwnerCount]};
+        }
+        if (actual != expected)
             fail("a signing session was created or deleted without its owner count");
     }
 
