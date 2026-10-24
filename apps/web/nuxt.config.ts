@@ -49,8 +49,6 @@ export default defineNuxtConfig({
       defaultNetwork: "alphanet",
       // Public WebSocket of the standalone node (infra/standalone.cfg); wss:// when hosted.
       localNodeUrl: "",
-      xamanApiKey: "",
-      walletConnectProjectId: "",
     },
   },
 

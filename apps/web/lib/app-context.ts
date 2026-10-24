@@ -25,3 +25,11 @@ export function createAppContext(network: NetworkStoreOptions = {}): AppContext 
     network: createNetworkStore(network),
   };
 }
+
+let shared: AppContext | null = null;
+
+/** One context per page: the plugins and the wallet adapters must see the same account. */
+export function sharedAppContext(network: NetworkStoreOptions = {}): AppContext {
+  shared ??= createAppContext(network);
+  return shared;
+}

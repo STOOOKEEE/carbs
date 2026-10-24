@@ -1,13 +1,18 @@
 import { flushPromises, mount, RouterLinkStub } from "@vue/test-utils";
+import { WalletManager } from "xrpl-connect";
 import type { Component } from "vue";
 import { createAppContext, type AppContext } from "~/lib/app-context";
 import type { NetworkStoreOptions } from "~/lib/network-store";
+import { createWalletAdapters } from "~/lib/wallets/adapters";
+import { createWalletsApi } from "~/lib/wallets/api";
+import { softwarePasskeySource } from "~/lib/wallets/passkey";
 import {
   BACKEND_KEY,
   DEMO_KEY,
   DEVICE_PROMPT_KEY,
   MIGRATION_KEY,
   NETWORK_KEY,
+  WALLETS_KEY,
 } from "~/lib/context";
 
 /** Mount a screen on a fresh SIMULATED backend whose device approves every review. */
@@ -16,6 +21,12 @@ export function mountScreen(
   options: { autoApprove?: boolean; network?: NetworkStoreOptions } = {},
 ) {
   const ctx: AppContext = createAppContext(options.network);
+  const adapters = createWalletAdapters(
+    { backend: ctx.backend, demo: ctx.demo, network: ctx.network },
+    softwarePasskeySource(),
+  );
+  const manager = new WalletManager({ adapters, autoConnect: false, logger: { level: "error" } });
+  const wallets = createWalletsApi(manager, adapters, ctx.backend, true);
   if (options.autoApprove !== false) ctx.backend.simDevice.setApprover(async () => true);
   const wrapper = mount(component, {
     global: {
@@ -27,11 +38,12 @@ export function mountScreen(
           app.provide(MIGRATION_KEY, ctx.migration);
           app.provide(DEVICE_PROMPT_KEY, ctx.prompt);
           app.provide(NETWORK_KEY, ctx.network);
+          app.provide(WALLETS_KEY, wallets);
         },
       ],
     },
   });
-  return { ctx, wrapper };
+  return { ctx, wrapper, wallets };
 }
 
 export { flushPromises };

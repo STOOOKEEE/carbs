@@ -6,7 +6,7 @@ import SimBadge from "~/components/ui/SimBadge.vue";
 import { WEBHID_MESSAGE, hasWebHid } from "~/lib/browser-support";
 import { useBackend, useDemo } from "~/lib/context";
 import { formatXrp, shortAddress } from "~/lib/format";
-import type { Profile } from "~/lib/demo";
+import { PROFILE_LABELS, type Profile } from "~/lib/demo";
 
 const backend = useBackend();
 const demo = useDemo();
@@ -96,7 +96,7 @@ async function create(profile: Profile): Promise<void> {
             <dd class="mono" data-testid="address">{{ state.address }}</dd>
             <dt>Profile</dt>
             <dd>
-              {{ state.profile === "ledger" ? "Ledger account" : "Mac account"
+              {{ state.profile ? PROFILE_LABELS[state.profile] : ""
               }}{{ state.passkeyOnly ? " (passkey-only)" : "" }}
             </dd>
             <dt>Balance</dt>
