@@ -24,9 +24,9 @@ The number of files matches `git ls-files` upstream (2300 and 6763).
 `create-xrp` is a generator, not a repository, so `apps/web/` is its output, generated outside the repository and copied in:
 
 ```sh
-cd /private/tmp && npx --yes create-xrp@0.5.0 web --framework nuxt --pm pnpm --no-experimental --skip-install
-rsync -a --exclude .git --exclude README.md web/ carbs/apps/web/
-cp web/README.md carbs/apps/web/README.create-xrp.md   # apps/web/README.md is ours and stays
+scratch="$(mktemp -d)" && cd "$scratch" && npx --yes create-xrp@0.5.0 web --framework nuxt --pm pnpm --no-experimental --skip-install
+rsync -a --exclude .git --exclude README.md "$scratch/web/" <repository>/apps/web/
+cp "$scratch/web/README.md" <repository>/apps/web/README.create-xrp.md   # apps/web/README.md is ours and stays
 ```
 
 What the generator does (read in `create-xrp/dist/index.js` of the 0.5.0 tarball): it refuses an existing target folder (`:1031-1033`), copies the bundled template (`:806-809`), keeps the Nuxt app and renames it `web` (`:1155-1170`), and without experimental primitives flattens the app to the project root, deletes the `packages` key of `pnpm-workspace.yaml` but keeps its other settings, and pins `xrpl` to `^4.0.0` (`:1223-1273`, `:762-776`); it then runs `git init` and a first commit even with `--skip-install` (`:1296-1330`), which is why it runs outside the repository. The 30 files tracked by that first commit are copied byte for byte; the only rename is the generated `README.md`, kept unchanged as `apps/web/README.create-xrp.md` in the import commit. Later commits of ours replace the template's pages, header, payment form and Testnet/Devnet list, and delete its README, QUICKSTART and `.env.local.example`; `apps/web/LICENSE` (MIT, Scaffold-XRP Contributors) stays. Find the import commit with `git log --diff-filter=A --format=%h -- apps/web/.scaffold-xrp.json`; `git diff <that commit> HEAD -- apps/web` shows our work.
