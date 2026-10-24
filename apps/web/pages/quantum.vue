@@ -1,0 +1,1 @@
+<template><QuantumScreen /></template>

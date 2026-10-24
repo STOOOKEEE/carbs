@@ -10,7 +10,7 @@
     "preview": "nuxt preview",
     "lint": "nuxt prepare && eslint .",
     "type-check": "nuxt typecheck",
-    "test": "node --test lib/payment.test.mjs server/utils/inline-scripts.test.mjs",
+    "test": "node --test lib/payment.test.mjs server/utils/inline-scripts.test.mjs && vitest run",
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
@@ -29,7 +29,11 @@
     "typescript": "5.9.3",
     "vue": "3.5.43",
     "vue-router": "4.6.4",
-    "vue-tsc": "3.3.12"
+    "vue-tsc": "3.3.12",
+    "@vue/test-utils": "2.4.6",
+    "happy-dom": "20.0.0",
+    "@vitejs/plugin-vue": "6.0.10",
+    "vitest": "^4.1.12"
   },
   "engines": {
     "node": "^22.18.0 || >=24.11.0",
