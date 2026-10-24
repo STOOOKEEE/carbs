@@ -53,6 +53,9 @@ pnpm install            # Node >= 22.18, pnpm 10.33.0 (see .nvmrc, package.json)
 pnpm format:check
 pnpm typecheck
 pnpm test
+
+# the standalone node, its closer, a dev faucet and the web app on the live backend:
+XRPLD_BIN=/path/to/xrpld GENESIS_SEED=… pnpm demo
 ```
 
 The daemon and the Ledger app have their own build and test commands: see [`docs/BUILDING.md`](docs/BUILDING.md) (recorded from a working daemon build) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Commits and pull requests follow the rippled conventions (section 14 of the specification, [`.github/pull_request_template.md`](.github/pull_request_template.md)).

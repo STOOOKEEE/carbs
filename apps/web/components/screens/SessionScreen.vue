@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyNote from "~/components/ui/BusyNote.vue";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import NeedAccount from "~/components/ui/NeedAccount.vue";
 import ResultView from "~/components/ui/ResultView.vue";
@@ -209,6 +210,7 @@ async function close(): Promise<void> {
         </section>
       </div>
 
+      <BusyNote :busy="state.busy" class="mt-4" />
       <p v-if="state.error" class="mt-4 text-danger" role="alert" data-testid="error">
         {{ state.error }}
       </p>
