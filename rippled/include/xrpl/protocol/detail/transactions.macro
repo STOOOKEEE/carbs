@@ -1620,3 +1620,28 @@ TRANSACTION(ttTOKEN_CONVERT, 128, TokenConvert,
     ({
     {sfAmount, SoeRequired, SoeMptSupported},
 }))
+
+/** This transaction opens a signing session: a key that signs for the account
+    within an expiry and one mode, both enforced by the ledger. */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/session/SigningSessionSet.h>
+#endif
+TRANSACTION(ttSIGNING_SESSION_SET, 130, SigningSessionSet,
+    ({.amendment = featureSigningSessions}),
+    ({
+    {sfSessionKey, SoeRequired},
+    {sfSessionDuration, SoeRequired},
+    {sfPermissions, SoeOptional},
+    {sfSessionCap, SoeOptional},
+}))
+
+/** This transaction closes a signing session. */
+#if TRANSACTION_INCLUDE
+#   include <xrpl/tx/transactors/session/SigningSessionDelete.h>
+#endif
+TRANSACTION(ttSIGNING_SESSION_DELETE, 131, SigningSessionDelete,
+    ({.amendment = featureSigningSessions}),
+    ({
+    {sfSessionKey, SoeRequired},
+    {sfOwner, SoeOptional},
+}))

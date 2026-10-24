@@ -953,5 +953,23 @@ LEDGER_ENTRY(ltTOKEN_ISSUANCE, 0x0099, TokenIssuance, token_issuance, ({
     {sfPreviousTxnLgrSeq,    SoeRequired},
 }))
 
+/** A signing session: a key that signs for the account until Expiration, in
+    one mode: every delegable type (lsfAllTransactions), a list of XLS-75
+    Permissions, or XRP payments up to SessionCap, fees included.
+
+    \sa keylet::signingSession
+ */
+LEDGER_ENTRY(ltSIGNING_SESSION, 0x009A, SigningSession, signing_session, ({
+    {sfAccount,              SoeRequired},
+    {sfSessionKey,           SoeRequired},
+    {sfExpiration,           SoeRequired},
+    {sfPermissions,          SoeOptional},
+    {sfSessionCap,           SoeOptional},
+    {sfSessionSpent,         SoeOptional},
+    {sfOwnerNode,            SoeRequired},
+    {sfPreviousTxnID,        SoeRequired},
+    {sfPreviousTxnLgrSeq,    SoeRequired},
+}))
+
 #undef EXPAND
 #undef LEDGER_ENTRY_DUPLICATE
