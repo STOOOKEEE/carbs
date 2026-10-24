@@ -19,6 +19,7 @@
 #include <xrpl/tx/invariants/PermissionedDEXInvariant.h>
 #include <xrpl/tx/invariants/PermissionedDomainInvariant.h>
 #include <xrpl/tx/invariants/RepoInvariant.h>
+#include <xrpl/tx/invariants/SigningSessionInvariant.h>
 #include <xrpl/tx/invariants/SponsorshipInvariant.h>
 #include <xrpl/tx/invariants/SubscriptionInvariant.h>
 #include <xrpl/tx/invariants/TokenIssuanceInvariant.h>
@@ -561,7 +562,8 @@ using InvariantChecks = std::tuple<
     ValidBallot,
     ValidBeneficiary,
     ValidCouponSchedule,
-    ValidTokenIssuance>;
+    ValidTokenIssuance,
+    ValidSigningSession>;
 
 /**
  * @brief get a tuple of all invariant checks
