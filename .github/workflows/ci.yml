@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript (format, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm
+        run: npm install --global pnpm@10.18.3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+
+# Not in CI on purpose, because they need the daemon build and a device:
+#   rippled/      ./xrpld --unittest=SigningSessions plus the upstream suites (see docs/ARCHITECTURE.md)
+#   ledger-app/   make in the ledger-app-builder image, cmocka unit tests, Ragger snapshots
+# They are run by hand and the results are recorded in docs/DEVLOG.md.
