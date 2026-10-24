@@ -1,0 +1,20 @@
+{
+  "name": "carbs",
+  "private": true,
+  "description": "Ledger-enforced signing sessions for the XRP Ledger: protocol, Ledger app, client.",
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.12"
+  }
+}

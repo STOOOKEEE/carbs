@@ -1,0 +1,838 @@
+#include <xrpl/protocol/SecretKey.h>
+
+#include <xrpl/basics/Buffer.h>
+#include <xrpl/basics/Slice.h>
+#include <xrpl/basics/base_uint.h>
+#include <xrpl/basics/contract.h>
+#include <xrpl/basics/strHex.h>
+#include <xrpl/beast/utility/rngfill.h>
+#include <xrpl/crypto/csprng.h>
+#include <xrpl/crypto/secure_erase.h>
+#include <xrpl/protocol/KeyType.h>
+#include <xrpl/protocol/PublicKey.h>
+#include <xrpl/protocol/Seed.h>
+#include <xrpl/protocol/detail/secp256k1.h>
+#include <xrpl/protocol/digest.h>
+#include <xrpl/protocol/tokens.h>
+
+#include <boost/utility/string_view.hpp>
+
+#include <openssl/bn.h>
+#include <openssl/ec.h>
+#include <openssl/ecdsa.h>
+#include <openssl/obj_mac.h>
+
+#include <ed25519.h>
+#include <secp256k1.h>
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <optional>
+#include <stdexcept>
+#include <utility>
+
+#pragma push_macro("L")
+#pragma push_macro("K")
+#pragma push_macro("N")
+#pragma push_macro("S")
+#pragma push_macro("U")
+#pragma push_macro("D")
+#undef L
+#undef K
+#undef N
+#undef S
+#undef U
+#undef D
+
+extern "C" {
+#include <api.h>
+#include <fips202.h>
+#include <packing.h>
+#include <params.h>
+#include <poly.h>
+#include <polyvec.h>
+#include <sign.h>
+}
+
+// Define the dilithium functions and sizes with respect to functions named here
+#ifndef CRYPTO_PUBLICKEYBYTES
+#define CRYPTO_PUBLICKEYBYTES pqcrystals_dilithium2_PUBLICKEYBYTES
+#endif
+
+#ifndef CRYPTO_SECRETKEYBYTES
+#define CRYPTO_SECRETKEYBYTES pqcrystals_dilithium2_SECRETKEYBYTES
+#endif
+
+#ifndef CRYPTO_BYTES
+#define CRYPTO_BYTES pqcrystals_dilithium2_BYTES
+#endif
+
+// Ties params.h's resolved size to the mode the archive was actually compiled
+// with (cmake/deps/dilithium.cmake), so a future mode change that isn't
+// propagated to this translation unit fails the build instead of corrupting
+// SecretKey's fixed-size buffer at runtime.
+static_assert(CRYPTO_PUBLICKEYBYTES == 1312, "Dilithium public key size mismatch");
+static_assert(
+    CRYPTO_SECRETKEYBYTES == xrpl::SecretKey::kDilithiumSize,
+    "Dilithium secret key size mismatch");
+
+#ifndef crypto_sign_keypair
+#define crypto_sign_keypair pqcrystals_dilithium2_ref_keypair
+#endif
+
+#ifndef crypto_sign_signature
+#define crypto_sign_signature pqcrystals_dilithium2_ref_signature
+#endif
+
+extern "C" void
+randombytes(uint8_t* buf, size_t size)
+{
+    beast::rngfill(buf, size, xrpl::cryptoPrng());
+}
+
+namespace xrpl {
+
+SecretKey::~SecretKey()
+{
+    secureErase(buf_, sizeof(buf_));
+}
+
+SecretKey::SecretKey(std::array<std::uint8_t, kSize> const& key)
+{
+    size_ = kSize;
+    std::memcpy(buf_, key.data(), key.size());
+}
+
+SecretKey::SecretKey(std::array<std::uint8_t, kDilithiumSize> const& key)
+{
+    size_ = kDilithiumSize;
+    std::memcpy(buf_, key.data(), key.size());
+}
+
+SecretKey::SecretKey(Slice const& slice)
+{
+    if (slice.size() != kSize && slice.size() != kDilithiumSize)
+        logicError("SecretKey::SecretKey: invalid size");
+    size_ = slice.size();
+    std::memcpy(buf_, slice.data(), size_);
+}
+
+std::string
+SecretKey::toString() const
+{
+    return strHex(*this);
+}
+
+namespace detail {
+
+void
+copyUInt32(std::uint8_t* out, std::uint32_t v)
+{
+    *out++ = v >> 24;
+    *out++ = (v >> 16) & 0xff;
+    *out++ = (v >> 8) & 0xff;
+    *out = v & 0xff;
+}
+
+uint256
+deriveDeterministicRootKey(Seed const& seed)
+{
+    // We fill this buffer with the seed and append a 32-bit "counter"
+    // that counts how many attempts we've had to make to generate a
+    // non-zero key that's less than the curve's order:
+    //
+    //                       1    2
+    //      0                6    0
+    // buf  |----------------|----|
+    //      |      seed      | seq|
+
+    std::array<std::uint8_t, 20> buf{};
+    std::ranges::copy(seed, buf.begin());
+
+    // The odds that this loop executes more than once are negligible
+    // but *just* in case someone managed to generate a key that required
+    // more iterations loop a few times.
+    for (std::uint32_t seq = 0; seq != 128; ++seq)
+    {
+        copyUInt32(buf.data() + 16, seq);
+
+        auto const ret = sha512Half(buf);
+
+        if (secp256k1_ec_seckey_verify(secp256k1Context(), ret.data()) == 1)
+        {
+            secureErase(buf.data(), buf.size());
+            return ret;
+        }
+    }
+
+    Throw<std::runtime_error>("Unable to derive generator from seed");
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Produces a sequence of secp256k1 key pairs.
+ *
+ * The reference implementation of the XRP Ledger uses a custom derivation
+ * algorithm which enables the derivation of an entire family of secp256k1
+ * keypairs from a single 128-bit seed. The algorithm predates widely-used
+ * standards like BIP-32 and BIP-44.
+ *
+ * Important note to implementers:
+ *
+ *     Using this algorithm is not required: all valid secp256k1 keypairs will
+ *     work correctly. Third party implementations can use whatever mechanisms
+ *     they prefer. However, implementers of wallets or other tools that allow
+ *     users to use existing accounts should consider at least supporting this
+ *     derivation technique to make it easier for users to 'import' accounts.
+ *
+ * For more details, please check out:
+ *     https://xrpl.org/cryptographic-keys.html#secp256k1-key-derivation
+ */
+class Generator
+{
+private:
+    uint256 root_;
+    std::array<std::uint8_t, 33> generator_{};
+
+    [[nodiscard]] uint256
+    calculateTweak(std::uint32_t seq) const
+    {
+        // We fill the buffer with the generator, the provided sequence
+        // and a 32-bit counter tracking the number of attempts we have
+        // already made looking for a non-zero key that's less than the
+        // curve's order:
+        //                                        3    3    4
+        //      0          pubGen                 3    7    1
+        // buf  |---------------------------------|----|----|
+        //      |            generator            | seq| cnt|
+
+        std::array<std::uint8_t, 41> buf{};
+        std::ranges::copy(generator_, buf.begin());
+        copyUInt32(buf.data() + 33, seq);
+
+        // The odds that this loop executes more than once are negligible
+        // but we impose a maximum limit just in case.
+        for (std::uint32_t subseq = 0; subseq != 128; ++subseq)
+        {
+            copyUInt32(buf.data() + 37, subseq);
+
+            auto const ret = sha512HalfS(buf);
+
+            if (secp256k1_ec_seckey_verify(secp256k1Context(), ret.data()) == 1)
+            {
+                secureErase(buf.data(), buf.size());
+                return ret;
+            }
+        }
+
+        Throw<std::runtime_error>("Unable to derive generator from seed");
+    }
+
+public:
+    explicit Generator(Seed const& seed) : root_(deriveDeterministicRootKey(seed))
+    {
+        secp256k1_pubkey pubkey;
+        if (secp256k1_ec_pubkey_create(secp256k1Context(), &pubkey, root_.data()) != 1)
+            logicError("derivePublicKey: secp256k1_ec_pubkey_create failed");
+
+        auto len = generator_.size();
+
+        if (secp256k1_ec_pubkey_serialize(
+                secp256k1Context(), generator_.data(), &len, &pubkey, SECP256K1_EC_COMPRESSED) != 1)
+            logicError("derivePublicKey: secp256k1_ec_pubkey_serialize failed");
+    }
+
+    ~Generator()
+    {
+        secureErase(root_.data(), root_.size());
+        secureErase(generator_.data(), generator_.size());
+    }
+
+    /**
+     * Generate the nth key pair.
+     */
+    std::pair<PublicKey, SecretKey>
+    operator()(std::size_t ordinal) const
+    {
+        // Generates Nth secret key:
+        auto gsk = [this, tweak = calculateTweak(ordinal)]() {
+            auto rpk = root_;
+
+            if (secp256k1_ec_seckey_tweak_add(secp256k1Context(), rpk.data(), tweak.data()) == 1)
+            {
+                SecretKey const sk{Slice{rpk.data(), rpk.size()}};
+                secureErase(rpk.data(), rpk.size());
+                return sk;
+            }
+
+            logicError("Unable to add a tweak!");
+        }();
+
+        return {derivePublicKey(KeyType::Secp256k1, gsk), gsk};
+    }
+};
+
+}  // namespace detail
+
+Buffer
+signDigest(PublicKey const& pk, SecretKey const& sk, uint256 const& digest)
+{
+    auto const type = publicKeyType(pk.slice());
+    if (!type)
+        logicError("signDigest: invalid key type");
+
+    switch (*type)
+    {
+        case KeyType::Secp256k1: {
+            BOOST_ASSERT(sk.size() == 32);
+            secp256k1_ecdsa_signature sigImp;
+            if (secp256k1_ecdsa_sign(
+                    secp256k1Context(),
+                    &sigImp,
+                    reinterpret_cast<unsigned char const*>(digest.data()),
+                    reinterpret_cast<unsigned char const*>(sk.data()),
+                    secp256k1_nonce_function_rfc6979,
+                    nullptr) != 1)
+                logicError("sign: secp256k1_ecdsa_sign failed");
+
+            unsigned char sig[72];
+            size_t len = sizeof(sig);
+            if (secp256k1_ecdsa_signature_serialize_der(secp256k1Context(), sig, &len, &sigImp) !=
+                1)
+                logicError("sign: secp256k1_ecdsa_signature_serialize_der failed");
+
+            return Buffer{sig, len};
+        }
+        case KeyType::Dilithium: {
+            uint8_t sig[CRYPTO_BYTES];
+            size_t len = 0;
+            uint8_t ctx[] = {};
+            size_t ctxlen = 0;
+            // Sign the digest data directly
+            crypto_sign_signature(
+                sig,
+                &len,
+                reinterpret_cast<unsigned char const*>(digest.data()),
+                digest.size(),
+                ctx,
+                ctxlen,
+                sk.data());
+            return Buffer{sig, len};
+        }
+        default:
+            logicError("signDigest: unsupported key type");
+    }
+}
+
+Buffer
+sign(PublicKey const& pk, SecretKey const& sk, Slice const& m)
+{
+    auto const type = publicKeyType(pk.slice());
+    if (!type)
+        logicError("sign: invalid type");
+    switch (*type)
+    {
+        case KeyType::Ed25519: {
+            Buffer b(64);
+            ed25519_sign(m.data(), m.size(), sk.data(), pk.data() + 1, b.data());
+            return b;
+        }
+        case KeyType::Secp256k1: {
+            sha512_half_hasher h;
+            h(m.data(), m.size());
+            auto const digest = sha512_half_hasher::result_type(h);
+
+            secp256k1_ecdsa_signature sigImp;
+            if (secp256k1_ecdsa_sign(
+                    secp256k1Context(),
+                    &sigImp,
+                    reinterpret_cast<unsigned char const*>(digest.data()),
+                    reinterpret_cast<unsigned char const*>(sk.data()),
+                    secp256k1_nonce_function_rfc6979,
+                    nullptr) != 1)
+                logicError("sign: secp256k1_ecdsa_sign failed");
+
+            unsigned char sig[72];
+            size_t len = sizeof(sig);
+            if (secp256k1_ecdsa_signature_serialize_der(secp256k1Context(), sig, &len, &sigImp) !=
+                1)
+                logicError("sign: secp256k1_ecdsa_signature_serialize_der failed");
+
+            return Buffer{sig, len};
+        }
+        case KeyType::Dilithium: {
+            uint8_t sig[CRYPTO_BYTES];
+            size_t len = 0;
+            uint8_t ctx[] = {};
+            size_t ctxlen = 0;
+            crypto_sign_signature(sig, &len, m.data(), m.size(), ctx, ctxlen, sk.data());
+            return Buffer{sig, len};
+        }
+        case KeyType::P256: {
+            // Hash the message with SHA-256 (P-256 uses ECDSA-SHA256)
+            auto digest = sha256(m);
+
+            // Create curve object
+            EC_GROUP* group = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
+            if (!group)
+                logicError("sign: EC_GROUP_new_by_curve_name failed");
+
+            // Create EC_KEY and set the group
+            EC_KEY* key = EC_KEY_new();
+            if (!key)
+            {
+                EC_GROUP_free(group);
+                logicError("sign: EC_KEY_new failed");
+            }
+
+            if (EC_KEY_set_group(key, group) != 1)
+            {
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("sign: EC_KEY_set_group failed");
+            }
+
+            // Convert secret key to BIGNUM and set as private key
+            BIGNUM* privKey =
+                BN_bin2bn(reinterpret_cast<unsigned char const*>(sk.data()), sk.size(), nullptr);
+
+            if (!privKey || EC_KEY_set_private_key(key, privKey) != 1)
+            {
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("sign: failed to set private key");
+            }
+
+            // Sign the digest
+            ECDSA_SIG* sigObj = ECDSA_do_sign(
+                reinterpret_cast<unsigned char const*>(digest.data()), digest.size(), key);
+
+            if (!sigObj)
+            {
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("sign: ECDSA_do_sign failed");
+            }
+
+            // Convert signature to DER format
+            unsigned char sig[72];
+            int len = i2d_ECDSA_SIG(sigObj, nullptr);
+            if (len <= 0 || len > 72)
+            {
+                ECDSA_SIG_free(sigObj);
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("sign: i2d_ECDSA_SIG length check failed");
+            }
+
+            unsigned char* sigPtr = sig;
+            if (i2d_ECDSA_SIG(sigObj, &sigPtr) != len)
+            {
+                ECDSA_SIG_free(sigObj);
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("sign: i2d_ECDSA_SIG serialization failed");
+            }
+
+            // Cleanup
+            ECDSA_SIG_free(sigObj);
+            BN_free(privKey);
+            EC_KEY_free(key);
+            EC_GROUP_free(group);
+
+            return Buffer{sig, static_cast<size_t>(len)};
+        }
+        default:
+            logicError("sign: invalid type");
+    }
+}
+
+SecretKey
+randomSecretKey()
+{
+    return randomSecretKey(KeyType::Secp256k1);
+}
+
+SecretKey
+randomSecretKey(KeyType type)
+{
+    switch (type)
+    {
+        case KeyType::Ed25519:
+        case KeyType::P256:
+        case KeyType::Secp256k1: {
+            std::uint8_t buf[32];
+            beast::rngfill(buf, sizeof(buf), cryptoPrng());
+            SecretKey const sk(Slice{buf, sizeof(buf)});
+            secureErase(buf, sizeof(buf));
+            return sk;
+        }
+        case KeyType::Dilithium: {
+            uint8_t pk[CRYPTO_PUBLICKEYBYTES];
+            uint8_t buf[CRYPTO_SECRETKEYBYTES];
+            crypto_sign_keypair(pk, buf);
+            SecretKey const sk(Slice{buf, CRYPTO_SECRETKEYBYTES});
+            secureErase(buf, sizeof(buf));
+            return sk;
+        }
+        default:
+            logicError("randomSecretKey: invalid KeyType");
+    }
+}
+
+int
+pqcrystals_dilithium2_ref_keypair_seed(uint8_t* pk, uint8_t* sk, uint8_t const* seed)
+{
+    uint8_t seedbuf[3 * SEEDBYTES];
+    uint8_t tr[CRHBYTES];
+    uint8_t const* rho;
+    uint8_t const* rhoprime;
+    uint8_t const* key;
+    polyvecl mat[K], s1, s1hat;
+    polyveck t1, t0, s2;
+
+    /* Use the provided seed to generate rho, rhoprime, and key */
+    shake256(seedbuf, 3 * SEEDBYTES, seed, SEEDBYTES);
+    rho = seedbuf;
+    rhoprime = rho + SEEDBYTES;
+    key = rhoprime + SEEDBYTES;
+
+    /* Expand matrix: the same library routine pqcrystals_dilithium2_ref_publickey
+     * uses below, so both derive identical A from rho. */
+    polyvec_matrix_expand(mat, rho);
+
+    /* Sample short vectors s1 and s2 using rhoprime */
+    polyvecl_uniform_eta(&s1, rhoprime, 0);
+    polyveck_uniform_eta(&s2, rhoprime, L);
+
+    /* Compute t = As1 + s2, the same library routines
+     * pqcrystals_dilithium2_ref_publickey uses. */
+    s1hat = s1;
+    polyvecl_ntt(&s1hat);
+    polyvec_matrix_pointwise_montgomery(&t1, mat, &s1hat);
+    polyveck_reduce(&t1);
+    polyveck_invntt_tomont(&t1);
+    polyveck_add(&t1, &t1, &s2);
+
+    /* Extract t1 and write public key */
+    polyveck_caddq(&t1);
+    polyveck_power2round(&t1, &t0, &t1);
+    pack_pk(pk, rho, &t1);
+
+    /* Hash rho and t1 to obtain tr */
+    uint8_t buf[CRYPTO_PUBLICKEYBYTES];
+    memcpy(buf, pk, CRYPTO_PUBLICKEYBYTES);
+    shake256(tr, CRHBYTES, buf, CRYPTO_PUBLICKEYBYTES);
+
+    /* Pack secret key */
+    pack_sk(sk, rho, tr, key, &t0, &s1, &s2);
+
+    /* Clean sensitive data */
+    secureErase(seedbuf, sizeof(seedbuf));
+    secureErase((void*)&s1, sizeof(s1));
+    secureErase((void*)&s1hat, sizeof(s1hat));
+    secureErase((void*)&s2, sizeof(s2));
+    secureErase((void*)&t0, sizeof(t0));
+    secureErase((void*)&t1, sizeof(t1));
+
+    return 0;
+}
+
+int
+pqcrystals_dilithium2_ref_publickey(uint8_t* pk, uint8_t const* sk)
+{
+    uint8_t seedbuf[3 * SEEDBYTES + 2 * CRHBYTES];
+    uint8_t *rho, *tr, *key;
+    polyvecl mat[K], s1, s1hat;
+    polyveck t0, t1, s2;
+
+    rho = seedbuf;
+    tr = rho + SEEDBYTES;
+    key = tr + SEEDBYTES;
+    unpack_sk(rho, tr, key, &t0, &s1, &s2, sk);
+
+    /* Expand matrix */
+    polyvec_matrix_expand(mat, rho);
+
+    /* Matrix-vector multiplication */
+    s1hat = s1;
+    polyvecl_ntt(&s1hat);
+    polyvec_matrix_pointwise_montgomery(&t1, mat, &s1hat);
+    polyveck_reduce(&t1);
+    polyveck_invntt_tomont(&t1);
+
+    /* Add error vector s2 */
+    polyveck_add(&t1, &t1, &s2);
+
+    /* Extract t1 and write public key */
+    polyveck_caddq(&t1);
+    polyveck_power2round(&t1, &t0, &t1);
+    pack_pk(pk, rho, &t1);
+
+    /* Clean sensitive data: seedbuf carries key (the signing seed), and the
+     * unpacked secret polynomials s1, s1hat, s2, t0 are private key material. */
+    secureErase(seedbuf, sizeof(seedbuf));
+    secureErase((void*)&s1, sizeof(s1));
+    secureErase((void*)&s1hat, sizeof(s1hat));
+    secureErase((void*)&s2, sizeof(s2));
+    secureErase((void*)&t0, sizeof(t0));
+
+    return 1;
+}
+
+SecretKey
+generateSecretKey(KeyType type, Seed const& seed)
+{
+    if (type == KeyType::Ed25519)
+    {
+        auto key = sha512HalfS(Slice(seed.data(), seed.size()));
+        SecretKey const sk{Slice{key.data(), key.size()}};
+        secureErase(key.data(), key.size());
+        return sk;
+    }
+
+    if (type == KeyType::Secp256k1)
+    {
+        auto key = detail::deriveDeterministicRootKey(seed);
+        SecretKey const sk{Slice{key.data(), key.size()}};
+        secureErase(key.data(), key.size());
+        return sk;
+    }
+
+    if (type == KeyType::Dilithium)
+    {
+        uint8_t pk[CRYPTO_PUBLICKEYBYTES];
+        uint8_t buf[CRYPTO_SECRETKEYBYTES];
+        auto key = sha512HalfS(Slice(seed.data(), seed.size()));
+        pqcrystals_dilithium2_ref_keypair_seed(pk, buf, key.data());
+        SecretKey const sk{Slice{buf, CRYPTO_SECRETKEYBYTES}};
+        secureErase(buf, CRYPTO_SECRETKEYBYTES);
+        secureErase(key.data(), key.size());
+        return sk;
+    }
+
+    if (type == KeyType::P256)
+    {
+        auto key = detail::deriveDeterministicRootKey(seed);
+        SecretKey const sk{Slice{key.data(), key.size()}};
+        secureErase(key.data(), key.size());
+        return sk;
+    }
+
+    logicError("generateSecretKey: unknown key type");
+}
+
+PublicKey
+derivePublicKey(KeyType type, SecretKey const& sk)
+{
+    switch (type)
+    {
+        case KeyType::Secp256k1: {
+            secp256k1_pubkey pubkeyImp;
+            if (secp256k1_ec_pubkey_create(
+                    secp256k1Context(),
+                    &pubkeyImp,
+                    reinterpret_cast<unsigned char const*>(sk.data())) != 1)
+                logicError("derivePublicKey: secp256k1_ec_pubkey_create failed");
+
+            unsigned char pubkey[33];
+            std::size_t len = sizeof(pubkey);
+            if (secp256k1_ec_pubkey_serialize(
+                    secp256k1Context(), pubkey, &len, &pubkeyImp, SECP256K1_EC_COMPRESSED) != 1)
+                logicError("derivePublicKey: secp256k1_ec_pubkey_serialize failed");
+
+            return PublicKey{Slice{pubkey, len}};
+        }
+        case KeyType::Ed25519: {
+            unsigned char buf[33];
+            buf[0] = 0xED;
+            ed25519_publickey(sk.data(), &buf[1]);
+            return PublicKey(Slice{buf, sizeof(buf)});
+        }
+        case KeyType::Dilithium: {
+            uint8_t pk_data[CRYPTO_PUBLICKEYBYTES];
+            if (pqcrystals_dilithium2_ref_publickey(pk_data, sk.data()) != 1)
+                logicError("derivePublicKey: secp256k1_ec_pubkey_serialize failed");
+
+            return PublicKey{Slice{pk_data, CRYPTO_PUBLICKEYBYTES}};
+        }
+        case KeyType::P256: {
+            // Create curve object
+            EC_GROUP* group = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
+            if (!group)
+                logicError("derivePublicKey: EC_GROUP_new_by_curve_name failed");
+
+            // Create EC_KEY and set the group
+            EC_KEY* key = EC_KEY_new();
+            if (!key)
+            {
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: EC_KEY_new failed");
+            }
+
+            if (EC_KEY_set_group(key, group) != 1)
+            {
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: EC_KEY_set_group failed");
+            }
+
+            // Convert secret key to BIGNUM
+            BIGNUM* privKey =
+                BN_bin2bn(reinterpret_cast<unsigned char const*>(sk.data()), sk.size(), nullptr);
+
+            if (!privKey)
+            {
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: BN_bin2bn failed");
+            }
+
+            // Set the private key
+            if (EC_KEY_set_private_key(key, privKey) != 1)
+            {
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: EC_KEY_set_private_key failed");
+            }
+
+            // Generate the public key from the private key
+            EC_POINT* pubKeyPoint = EC_POINT_new(group);
+            if (!pubKeyPoint)
+            {
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: EC_POINT_new failed");
+            }
+
+            if (EC_POINT_mul(group, pubKeyPoint, privKey, nullptr, nullptr, nullptr) != 1)
+            {
+                EC_POINT_free(pubKeyPoint);
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: EC_POINT_mul failed");
+            }
+
+            // Extract x and y coordinates
+            BIGNUM* x = BN_new();
+            BIGNUM* y = BN_new();
+            if (!x || !y ||
+                EC_POINT_get_affine_coordinates_GFp(group, pubKeyPoint, x, y, nullptr) != 1)
+            {
+                BN_free(x);
+                BN_free(y);
+                EC_POINT_free(pubKeyPoint);
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: EC_POINT_get_affine_coordinates_GFp failed");
+            }
+
+            // Convert coordinates to bytes
+            unsigned char buf[65];  // 1 prefix + 32-byte x + 32-byte y
+            buf[0] = 0xF6;          // P-256 prefix byte
+
+            // Convert x coordinate to 32 bytes
+            if (BN_bn2binpad(x, &buf[1], 32) != 32)
+            {
+                BN_free(x);
+                BN_free(y);
+                EC_POINT_free(pubKeyPoint);
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: BN_bn2binpad failed for x coordinate");
+            }
+
+            // Convert y coordinate to 32 bytes
+            if (BN_bn2binpad(y, &buf[33], 32) != 32)
+            {
+                BN_free(x);
+                BN_free(y);
+                EC_POINT_free(pubKeyPoint);
+                BN_free(privKey);
+                EC_KEY_free(key);
+                EC_GROUP_free(group);
+                logicError("derivePublicKey: BN_bn2binpad failed for y coordinate");
+            }
+
+            // Cleanup
+            BN_free(x);
+            BN_free(y);
+            EC_POINT_free(pubKeyPoint);
+            BN_free(privKey);
+            EC_KEY_free(key);
+            EC_GROUP_free(group);
+
+            return PublicKey{Slice{buf, sizeof(buf)}};
+        }
+        default:
+            logicError("derivePublicKey: bad key type");
+    };
+}
+
+std::pair<PublicKey, SecretKey>
+generateKeyPair(KeyType type, Seed const& seed)
+{
+    switch (type)
+    {
+        case KeyType::Secp256k1: {
+            detail::Generator const g(seed);
+            return g(0);
+        }
+        case KeyType::P256: {
+            auto const sk = generateSecretKey(type, seed);
+            return {derivePublicKey(type, sk), sk};
+        }
+        case KeyType::Ed25519: {
+            auto const sk = generateSecretKey(type, seed);
+            return {derivePublicKey(type, sk), sk};
+        }
+        case KeyType::Dilithium: {
+            auto const sk = generateSecretKey(type, seed);
+            return {derivePublicKey(type, sk), sk};
+        }
+        default:
+            throw std::invalid_argument("Unsupported key type");
+    }
+}
+
+std::pair<PublicKey, SecretKey>
+randomKeyPair(KeyType type)
+{
+    auto const sk = randomSecretKey(type);
+    return {derivePublicKey(type, sk), sk};
+}
+
+template <>
+std::optional<SecretKey>
+parseBase58(TokenType type, std::string const& s)
+{
+    auto result = decodeBase58Token(s, type);
+    if (result.empty())
+        return std::nullopt;
+    if (result.size() != SecretKey::kSize && result.size() != SecretKey::kDilithiumSize)
+        return std::nullopt;
+    SecretKey const sk(makeSlice(result));
+    secureErase(result.data(), result.size());
+    return sk;
+}
+
+}  // namespace xrpl
+
+#pragma pop_macro("K")
+#pragma pop_macro("L")
+#pragma pop_macro("N")
+#pragma pop_macro("S")
+#pragma pop_macro("U")
+#pragma pop_macro("D")

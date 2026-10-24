@@ -1,0 +1,34 @@
+# Feedback on the Ledger documentation and SDKs
+
+Ledger judges developer-experience feedback "as much as the code". This log is kept as we work (see section 7.6 of `FIANSO-SPEC.md`). One line when it happens, cleaned up later. `Minutes lost` is honest: `n/a` when we found something while reading and lost no time.
+
+## Time-savers for the next integrator (top of the document, filled at the end)
+
+- _to complete_
+
+## Log
+
+Template: `date/time ET · area · page or path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR`
+
+| When  | Area                                 | Where                                      | What happened or was missing                                                                                                                                                                                                                                                                                                                                       | Minutes lost                             | Suggested fix                                                                                            |
+| ----- | ------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 10-24 | Loading an app on a Stax             | `LedgerHQ/ledgerctl` README                | Lists Ledger Blue, Nano S, Nano X and Nano S Plus only; it does not say whether `ledgerctl` supports Stax or Flex, while `ledger-app-builder` says side-loading works on Stax and Flex                                                                                                                                                                             | n/a (found by reading)                   | State the supported devices, and what works from macOS where the builder image cannot reach USB          |
+| 10-24 | Loading from macOS                   | `ledger-app-builder` README                | The `make load` instructions need `--privileged` and `/dev/bus/usb` (Linux). Docker Desktop on macOS does not pass USB to a container; no alternative route is given on that page                                                                                                                                                                                  | n/a                                      | Add the macOS route (host-side loading tool) next to the Linux one                                       |
+| 10-24 | SLIP-21 app parameter                | `ledger-secure-sdk`                        | `PATH_SLIP21_APP_LOAD_PARAMS` is defined in `Makefile.app_params`, not in `Makefile.standard_app` where an app Makefile reader would look; the syntax (`= "<label>"`, a single path) is not documented where the parameter is needed                                                                                                                               | n/a                                      | Document the parameter next to the BIP32 path one in the app guide                                       |
+| 10-24 | Deterministic ML-DSA keys            | `ledger-secure-sdk` `lcx_mldsa.h`          | The public API has random `MLDSA_keygen` only; the deterministic, seed-based `MLDSA_internal_keygen` is in an internal header, so an app that needs keys recoverable from the 24 words has no documented path                                                                                                                                                      | n/a                                      | Expose a documented deterministic key generation, or document how an app should derive a recoverable key |
+| 10-24 | Clear signing a new transaction type | `LedgerHQ/app-xrp`                         | Adding a type touches `transaction_types.h`, `is_supported_transaction_type`, `resolve_transaction_name`, `fields.c`, `flags.c` (both `format_flags` and `has_unknown_flags`), `MAX_ARRAY_LEN` and the parser's final pass. A miss falls back to blind signing or "Unknown" without an error, and a missing `has_unknown_flags` case clear-signs unknown flag bits | n/a (found by reading; to confirm in L1) | A short guide "add clear signing for a transaction type" with this checklist                             |
+| 10-24 | Signing prefix                       | `device-signer-kit-xrp` and `app-xrp`      | The app prepends the signing prefix (`STX\0`) itself, the kit forwards the bytes unchanged; this is not stated in the kit documentation, and a client that sends `encodeForSigning` output would double the prefix                                                                                                                                                 | n/a                                      | State what bytes `signTransaction` expects                                                               |
+| 10-24 | Integrations                         | `XRPL-Commons/xrpl-connect` Ledger adapter | The adapter is built on the legacy ledgerjs packages (`@ledgerhq/hw-app-xrp`, `hw-transport-webhid`), while the Ledger documentation points to the Device Management Kit                                                                                                                                                                                           | n/a                                      | A DMK adapter (planned as a contribution) and a migration note                                           |
+
+## Overall experience (filled at the end)
+
+- _to complete_
+
+## Tutorial and code-sample ideas (filled at the end)
+
+- A guide "clear-sign a new XRPL transaction type on a Ledger app", built from the checklist above once L1 is done.
+- A minimal sample sending a custom transaction through the Device Management Kit.
+
+## Portal navigation and search notes (filled as we go)
+
+- _to complete_

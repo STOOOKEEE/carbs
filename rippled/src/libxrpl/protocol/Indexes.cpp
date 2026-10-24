@@ -1,0 +1,854 @@
+#include <xrpl/protocol/Indexes.h>
+
+#include <xrpl/basics/Slice.h>
+#include <xrpl/basics/base_uint.h>
+#include <xrpl/basics/safe_cast.h>
+#include <xrpl/beast/utility/instrumentation.h>
+#include <xrpl/protocol/AMMCore.h>
+#include <xrpl/protocol/AccountID.h>
+#include <xrpl/protocol/Asset.h>
+#include <xrpl/protocol/Book.h>
+#include <xrpl/protocol/Concepts.h>
+#include <xrpl/protocol/Issue.h>
+#include <xrpl/protocol/LedgerFormats.h>
+#include <xrpl/protocol/MPTIssue.h>
+#include <xrpl/protocol/Protocol.h>
+#include <xrpl/protocol/SField.h>
+#include <xrpl/protocol/STXChainBridge.h>
+#include <xrpl/protocol/SeqProxy.h>
+#include <xrpl/protocol/UintTypes.h>
+#include <xrpl/protocol/digest.h>
+#include <xrpl/protocol/jss.h>
+#include <xrpl/protocol/nftPageMask.h>
+
+#include <boost/endian/conversion.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <set>
+#include <utility>
+#include <variant>
+#include <vector>
+
+namespace xrpl {
+
+// This list should include all of the keylet functions that take a single
+// AccountID parameter. Declared in Indexes.h; defined here so the header need
+// not include jss.h.
+std::array<KeyletDesc<AccountID const&>, 6> const kDirectAccountKeylets{
+    {{.function = &keylet::account, .expectedLEName = jss::AccountRoot, .includeInTests = false},
+     {.function = &keylet::ownerDir, .expectedLEName = jss::DirectoryNode, .includeInTests = true},
+     {.function = &keylet::signerList, .expectedLEName = jss::SignerList, .includeInTests = true},
+     // It's normally impossible to create an item at nftpage_min, but
+     // test it anyway, since the invariant checks for it.
+     {.function = &keylet::nftokenPageMin,
+      .expectedLEName = jss::NFTokenPage,
+      .includeInTests = true},
+     {.function = &keylet::nftokenPageMax,
+      .expectedLEName = jss::NFTokenPage,
+      .includeInTests = true},
+     {.function = &keylet::did, .expectedLEName = jss::DID, .includeInTests = true}}};
+/**
+ * Type-specific prefix for calculating ledger indices.
+ *
+ * The identifier for a given object within the ledger is calculated based
+ * on some object-specific parameters. To ensure that different types of
+ * objects have different indices, even if they happen to use the same set
+ * of parameters, we use "tagged hashing" by adding a type-specific prefix.
+ *
+ * @note These values are part of the protocol and *CANNOT* be arbitrarily
+ *       changed. If they were, on-ledger objects may no longer be able to
+ *       be located or addressed.
+ *
+ *       Additions to this list are OK, but changing existing entries to
+ *       assign them a different values should never be needed.
+ *
+ *       Entries that are removed should be moved to the bottom of the enum
+ *       and marked as [[deprecated]] to prevent accidental reuse.
+ */
+enum class LedgerNameSpace : std::uint16_t {
+    Account = 'a',
+    DirNode = 'd',
+    TrustLine = 'r',
+    Offer = 'o',
+    OwnerDir = 'O',
+    BookDir = 'B',
+    SkipList = 's',
+    Escrow = 'u',
+    Amendments = 'f',
+    FeeSettings = 'e',
+    Ticket = 'T',
+    SignerList = 'S',
+    XRPPaymentChannel = 'x',
+    Check = 'C',
+    DepositPreauth = 'p',
+    DepositPreauthCredentials = 'P',
+    NegativeUnl = 'N',
+    NftokenOffer = 'q',
+    NftokenBuyOffers = 'h',
+    NftokenSellOffers = 'i',
+    Amm = 'A',
+    Bridge = 'H',
+    XchainClaimId = 'Q',
+    XchainCreateAccountClaimId = 'K',
+    Did = 'I',
+    Oracle = 'R',
+    MPTokenIssuance = '~',
+    MPToken = 't',
+    Credential = 'D',
+    PermissionedDomain = 'm',
+    Delegate = 'E',
+    Vault = 'V',
+    LoanBroker = 'l',  // lower-case L
+    Loan = 'L',
+    AmmPosition = 'G',
+    AmmTick = 'J',
+    AmmTickBitmap = 'K',
+    AmmBin = 'B',
+    AmmBinHolding = 'b',
+    PasskeyList = 'k',
+    Sponsorship = '>',
+    Ballot = 'F',
+    BallotVote = 'v',
+    Firewall = 'W',
+    WithdrawPreauth = 'w',
+    Repo = 'Z',
+    Beneficiary = 'Y',
+    CouponSchedule = 'M',
+    Subscription = 'U',
+    TokenIssuance = 'X',
+
+    // No longer used or supported. Left here to reserve the space to avoid accidental reuse.
+    Contract [[deprecated]] = 'c',
+    Generator [[deprecated]] = 'g',
+    Nickname [[deprecated]] = 'n',
+};
+
+template <class... Args>
+static uint256
+indexHash(LedgerNameSpace space, Args const&... args)
+{
+    return sha512Half(safeCast<std::uint16_t>(space), args...);
+}
+
+uint256
+getBookBase(Book const& book)
+{
+    XRPL_ASSERT(isConsistent(book), "xrpl::getBookBase : input is consistent");
+
+    constexpr std::uint8_t kIssueToMPTTag = 0x01;
+    constexpr std::uint8_t kMPTToIssueTag = 0x02;
+    constexpr std::uint8_t kMPTToMPTTag = 0x03;
+
+    auto getIndexHash = [&book]<typename... Args>(Args... args) {
+        if (book.domain)
+            return indexHash(std::forward<Args>(args)..., *book.domain);
+        return indexHash(std::forward<Args>(args)...);
+    };
+
+    auto const index = std::visit(
+        [&]<ValidIssueType TIn, ValidIssueType TOut>(TIn const& in, TOut const& out) {
+            if constexpr (std::is_same_v<TIn, Issue> && std::is_same_v<TOut, Issue>)
+            {
+                return getIndexHash(
+                    LedgerNameSpace::BookDir, in.currency, out.currency, in.account, out.account);
+            }
+            // The three MPT-involving branches are new under MPTokensV2 and
+            // each gets a 1-byte discriminator to prevent preimage collisions
+            // between branches: the (Issue,MPT) and (MPT,Issue) preimages
+            // are both 64 bytes of raw concatenation, so without a
+            // per-branch tag chosen Currency / MPTID / AccountID values can
+            // align byte-for-byte and produce the same BookDir keylet for
+            // two distinct markets. (Issue,Issue) is left untagged to
+            // preserve existing mainnet order-book keylets.
+            else if constexpr (std::is_same_v<TIn, Issue> && std::is_same_v<TOut, MPTIssue>)
+            {
+                return getIndexHash(
+                    LedgerNameSpace::BookDir,
+                    kIssueToMPTTag,
+                    in.currency,
+                    out.getMptID(),
+                    in.account);
+            }
+            else if constexpr (std::is_same_v<TIn, MPTIssue> && std::is_same_v<TOut, Issue>)
+            {
+                return getIndexHash(
+                    LedgerNameSpace::BookDir,
+                    kMPTToIssueTag,
+                    in.getMptID(),
+                    out.currency,
+                    out.account);
+            }
+            else
+            {
+                return getIndexHash(
+                    LedgerNameSpace::BookDir, kMPTToMPTTag, in.getMptID(), out.getMptID());
+            }
+        },
+        book.in.value(),
+        book.out.value());
+
+    // Return with quality 0.
+    auto k = keylet::quality({ltDIR_NODE, index}, 0);
+
+    return k.key;
+}
+
+uint256
+getQualityNext(uint256 const& uBase)
+{
+    static constexpr uint256 kNextQuality(
+        "0000000000000000000000000000000000000000000000010000000000000000");
+    return uBase + kNextQuality;
+}
+
+std::uint64_t
+getQuality(uint256 const& uBase)
+{
+    // VFALCO [base_uint] This assumes a certain storage format
+    //
+    // Load the final 8 bytes as a big-endian integer.  load_big_u64 reads
+    // through unaligned byte storage (via memcpy) and applies the endian
+    // conversion, avoiding the alignment/strict-aliasing UB of casting the
+    // unsigned char* returned by end() to a std::uint64_t*.
+    return boost::endian::load_big_u64(uBase.end() - 8);
+}
+
+MPTID
+makeMptID(std::uint32_t const sequence, AccountID const& account)
+{
+    MPTID u;
+    auto const bigEndianSequence = boost::endian::native_to_big(sequence);
+    memcpy(u.data(), &bigEndianSequence, sizeof(bigEndianSequence));
+    memcpy(u.data() + sizeof(bigEndianSequence), account.data(), sizeof(account));
+    return u;
+}
+
+//------------------------------------------------------------------------------
+
+namespace keylet {
+
+Keylet
+account(AccountID const& id) noexcept
+{
+    return Keylet{ltACCOUNT_ROOT, indexHash(LedgerNameSpace::Account, id)};
+}
+
+Keylet
+child(uint256 const& key) noexcept
+{
+    return {ltCHILD, key};
+}
+
+Keylet const&
+skip() noexcept
+{
+    static Keylet const kRet{ltLEDGER_HASHES, indexHash(LedgerNameSpace::SkipList)};
+    return kRet;
+}
+
+Keylet
+skip(LedgerIndex ledger) noexcept
+{
+    return {
+        ltLEDGER_HASHES,
+        indexHash(
+            LedgerNameSpace::SkipList, std::uint32_t(static_cast<std::uint32_t>(ledger) >> 16))};
+}
+
+Keylet const&
+amendments() noexcept
+{
+    static Keylet const kRet{ltAMENDMENTS, indexHash(LedgerNameSpace::Amendments)};
+    return kRet;
+}
+
+Keylet const&
+feeSettings() noexcept
+{
+    static Keylet const kRet{ltFEE_SETTINGS, indexHash(LedgerNameSpace::FeeSettings)};
+    return kRet;
+}
+
+Keylet const&
+negativeUNL() noexcept
+{
+    static Keylet const kRet{ltNEGATIVE_UNL, indexHash(LedgerNameSpace::NegativeUnl)};
+    return kRet;
+}
+
+Keylet
+book(Book const& b)
+{
+    return {ltDIR_NODE, getBookBase(b)};
+}
+
+Keylet
+trustLine(AccountID const& id0, AccountID const& id1, Currency const& currency) noexcept
+{
+    // There is code in TrustSet that calls us with id0 == id1, to allow users
+    // to locate and delete such "weird" trustlines. If we remove that code, we
+    // could enable this assert:
+    // XRPL_ASSERT(id0 != id1, "xrpl::keylet::trustLine : accounts must be
+    // different");
+
+    // A trust line is shared between two accounts; while we typically think
+    // of this as an "issuer" and a "holder" the relationship is actually fully
+    // bidirectional.
+    //
+    // So that we can generate a unique ID for a trust line, regardess of which
+    // side of the line we're looking at, we define a "canonical" order for the
+    // two accounts (smallest then largest)  and hash them in that order:
+    auto const accounts = std::minmax(id0, id1);
+
+    return {
+        ltRIPPLE_STATE,
+        indexHash(LedgerNameSpace::TrustLine, accounts.first, accounts.second, currency)};
+}
+
+Keylet
+offer(AccountID const& id, SeqProxy const& seq) noexcept
+{
+    return {ltOFFER, indexHash(LedgerNameSpace::Offer, id, seq.value())};
+}
+
+Keylet
+quality(Keylet const& k, std::uint64_t const q) noexcept
+{
+    XRPL_ASSERT(k.type == ltDIR_NODE, "xrpl::keylet::quality : valid input type");
+
+    // Indexes are stored in big endian format: they print as hex as stored.
+    // Most significant bytes are first and the least significant bytes
+    // represent adjacent entries. We place the quality, in big endian format,
+    // in the 8 right most bytes; this way, incrementing goes to the next entry
+    // for indexes.
+    uint256 x = k.key;
+
+    // Store the quality as a big-endian integer in the final 8 bytes.
+    // store_big_u64 writes through unaligned byte storage (via memcpy) and
+    // applies the endian conversion, avoiding the alignment/strict-aliasing UB
+    // of casting the unsigned char* returned by end() to a std::uint64_t*.
+    boost::endian::store_big_u64(x.end() - 8, q);
+
+    return {ltDIR_NODE, x};
+}
+
+Keylet
+next(Keylet const& k)
+{
+    XRPL_ASSERT(k.type == ltDIR_NODE, "xrpl::keylet::next : valid input type");
+    return {ltDIR_NODE, getQualityNext(k.key)};
+}
+
+Keylet
+ticket(AccountID const& id, SeqProxy const& seq)
+{
+    XRPL_ASSERT(seq.isTicket(), "xrpl::keylet::ticket : valid input");
+    return {ltTICKET, indexHash(LedgerNameSpace::Ticket, id, seq.value())};
+}
+
+// This function is presently static, since it's never accessed from anywhere
+// else. If we ever support multiple pages of signer lists, this would be the
+// keylet used to locate them.
+static Keylet
+signerList(AccountID const& account, std::uint32_t const page) noexcept
+{
+    return {ltSIGNER_LIST, indexHash(LedgerNameSpace::SignerList, account, page)};
+}
+
+Keylet
+signerList(AccountID const& account) noexcept
+{
+    return signerList(account, 0);
+}
+
+Keylet
+sponsorship(AccountID const& sponsor, AccountID const& sponsee) noexcept
+{
+    return {ltSPONSORSHIP, indexHash(LedgerNameSpace::Sponsorship, sponsor, sponsee)};
+}
+
+Keylet
+beneficiary(AccountID const& account) noexcept
+{
+    return {ltBENEFICIARY, indexHash(LedgerNameSpace::Beneficiary, account)};
+}
+
+Keylet
+check(AccountID const& id, SeqProxy const& seq) noexcept
+{
+    return {ltCHECK, indexHash(LedgerNameSpace::Check, id, seq.value())};
+}
+
+Keylet
+depositPreauth(AccountID const& owner, AccountID const& preauthorized) noexcept
+{
+    return {ltDEPOSIT_PREAUTH, indexHash(LedgerNameSpace::DepositPreauth, owner, preauthorized)};
+}
+
+// Credentials should be sorted here, use credentials::makeSorted
+Keylet
+depositPreauth(
+    AccountID const& owner,
+    std::set<std::pair<AccountID, Slice>> const& authCreds) noexcept
+{
+    std::vector<uint256> hashes;
+    hashes.reserve(authCreds.size());
+    for (auto const& o : authCreds)
+        hashes.emplace_back(sha512Half(o.first, o.second));
+
+    return {
+        ltDEPOSIT_PREAUTH, indexHash(LedgerNameSpace::DepositPreauthCredentials, owner, hashes)};
+}
+
+//------------------------------------------------------------------------------
+
+Keylet
+unchecked(uint256 const& key) noexcept
+{
+    return {ltANY, key};
+}
+
+Keylet
+ownerDir(AccountID const& id) noexcept
+{
+    return {ltDIR_NODE, indexHash(LedgerNameSpace::OwnerDir, id)};
+}
+
+Keylet
+page(uint256 const& key, std::uint64_t const index) noexcept
+{
+    if (index == 0)
+        return {ltDIR_NODE, key};
+
+    return {ltDIR_NODE, indexHash(LedgerNameSpace::DirNode, key, index)};
+}
+
+Keylet
+escrow(AccountID const& src, SeqProxy const& seq) noexcept
+{
+    return {ltESCROW, indexHash(LedgerNameSpace::Escrow, src, seq.value())};
+}
+
+Keylet
+payChannel(AccountID const& src, AccountID const& dst, SeqProxy const& seq) noexcept
+{
+    return {ltPAYCHAN, indexHash(LedgerNameSpace::XRPPaymentChannel, src, dst, seq.value())};
+}
+
+Keylet
+nftokenPageMin(AccountID const& owner)
+{
+    std::array<std::uint8_t, 32> buf{};
+    std::memcpy(buf.data(), owner.data(), owner.size());
+    return {ltNFTOKEN_PAGE, uint256::fromRaw(buf)};
+}
+
+Keylet
+nftokenPageMax(AccountID const& owner)
+{
+    uint256 id = nft::kPageMask;
+    std::memcpy(id.data(), owner.data(), owner.size());
+    return {ltNFTOKEN_PAGE, id};
+}
+
+Keylet
+nftokenPage(Keylet const& k, uint256 const& token)
+{
+    XRPL_ASSERT(k.type == ltNFTOKEN_PAGE, "xrpl::keylet::nftokenPage : valid input type");
+    return {ltNFTOKEN_PAGE, (k.key & ~nft::kPageMask) + (token & nft::kPageMask)};
+}
+
+Keylet
+nftokenOffer(AccountID const& owner, SeqProxy const& seq)
+{
+    return {ltNFTOKEN_OFFER, indexHash(LedgerNameSpace::NftokenOffer, owner, seq.value())};
+}
+
+Keylet
+nftBuys(uint256 const& id) noexcept
+{
+    return {ltDIR_NODE, indexHash(LedgerNameSpace::NftokenBuyOffers, id)};
+}
+
+Keylet
+nftSells(uint256 const& id) noexcept
+{
+    return {ltDIR_NODE, indexHash(LedgerNameSpace::NftokenSellOffers, id)};
+}
+
+Keylet
+amm(Asset const& asset1, Asset const& asset2, std::uint8_t curveType) noexcept
+{
+    auto const& [minA, maxA] = std::minmax(asset1, asset2);
+    return std::visit(
+        [curveType]<ValidIssueType TIss1, ValidIssueType TIss2>(
+            TIss1 const& issue1, TIss2 const& issue2) {
+            if constexpr (std::is_same_v<TIss1, Issue> && std::is_same_v<TIss2, Issue>)
+            {
+                if (curveType != 0)
+                {
+                    return amm(indexHash(
+                        LedgerNameSpace::Amm,
+                        issue1.account,
+                        issue1.currency,
+                        issue2.account,
+                        issue2.currency,
+                        curveType));
+                }
+                return amm(indexHash(
+                    LedgerNameSpace::Amm,
+                    issue1.account,
+                    issue1.currency,
+                    issue2.account,
+                    issue2.currency));
+            }
+            else if constexpr (std::is_same_v<TIss1, Issue> && std::is_same_v<TIss2, MPTIssue>)
+            {
+                if (curveType != 0)
+                {
+                    return amm(indexHash(
+                        LedgerNameSpace::Amm,
+                        issue1.account,
+                        issue1.currency,
+                        issue2.getMptID(),
+                        curveType));
+                }
+                return amm(indexHash(
+                    LedgerNameSpace::Amm, issue1.account, issue1.currency, issue2.getMptID()));
+            }
+            else if constexpr (std::is_same_v<TIss1, MPTIssue> && std::is_same_v<TIss2, Issue>)
+            {
+                if (curveType != 0)
+                {
+                    return amm(indexHash(
+                        LedgerNameSpace::Amm,
+                        issue1.getMptID(),
+                        issue2.account,
+                        issue2.currency,
+                        curveType));
+                }
+                return amm(indexHash(
+                    LedgerNameSpace::Amm, issue1.getMptID(), issue2.account, issue2.currency));
+            }
+            else if constexpr (std::is_same_v<TIss1, MPTIssue> && std::is_same_v<TIss2, MPTIssue>)
+            {
+                if (curveType != 0)
+                    return amm(indexHash(
+                        LedgerNameSpace::Amm, issue1.getMptID(), issue2.getMptID(), curveType));
+                return amm(indexHash(LedgerNameSpace::Amm, issue1.getMptID(), issue2.getMptID()));
+            }
+        },
+        minA.value(),
+        maxA.value());
+}
+
+Keylet
+amm(uint256 const& id) noexcept
+{
+    return {ltAMM, id};
+}
+
+Keylet
+delegate(AccountID const& account, AccountID const& authorizedAccount) noexcept
+{
+    return {ltDELEGATE, indexHash(LedgerNameSpace::Delegate, account, authorizedAccount)};
+}
+
+Keylet
+bridge(STXChainBridge const& bridge, STXChainBridge::ChainType chainType)
+{
+    // A door account can support multiple bridges. On the locking chain
+    // there can only be one bridge per lockingChainCurrency. On the issuing
+    // chain there can only be one bridge per issuingChainCurrency.
+    auto const& issue = bridge.issue(chainType);
+    return {ltBRIDGE, indexHash(LedgerNameSpace::Bridge, bridge.door(chainType), issue.currency)};
+}
+
+Keylet
+xChainClaimID(STXChainBridge const& bridge, std::uint64_t const seq)
+{
+    return {
+        ltXCHAIN_OWNED_CLAIM_ID,
+        indexHash(
+            LedgerNameSpace::XchainClaimId,
+            bridge.lockingChainDoor(),
+            bridge.lockingChainIssue(),
+            bridge.issuingChainDoor(),
+            bridge.issuingChainIssue(),
+            seq)};
+}
+
+Keylet
+xChainCreateAccountClaimID(STXChainBridge const& bridge, std::uint64_t const seq)
+{
+    return {
+        ltXCHAIN_OWNED_CREATE_ACCOUNT_CLAIM_ID,
+        indexHash(
+            LedgerNameSpace::XchainCreateAccountClaimId,
+            bridge.lockingChainDoor(),
+            bridge.lockingChainIssue(),
+            bridge.issuingChainDoor(),
+            bridge.issuingChainIssue(),
+            seq)};
+}
+
+Keylet
+did(AccountID const& account) noexcept
+{
+    return {ltDID, indexHash(LedgerNameSpace::Did, account)};
+}
+
+Keylet
+oracle(AccountID const& account, std::uint32_t const documentID) noexcept
+{
+    return {ltORACLE, indexHash(LedgerNameSpace::Oracle, account, documentID)};
+}
+
+Keylet
+mptokenIssuance(MPTID const& issuanceID) noexcept
+{
+    return {ltMPTOKEN_ISSUANCE, indexHash(LedgerNameSpace::MPTokenIssuance, issuanceID)};
+}
+
+Keylet
+tokenIssuance(AccountID const& issuer, Currency const& currency) noexcept
+{
+    return {ltTOKEN_ISSUANCE, indexHash(LedgerNameSpace::TokenIssuance, issuer, currency)};
+}
+
+Keylet
+mptoken(MPTID const& issuanceID, AccountID const& holder) noexcept
+{
+    return mptoken(mptokenIssuance(issuanceID).key, holder);
+}
+
+Keylet
+mptoken(uint256 const& issuanceKey, AccountID const& holder) noexcept
+{
+    return {ltMPTOKEN, indexHash(LedgerNameSpace::MPToken, issuanceKey, holder)};
+}
+
+Keylet
+credential(AccountID const& subject, AccountID const& issuer, Slice const& credType) noexcept
+{
+    return {ltCREDENTIAL, indexHash(LedgerNameSpace::Credential, subject, issuer, credType)};
+}
+
+Keylet
+vault(AccountID const& owner, SeqProxy const& seq) noexcept
+{
+    return vault(indexHash(LedgerNameSpace::Vault, owner, seq.value()));
+}
+
+Keylet
+loanBroker(AccountID const& owner, SeqProxy const& seq) noexcept
+{
+    return loanBroker(indexHash(LedgerNameSpace::LoanBroker, owner, seq.value()));
+}
+
+Keylet
+loan(uint256 const& loanBrokerID, SeqProxy const& loanSeq) noexcept
+{
+    return loan(indexHash(LedgerNameSpace::Loan, loanBrokerID, loanSeq.value()));
+}
+
+Keylet
+couponSchedule(uint192 const& mptIssuanceID) noexcept
+{
+    return couponSchedule(indexHash(LedgerNameSpace::CouponSchedule, mptIssuanceID));
+}
+
+Keylet
+permissionedDomain(AccountID const& account, SeqProxy const& seq) noexcept
+{
+    return {
+        ltPERMISSIONED_DOMAIN,
+        indexHash(LedgerNameSpace::PermissionedDomain, account, seq.value())};
+}
+
+Keylet
+permissionedDomain(uint256 const& domainID) noexcept
+{
+    return {ltPERMISSIONED_DOMAIN, domainID};
+}
+
+Keylet
+ammPosition(uint256 const& ammID, AccountID const& owner, std::uint32_t seq) noexcept
+{
+    return {ltAMM_POSITION, indexHash(LedgerNameSpace::AmmPosition, ammID, owner, seq)};
+}
+
+static uint256
+ammTickBaseKey(uint256 const& ammID) noexcept
+{
+    // High 192 bits from hash, low 64 bits zeroed
+    auto key = indexHash(LedgerNameSpace::AmmTick, ammID);
+    setLow64BE(key, 0);
+    return key;
+}
+
+Keylet
+ammTick(uint256 const& ammID, std::int32_t tickIndex) noexcept
+{
+    // Offset binary using the shared kTickBitmapOffset from AMMCore.h —
+    // same constant used by the bitmap word-index packing.
+    auto const encoded = static_cast<std::uint64_t>(
+        static_cast<std::int64_t>(tickIndex) + static_cast<std::int64_t>(kTickBitmapOffset));
+
+    auto key = ammTickBaseKey(ammID);
+    setLow64BE(key, encoded);
+    return {ltAMM_TICK, key};
+}
+
+Keylet
+ammTickBase(uint256 const& ammID) noexcept
+{
+    return {ltAMM_TICK, ammTickBaseKey(ammID)};
+}
+
+Keylet
+ammTickEnd(uint256 const& ammID) noexcept
+{
+    auto key = ammTickBaseKey(ammID);
+    setLow64BE(key, ~std::uint64_t{0});
+    return {ltAMM_TICK, key};
+}
+
+static uint256
+ammTickBitmapBaseKey(uint256 const& ammID) noexcept
+{
+    auto key = indexHash(LedgerNameSpace::AmmTickBitmap, ammID);
+    setLow64BE(key, 0);
+    return key;
+}
+
+Keylet
+ammTickBitmapWord(uint256 const& ammID, std::uint16_t wordIndex) noexcept
+{
+    auto key = ammTickBitmapBaseKey(ammID);
+    setLow64BE(key, static_cast<std::uint64_t>(wordIndex));
+    return {ltAMM_TICK_BITMAP, key};
+}
+
+Keylet
+ammTickBitmapBase(uint256 const& ammID) noexcept
+{
+    return {ltAMM_TICK_BITMAP, ammTickBitmapBaseKey(ammID)};
+}
+
+Keylet
+ammTickBitmapEnd(uint256 const& ammID) noexcept
+{
+    auto key = ammTickBitmapBaseKey(ammID);
+    setLow64BE(key, ~std::uint64_t{0});
+    return {ltAMM_TICK_BITMAP, key};
+}
+
+static uint256
+ammBinBaseKey(uint256 const& ammID) noexcept
+{
+    auto key = indexHash(LedgerNameSpace::AmmBin, ammID);
+    setLow64BE(key, 0);
+    return key;
+}
+
+Keylet
+ammBin(uint256 const& ammID, std::int32_t binID) noexcept
+{
+    // Offset-binary encoding: shift signed bin ID into unsigned domain
+    // so the low 64 keylet bits sort numerically by bin price order.
+    auto const encoded = static_cast<std::uint64_t>(
+        static_cast<std::int64_t>(binID) - static_cast<std::int64_t>(minBinID));
+    auto key = ammBinBaseKey(ammID);
+    setLow64BE(key, encoded);
+    return {ltAMM_BIN, key};
+}
+
+Keylet
+ammBin(uint256 const& key) noexcept
+{
+    return {ltAMM_BIN, key};
+}
+
+Keylet
+ammBinBase(uint256 const& ammID) noexcept
+{
+    return {ltAMM_BIN, ammBinBaseKey(ammID)};
+}
+
+Keylet
+ammBinEnd(uint256 const& ammID) noexcept
+{
+    auto key = ammBinBaseKey(ammID);
+    setLow64BE(key, ~std::uint64_t{0});
+    return {ltAMM_BIN, key};
+}
+
+Keylet
+ammBinHolding(uint256 const& ammID, AccountID const& owner, std::int32_t binID) noexcept
+{
+    return {ltAMM_BIN_HOLDING, indexHash(LedgerNameSpace::AmmBinHolding, ammID, owner, binID)};
+}
+
+Keylet
+ammBinHolding(uint256 const& key) noexcept
+{
+    return {ltAMM_BIN_HOLDING, key};
+}
+
+Keylet
+ballot(AccountID const& owner, std::uint32_t seq) noexcept
+{
+    return {ltBALLOT, indexHash(LedgerNameSpace::Ballot, owner, seq)};
+}
+
+Keylet
+ballotVote(uint256 const& ballotID, AccountID const& voter) noexcept
+{
+    return {ltBALLOT_VOTE, indexHash(LedgerNameSpace::BallotVote, ballotID, voter)};
+}
+
+static Keylet
+passkeyList(AccountID const& account, std::uint32_t page) noexcept
+{
+    return {ltPASSKEY_LIST, indexHash(LedgerNameSpace::PasskeyList, account, page)};
+}
+
+Keylet
+passkeyList(AccountID const& account) noexcept
+{
+    return passkeyList(account, 0);
+}
+
+Keylet
+firewall(AccountID const& account) noexcept
+{
+    return {ltFIREWALL, indexHash(LedgerNameSpace::Firewall, account)};
+}
+
+Keylet
+withdrawPreauth(AccountID const& owner, AccountID const& preauthorized, std::uint32_t dtag) noexcept
+{
+    return {
+        ltWITHDRAW_PREAUTH,
+        indexHash(LedgerNameSpace::WithdrawPreauth, owner, preauthorized, dtag)};
+}
+
+Keylet
+repo(AccountID const& seller, SeqProxy const& seq) noexcept
+{
+    return {ltREPO, indexHash(LedgerNameSpace::Repo, seller, seq.value())};
+}
+
+Keylet
+subscription(AccountID const& account, AccountID const& dest, std::uint32_t seq) noexcept
+{
+    return {ltSUBSCRIPTION, indexHash(LedgerNameSpace::Subscription, account, dest, seq)};
+}
+
+}  // namespace keylet
+
+}  // namespace xrpl

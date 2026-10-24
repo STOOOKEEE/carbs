@@ -1,0 +1,345 @@
+// clang-format off
+#include <setjmp.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <cmocka.h>
+// clang-format on
+#include <string.h>
+
+#include "../src/xrp/fmt.h"
+#include "../src/xrp/xrp_helpers.h"
+#include "../src/xrp/xrp_parse.h"
+#include "cx.h"
+
+parseContext_t parse_context;
+
+static const char* testcases[] = {
+    "../../tests/standalone/testcases/01-payment/01-basic.raw",
+    "../../tests/standalone/testcases/01-payment/02-destination-tag.raw",
+    "../../tests/standalone/testcases/01-payment/03-source-tag.raw",
+    "../../tests/standalone/testcases/01-payment/04-both-tags.raw",
+    "../../tests/standalone/testcases/01-payment/05-invoice-id.raw",
+    "../../tests/standalone/testcases/01-payment/06-invoice-txn-ids-tags.raw",
+    "../../tests/standalone/testcases/01-payment/07-issued-currency.raw",
+    "../../tests/standalone/testcases/01-payment/08-issued-currency-max.raw",
+    "../../tests/standalone/testcases/01-payment/"
+    "09-issued-currency-min-partial.raw",
+    "../../tests/standalone/testcases/01-payment/"
+    "10-issued-currency-quality-partial.raw",
+    "../../tests/standalone/testcases/01-payment/11-issued-currency-paths.raw",
+    "../../tests/standalone/testcases/01-payment/"
+    "12-issued-currency-conversion.raw",
+    "../../tests/standalone/testcases/01-payment/"
+    "13-issued-currency-e-notation.raw",
+    "../../tests/standalone/testcases/01-payment/"
+    "14-issued-currency-non-standard.raw",
+    "../../tests/standalone/testcases/01-payment/15-issue-abc-currency.raw",
+    "../../tests/standalone/testcases/01-payment/16-memos.raw",
+    "../../tests/standalone/testcases/01-payment/17-multi-sign-parallel.raw",
+    "../../tests/standalone/testcases/01-payment/18-multi-sign-serial.raw",
+    //"../../tests/standalone/testcases/01-payment/19-really-stupid-tx.raw",
+    "../../tests/standalone/testcases/01-payment/20-spoofed-xrp-currency.raw",
+    "../../tests/standalone/testcases/01-payment/23-xrp-nonstandard-spoof.raw",
+    "../../tests/standalone/testcases/02-set-regular-key/01-basic.raw",
+    "../../tests/standalone/testcases/02-set-regular-key/02-delete.raw",
+    "../../tests/standalone/testcases/02-set-regular-key/"
+    "03-all-common-fields.raw",
+    "../../tests/standalone/testcases/03-escrow-create/01-finish-after.raw",
+    "../../tests/standalone/testcases/03-escrow-create/02-cancel-after.raw",
+    "../../tests/standalone/testcases/03-escrow-create/03-both.raw",
+    "../../tests/standalone/testcases/03-escrow-create/04-both-condition.raw",
+    "../../tests/standalone/testcases/03-escrow-create/"
+    "05-both-condition-destination.raw",
+    "../../tests/standalone/testcases/03-escrow-create/"
+    "06-all-common-fields.raw",
+    "../../tests/standalone/testcases/04-escrow-finish/01-time-based.raw",
+    "../../tests/standalone/testcases/04-escrow-finish/02-condition-based.raw",
+    "../../tests/standalone/testcases/05-escrow-cancel/01-basic.raw",
+    "../../tests/standalone/testcases/06-account-set/01-basic.raw",
+    "../../tests/standalone/testcases/06-account-set/02-default-ripple.raw",
+    "../../tests/standalone/testcases/06-account-set/03-deposit-auth.raw",
+    "../../tests/standalone/testcases/06-account-set/04-disable-master.raw",
+    "../../tests/standalone/testcases/06-account-set/05-disallow-xrp.raw",
+    "../../tests/standalone/testcases/06-account-set/06-global-freeze.raw",
+    "../../tests/standalone/testcases/06-account-set/07-no-freeze.raw",
+    "../../tests/standalone/testcases/06-account-set/08-require-auth.raw",
+    "../../tests/standalone/testcases/06-account-set/09-require-tag.raw",
+    "../../tests/standalone/testcases/06-account-set/"
+    "10-clear-account-txn-id.raw",
+    "../../tests/standalone/testcases/07-check-cancel/01-basic.raw",
+    "../../tests/standalone/testcases/08-check-cash/01-basic.raw",
+    "../../tests/standalone/testcases/08-check-cash/02-amount.raw",
+    "../../tests/standalone/testcases/08-check-cash/03-issued.raw",
+    "../../tests/standalone/testcases/08-check-cash/04-issued-delivery-min.raw",
+    "../../tests/standalone/testcases/09-check-create/01-basic.raw",
+    "../../tests/standalone/testcases/09-check-create/02-issued.raw",
+    "../../tests/standalone/testcases/10-deposit-preauth/01-basic.raw",
+    "../../tests/standalone/testcases/10-deposit-preauth/02-unauthorize.raw",
+    "../../tests/standalone/testcases/11-offer-cancel/01-basic.raw",
+    "../../tests/standalone/testcases/12-offer-create/01-basic.raw",
+    "../../tests/standalone/testcases/12-offer-create/02-passive.raw",
+    "../../tests/standalone/testcases/12-offer-create/"
+    "03-immediate-or-cancel.raw",
+    "../../tests/standalone/testcases/12-offer-create/04-fill-or-kill.raw",
+    "../../tests/standalone/testcases/12-offer-create/05-sell.raw",
+    "../../tests/standalone/testcases/12-offer-create/06-combo.raw",
+    "../../tests/standalone/testcases/13-payment-channel-claim/01-basic.raw",
+    "../../tests/standalone/testcases/13-payment-channel-claim/02-renew.raw",
+    "../../tests/standalone/testcases/13-payment-channel-claim/03-close.raw",
+    "../../tests/standalone/testcases/14-payment-channel-create/01-basic.raw",
+    "../../tests/standalone/testcases/15-payment-channel-fund/01-basic.raw",
+    "../../tests/standalone/testcases/16-signer-list-set/01-basic.raw",
+    "../../tests/standalone/testcases/16-signer-list-set/02-delete.raw",
+    "../../tests/standalone/testcases/17-trust-set/01-basic.raw",
+    "../../tests/standalone/testcases/17-trust-set/02-quality.raw",
+    "../../tests/standalone/testcases/17-trust-set/03-authorize.raw",
+    "../../tests/standalone/testcases/17-trust-set/04-no-rippling.raw",
+    "../../tests/standalone/testcases/17-trust-set/05-rippling.raw",
+    "../../tests/standalone/testcases/17-trust-set/06-freeze.raw",
+    "../../tests/standalone/testcases/17-trust-set/07-unfreeze.raw",
+    "../../tests/standalone/testcases/17-trust-set/"
+    "08-non-standard-currency.raw",
+    "../../tests/standalone/testcases/17-trust-set/09-remove.raw",
+    "../../tests/standalone/testcases/18-arrays/01-basic.raw",
+    "../../tests/standalone/testcases/18-arrays/02-multiple.raw",
+    "../../tests/standalone/testcases/18-arrays/03-not-last.raw",
+    "../../tests/standalone/testcases/19-nftoken-mint/01-basic.raw",
+    "../../tests/standalone/testcases/19-nftoken-mint/02-burnable.raw",
+    "../../tests/standalone/testcases/19-nftoken-mint/03-only-xrp.raw",
+    "../../tests/standalone/testcases/19-nftoken-mint/04-transferable.raw",
+    "../../tests/standalone/testcases/19-nftoken-mint/"
+    "05-transferable-mutable.raw",
+    "../../tests/standalone/testcases/20-nftoken-burn/01-basic.raw",
+    "../../tests/standalone/testcases/21-nftoken-create-offer/01-sell.raw",
+    "../../tests/standalone/testcases/21-nftoken-create-offer/"
+    "02-sell-destination.raw",
+    "../../tests/standalone/testcases/21-nftoken-create-offer/03-buy.raw",
+    "../../tests/standalone/testcases/21-nftoken-create-offer/"
+    "04-buy-expiration.raw",
+    "../../tests/standalone/testcases/22-nftoken-cancel-offer/01-basic.raw",
+    "../../tests/standalone/testcases/22-nftoken-cancel-offer/"
+    "02-large-vector.raw",
+    "../../tests/standalone/testcases/24-clawback/01-basic.raw",
+    "../../tests/standalone/testcases/25-amm-create/01-basic.raw",
+    "../../tests/standalone/testcases/26-amm-deposit/01-one-sided.raw",
+    "../../tests/standalone/testcases/26-amm-deposit/02-two-sided.raw",
+    "../../tests/standalone/testcases/26-amm-deposit/03-amount-lp-out.raw",
+    "../../tests/standalone/testcases/26-amm-deposit/04-lp-out.raw",
+    "../../tests/standalone/testcases/27-amm-withdraw/01-one-sided.raw",
+    "../../tests/standalone/testcases/27-amm-withdraw/02-two-sided.raw",
+    "../../tests/standalone/testcases/27-amm-withdraw/03-amount-lp-out.raw",
+    "../../tests/standalone/testcases/27-amm-withdraw/04-lp-out.raw",
+    "../../tests/standalone/testcases/28-amm-bid/01-basic.raw",
+    "../../tests/standalone/testcases/28-amm-bid/02-min-max.raw",
+    "../../tests/standalone/testcases/29-amm-vote/01-basic.raw",
+    NULL,
+};
+
+// Transactions that must be rejected by the parser (parse_tx returns non-zero).
+static const char* negative_testcases[] = {
+    // Currency with first byte 0x00 and XRP ticker: invalid per spec —
+    // 0x00 prefix is reserved for standard codes and "XRP" is disallowed.
+    "../../tests/standalone/testcases/01-payment/22-xrp-reserved-ticker.raw",
+    // Composite path step type 0x11 (account|currency bitmask) is explicitly
+    // forbidden by the XRPL spec; only 0x01, 0x10, 0x20, 0x30 are valid.
+    "../../tests/standalone/testcases/01-payment/24-invalid-path-step-type.raw",
+    // STVector256 length not a multiple of 32 must be rejected, not
+    // silently truncated.
+    "../../tests/standalone/testcases/22-nftoken-cancel-offer/"
+    "03-invalid-vector-length.raw",
+    // A TransactionType nested inside another field, disagreeing with the
+    // top-level one, must not override it and bypass blind signing.
+    "../../tests/standalone/testcases/01-payment/"
+    "25-nested-transaction-type.raw",
+    // A duplicate top-level TransactionType (unsupported, then supported)
+    // must not let the second occurrence override the first.
+    "../../tests/standalone/testcases/01-payment/"
+    "26-duplicate-transaction-type.raw",
+    // NFTokenMint Flags combining a recognized bit with an unrecognized
+    // one must not clear-sign showing only the recognized bit while the
+    // other vanishes from the review.
+    "../../tests/standalone/testcases/19-nftoken-mint/06-unknown-flag.raw",
+    // tfTrustLine is invalid to set per XRPL's
+    // fixRemoveNFTokenAutoTrustLine amendment; it must not clear-sign as a
+    // normal, usable flag.
+    "../../tests/standalone/testcases/19-nftoken-mint/07-trustline-flag.raw",
+    // A second top-level Flags field must not be silently ignored.
+    "../../tests/standalone/testcases/19-nftoken-mint/08-duplicate-flags.raw",
+    // A field id this app does not recognize, on an otherwise well-formed
+    // supported Payment, must not clear-sign with an unlabeled row while
+    // still being signed.
+    "../../tests/standalone/testcases/01-payment/27-unrecognized-field.raw",
+    // An all-zero currency in a 48-byte issued Amount is the reserved
+    // native-XRP encoding, but this form always carries an issuer, so it
+    // must not clear-sign as plain XRP with an attacker-chosen issuer.
+    "../../tests/standalone/testcases/01-payment/"
+    "28-all-zero-currency-issued-amount.raw",
+    // NFTokenAcceptOffer only references an offer by hash; the price lives
+    // on the NFTokenOffer ledger object, outside the signed bytes. A clear
+    // sign review would therefore show the same screen for a fair trade and
+    // for one that drains the account, so it must blind sign instead.
+    "../../tests/standalone/testcases/blind-sign/"
+    "03-nftoken-accept-offer.raw",
+    "../../tests/standalone/testcases/blind-sign/"
+    "04-nftoken-accept-offer-broker.raw",
+    NULL,
+};
+
+static uint8_t* load_transaction_data(const char* filename, size_t* size) {
+    uint8_t* data = NULL;
+
+    FILE* f = fopen(filename, "rb");
+    assert_non_null(f);
+
+    assert_int_equal(fseek(f, 0, SEEK_END), 0);
+    long filesize_long = ftell(f);
+    assert_true(filesize_long >= 0);
+    assert_int_equal(fseek(f, 0, SEEK_SET), 0);
+
+    size_t filesize = (size_t)filesize_long;
+    if (filesize > 0) {
+        data = malloc(filesize);
+        assert_non_null(data);
+        assert_true(fread(data, 1, filesize, f) == filesize);
+    }
+    *size = filesize;
+    fclose(f);
+
+    return data;
+}
+
+static void update_title(field_t* field, field_name_t* title) {
+    const char* name = resolve_field_name(field);
+    strncpy(title->buf, name, sizeof(title->buf));
+    title->buf[sizeof(title->buf) - 1] = '\x00';
+
+    size_t len = strlen(title->buf);
+    if (field->array_info.type == ARRAY_PATHSET) {
+        snprintf(title->buf + len, sizeof(title->buf) - len, " [P%d: S%d]",
+                 field->array_info.index1, field->array_info.index2);
+    } else if (field->array_info.type != ARRAY_NONE) {
+        snprintf(title->buf + len, sizeof(title->buf) - len, " [%d]",
+                 field->array_info.index1);
+    }
+}
+
+static void update_value(field_t* field, field_value_t* value) {
+    format_field(field, value);
+}
+
+static void get_result_filename(const char* filename, char* path, size_t size) {
+    strncpy(path, filename, size);
+
+    char* ext = strstr(path, ".raw");
+    assert_non_null(ext);
+    memcpy(ext, ".txt", 4);
+}
+
+static void generate_expected_result(const char* filename,
+                                     parseResult_t* transaction) {
+    char path[1024];
+    get_result_filename(filename, path, sizeof(path));
+
+    FILE* fp = fopen(path, "w");
+    assert_non_null(fp);
+
+    for (int i = 0; i < transaction->num_fields; ++i) {
+        field_t* field = &transaction->fields[i];
+        field_name_t field_name;
+        field_value_t field_value;
+        update_title(field, &field_name);
+        update_value(field, &field_value);
+        fprintf(fp, "%s; %s\n", field_name.buf, field_value.buf);
+    }
+
+    fclose(fp);
+}
+
+static void check_transaction_results(const char* filename,
+                                      parseResult_t* transaction) {
+    printf("[*] %s\n", filename);
+    char path[1024];
+    get_result_filename(filename, path, sizeof(path));
+
+    FILE* fp = fopen(path, "r");
+    assert_non_null(fp);
+
+    for (int i = 0; i < transaction->num_fields; ++i) {
+        field_t* field = &transaction->fields[i];
+        field_name_t field_name;
+        field_value_t field_value;
+        update_title(field, &field_name);
+        update_value(field, &field_value);
+
+        char line[4096];
+        assert_non_null(fgets(line, sizeof(line), fp));
+
+        char* expected_title = line;
+        char* expected_value = strstr(line, "; ");
+        assert_non_null(expected_value);
+
+        *expected_value = '\x00';
+        assert_string_equal(expected_title, field_name.buf);
+
+        expected_value += 2;
+        char* p = strchr(expected_value, '\n');
+        if (p != NULL) {
+            *p = '\x00';
+        }
+        assert_string_equal(field_value.buf, expected_value);
+    }
+
+    fclose(fp);
+}
+
+static void test_tx(const char* filename) {
+    size_t size;
+    uint8_t* data = load_transaction_data(filename, &size);
+
+    memset(&parse_context, 0, sizeof(parse_context));
+    parse_context.data = data;
+    parse_context.length = size;
+    assert_int_equal(parse_tx(&parse_context), 0);
+
+    parseResult_t* transaction = &parse_context.result;
+    if (false) {
+        generate_expected_result(filename, transaction);
+    }
+    check_transaction_results(filename, transaction);
+
+    free(data);
+}
+
+void test_transactions(void** state) {
+    (void)state;
+
+    for (const char** testcase = testcases; *testcase != NULL; testcase++) {
+        test_tx(*testcase);
+    }
+}
+
+void test_invalid_transactions(void** state) {
+    (void)state;
+
+    for (const char** testcase = negative_testcases; *testcase != NULL;
+         testcase++) {
+        size_t size;
+        uint8_t* data = load_transaction_data(*testcase, &size);
+
+        memset(&parse_context, 0, sizeof(parse_context));
+        parse_context.data = data;
+        parse_context.length = size;
+        assert_int_not_equal(parse_tx(&parse_context), 0);
+
+        free(data);
+    }
+}
+
+int main() {
+    const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_transactions),
+        cmocka_unit_test(test_invalid_transactions),
+    };
+    return cmocka_run_group_tests(tests, NULL, NULL);
+}
