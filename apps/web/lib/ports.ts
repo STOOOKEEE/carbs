@@ -94,6 +94,11 @@ export interface NodeResult {
   feeClaimed: boolean;
   hash: string;
   ledgerIndex: number;
+  /**
+   * The node's last word: a validated result, or a refusal that is never included (`tef`, `tem`,
+   * `tel`). False for a preliminary `tes` or `tec` that never validated before its last ledger.
+   */
+  final: boolean;
 }
 
 export interface ServerInfo {
@@ -158,6 +163,8 @@ export interface NodePort {
   /** `Sequence`, `Fee`, `LastLedgerSequence` (and `NetworkID` where the network needs it). */
   commonFields(account: string, options?: CommonFieldsOptions): Promise<CommonFields>;
   submit(tx: TxJson): Promise<NodeResult>;
+  /** The transaction id of a signed transaction. */
+  transactionHash(tx: TxJson): string;
   explorerUrl(hash: string): string | null;
 }
 
@@ -190,6 +197,8 @@ export interface DevicePort {
   readonly model: string;
   getPublicKey(algorithm: DeviceKey["algorithm"]): Promise<DeviceKey>;
   review(tx: TxJson): DeviceReview;
+  /** A fresh device: new keys, as after a factory reset. The simulated device only pretends. */
+  reset(): void;
   /** Shows the review, waits for the user, returns the transaction with `SigningPubKey` and `TxnSignature`. */
   signTransaction(algorithm: DeviceKey["algorithm"], tx: TxJson): Promise<TxJson>;
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyNote from "~/components/ui/BusyNote.vue";
 import NeedAccount from "~/components/ui/NeedAccount.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
@@ -33,7 +34,7 @@ function blocked(attack: Attack): string | null {
       a message written here.
     </ScreenHeader>
 
-    <NeedAccount v-if="!state.address" />
+    <NeedAccount v-if="!state.ready" />
     <template v-else>
       <p v-if="!state.sessionKey" class="mb-4 text-muted-foreground" data-testid="no-session">
         No session is open.
@@ -63,6 +64,7 @@ function blocked(attack: Attack): string | null {
           </button>
         </article>
       </div>
+      <BusyNote :busy="state.busy" class="mt-4" />
       <p v-if="state.error" class="mt-4 text-danger" role="alert" data-testid="error">
         {{ state.error }}
       </p>

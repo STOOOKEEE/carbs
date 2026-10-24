@@ -1,0 +1,19 @@
+{
+  "name": "@carbs/demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "`pnpm demo`: the standalone node, its closer, a dev faucet and the web app, on this machine.",
+  "scripts": {
+    "start": "tsx src/demo.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@carbs/sessions": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "4.20.6",
+    "@types/node": "22.19.0"
+  }
+}

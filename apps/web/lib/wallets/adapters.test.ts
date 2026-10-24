@@ -200,3 +200,64 @@ describe("no legacy Ledger stack, no keys, no third-party wallet", () => {
     expect(pkg).not.toMatch(/walletconnect|xumm/i);
   });
 });
+
+describe("the adapters on the live backend (node double)", () => {
+  async function liveRig() {
+    const { FakeAlphaNet } = await import("../live/fake-alphanet");
+    const { createLiveBackend } = await import("../live/backend");
+    const { createDemo } = await import("../demo");
+    const { NETWORKS } = await import("../networks");
+    const fake = new FakeAlphaNet({ sessions: true });
+    const ctx = createAppContext();
+    const backend = await createLiveBackend({
+      client: fake,
+      network: () => ({ ...NETWORKS.local, faucet: "http://localhost:3005/accounts" }),
+      approver: () => async () => true,
+      passkeys: softwarePasskeySource(),
+      exposure: {
+        mode: "live",
+        async check() {
+          throw new Error("n/a");
+        },
+      },
+      fetcher: fake.faucet,
+      sleep: async () => undefined,
+    });
+    const demo = createDemo(backend);
+    const adapters = createWalletAdapters(
+      { backend, demo, network: ctx.network },
+      softwarePasskeySource(),
+    );
+    const manager = new WalletManager({ adapters, autoConnect: false, logger: { level: "error" } });
+    return { fake, backend, demo, manager };
+  }
+
+  it("signs with the real transaction hash and the signer's real address, not the simulation's", async () => {
+    const { manager, demo, backend } = await liveRig();
+    const account = await manager.connect("passkey-mac");
+    const signed = await manager.sign({
+      TransactionType: "Payment",
+      Account: account.address,
+      Destination: backend.counterparties.sink,
+      Amount: "2000000",
+    } as never);
+    expect(signed.hash).toMatch(/^[0-9A-F]{64}$/);
+    expect(signed.signerAddress).toMatch(/^r/);
+    expect(signed.signerAddress).not.toMatch(/^rSim/);
+    expect(signed.hash).toBe(backend.node.transactionHash(signed["tx"] as never));
+    expect(demo.state.objects?.passkeys).toBeDefined();
+  });
+
+  it("registers the live wallet's passkey, which signs the node's binary signing data", async () => {
+    const { manager, fake } = await liveRig();
+    const account = await manager.connect("passkey-mac");
+    const result = await manager.signAndSubmit({
+      TransactionType: "Payment",
+      Account: account.address,
+      Destination: fake.accounts.keys().next().value ?? account.address,
+      Amount: "2000000",
+    } as never);
+    expect(result["engine_result"]).toBe("tesSUCCESS");
+    expect(fake.accounts.get(account.address)?.passkeys).toHaveLength(1);
+  });
+});

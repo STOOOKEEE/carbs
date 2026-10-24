@@ -74,3 +74,19 @@ describe("Wallet entry", () => {
     expect(wrapper.find("[data-testid='wallet-modal']").exists()).toBe(true);
   });
 });
+
+describe("Wallet entry, keyboard", () => {
+  it("moves the focus into the dialog, closes on Escape and gives the focus back", async () => {
+    const { wrapper } = mountScreen(WalletConnector);
+    const open = wrapper.get("[data-testid='wallet-open']");
+    (open.element as HTMLElement).focus();
+    await open.trigger("click");
+    await flushPromises();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("wallet-modal");
+    await wrapper.get("[data-testid='wallet-modal']").trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find("[data-testid='wallet-modal']").exists()).toBe(false);
+    await flushPromises();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("wallet-open");
+  });
+});

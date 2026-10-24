@@ -83,6 +83,8 @@ export interface Attack {
   build(ctx: ScenarioContext): UnsignedTx;
   fee?: string;
   omitLastLedger?: boolean;
+  /** The attack signs for the victim account, which must exist on the node. */
+  needsVictimAccount?: boolean;
 }
 
 /** A well-formed passkey the attacker would register: `0xF6 ‖ X ‖ Y` and a 16-byte credential id. */
@@ -158,7 +160,7 @@ export const ATTACKS: readonly Attack[] = [
   },
   {
     id: "no-last-ledger",
-    title: "Sign without a deadline",
+    title: "Sign without a last ledger",
     story: "Omit LastLedgerSequence so the transaction could be held and replayed later.",
     type: "Payment",
     needsMode: null,
@@ -173,6 +175,7 @@ export const ATTACKS: readonly Attack[] = [
     type: "Payment",
     needsMode: null,
     needsExpiry: false,
+    needsVictimAccount: true,
     build: (ctx) => ctx.builders.payment(ctx.victim, ctx.sink, xrpToDrops(1)),
   },
   {

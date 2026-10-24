@@ -115,6 +115,7 @@ export class SimulatedDevice implements DevicePort {
   readonly mode = "simulated" as const;
   readonly model = "SIMULATED Ledger Stax";
   private approver: DeviceApprover;
+  private generation = 0;
 
   constructor(approver: DeviceApprover = async () => true) {
     this.approver = approver;
@@ -125,8 +126,12 @@ export class SimulatedDevice implements DevicePort {
     this.approver = approver;
   }
 
+  reset(): void {
+    this.generation += 1;
+  }
+
   async getPublicKey(algorithm: DeviceKey["algorithm"]): Promise<DeviceKey> {
-    const publicKey = simPublicKey(algorithm, "device");
+    const publicKey = simPublicKey(algorithm, `device:${this.generation}`);
     return {
       algorithm,
       publicKey,

@@ -10,6 +10,10 @@ pnpm --filter web generate              # apps/web/.output/public
 pnpm dlx serve apps/web/.output/public  # open the printed URL: all five screens, SIMULATED badge visible
 ```
 
+`node apps/web/scripts/check-static.mjs apps/web/.output/public` (run by CI after `generate`) fails if the built site has an inline script, a script or link to another origin, a `script-src` other than `'self'`, or a `connect-src` with a wildcard or a bare scheme.
+
+The Nitro runtime (`nuxt dev`, or the Node server of `nuxt build`) keeps the externalized script in memory of its process, so a **multi-instance or serverless deployment of the Node server** would answer 404 for it from another instance. Use the static output (below), which writes the file next to the pages.
+
 The static build contains `_carbs/inline/<hash>.js`, the file that holds Nuxt's runtime config (Nuxt writes it as an inline script, which `script-src 'self'` forbids). It is written during `generate` and referenced by every page, so keep it when you copy the output.
 
 ## One command per host
@@ -80,6 +84,10 @@ The simulated backend needs nothing else. There is no API key anywhere.
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Quantum                           | works against the simulated history today; with the live backend it reads **mainnet read-only** and migrates on the **AlphaNet** with a fresh account |
 | Account, Session, Actions, Attack | need a node that carries the `SigningSessions` amendment; until one is hosted they run in **SIMULATED** mode and the badge stays visible              |
+
+## Running the node and the app together (local)
+
+`pnpm demo` starts, on this machine, the standalone node of `infra/standalone.cfg` (`XRPLD_BIN`, a build with the SigningSessions amendment), its ledger closer, a dev faucet that holds the genesis key (`GENESIS_SEED`, read from the environment, never written) and the web app on the live backend. It is not a deployment: nothing is exposed beyond the loopback. A hosted site needs its own TLS in front of a node (see "A hosted site and the node").
 
 ## For the owner (human-only)
 

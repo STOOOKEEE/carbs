@@ -6,6 +6,7 @@ import {
   alphanetServerDefinitions,
   simulatedSessionDefinitions,
   simulatedSessionServerDefinitions,
+  standaloneServerDefinitions,
 } from "./testing/simulated-definitions.js";
 
 describe("definitions from server_definitions", () => {
@@ -96,6 +97,29 @@ describe("definitions from server_definitions", () => {
     expect(raw.TRANSACTION_FLAGS?.["SigningSessionSet"]?.["tfAllTransactions"]).toBe(
       define("TF_ALL_TRANSACTIONS"),
     );
+  });
+
+  it("SIMULATED definitions equal the node's own, now that N2 and N9 are merged", () => {
+    const node = standaloneServerDefinitions();
+    const simulated = simulatedSessionServerDefinitions();
+    expect(missingSessionNames(node)).toEqual([]);
+    for (const name of ["SigningSessionSet", "SigningSessionDelete"]) {
+      expect(node.TRANSACTION_TYPES[name]).toBe(simulated.TRANSACTION_TYPES[name]);
+    }
+    for (const name of ["SessionKey", "SessionCap", "SessionSpent", "SessionDuration"]) {
+      expect(node.FIELDS.find(([n]) => n === name)?.[1]).toEqual(
+        simulated.FIELDS.find(([n]) => n === name)?.[1],
+      );
+    }
+    for (const name of ["tefSESSION_EXPIRED", "tefSESSION_LIMIT", "tefSESSION_TX_NOT_ALLOWED"]) {
+      expect(node.TRANSACTION_RESULTS[name]).toBe(simulated.TRANSACTION_RESULTS[name]);
+    }
+    expect(node.LEDGER_ENTRY_TYPES["SigningSession"]).toBe(0x009a);
+    expect(node.TRANSACTION_FLAGS?.["SigningSessionSet"]).toEqual({
+      tfAllTransactions: 0x00010000,
+    });
+    expect(node.LEDGER_ENTRY_FLAGS?.["SigningSession"]).toEqual({ lsfAllTransactions: 0x00010000 });
+    expect(node.hash).toBe("F3F8D90EA7D8C770C528567852D1EE2AEC8F1F6F248BA6995C9CCB7E42CB18D9");
   });
 
   it("loads from a node", async () => {

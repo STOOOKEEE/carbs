@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BusyNote from "~/components/ui/BusyNote.vue";
 import NeedAccount from "~/components/ui/NeedAccount.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
@@ -17,7 +18,7 @@ const state = demo.state;
       Each one is signed by the session key. The answer is the node's result code.
     </ScreenHeader>
 
-    <NeedAccount v-if="!state.address" />
+    <NeedAccount v-if="!state.ready" />
     <template v-else>
       <p v-if="!state.sessionKey" class="mb-4 text-muted-foreground" data-testid="no-session">
         No session is open.
@@ -46,6 +47,7 @@ const state = demo.state;
           </button>
         </article>
       </div>
+      <BusyNote :busy="state.busy" class="mt-4" />
       <p v-if="state.error" class="mt-4 text-danger" role="alert" data-testid="error">
         {{ state.error }}
       </p>

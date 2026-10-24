@@ -1,8 +1,10 @@
 import { flushPromises, mount, RouterLinkStub } from "@vue/test-utils";
+import { afterEach } from "vitest";
 import { WalletManager } from "xrpl-connect";
 import type { Component } from "vue";
 import { createAppContext, type AppContext } from "~/lib/app-context";
 import type { ClientFactory } from "~/lib/live/clients";
+import type { Backend } from "~/lib/ports";
 import type { NetworkStoreOptions } from "~/lib/network-store";
 import { createWalletAdapters } from "~/lib/wallets/adapters";
 import { createWalletsApi } from "~/lib/wallets/api";
@@ -18,6 +20,11 @@ import {
   WALLETS_KEY,
 } from "~/lib/context";
 
+// Wrappers are attached to the document (focus needs it): clear it between tests.
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
 /** Mount a screen on a fresh SIMULATED backend whose device approves every review. */
 export function mountScreen(
   component: Component,
@@ -26,6 +33,9 @@ export function mountScreen(
     network?: NetworkStoreOptions;
     clientFactory?: ClientFactory;
     fetcher?: typeof fetch;
+    props?: Record<string, unknown>;
+    /** Provide this backend to the screens instead of the simulated one. */
+    backend?: Backend;
   } = {},
 ) {
   const ctx: AppContext = createAppContext(options.network, {
@@ -43,11 +53,13 @@ export function mountScreen(
     ctx.prompt.approver = async () => true;
   }
   const wrapper = mount(component, {
+    attachTo: document.body,
+    ...(options.props === undefined ? {} : { props: options.props }),
     global: {
       stubs: { NuxtLink: RouterLinkStub },
       plugins: [
         (app) => {
-          app.provide(BACKEND_KEY, ctx.backend);
+          app.provide(BACKEND_KEY, options.backend ?? ctx.backend);
           app.provide(DEMO_KEY, ctx.demo);
           app.provide(MIGRATION_KEY, ctx.migration);
           app.provide(DEVICE_PROMPT_KEY, ctx.prompt);
