@@ -37,6 +37,15 @@ APP_SOURCE_PATH  += src
 APP_SOURCE_FILES += ${BOLOS_SDK}/lib_standard_app/crypto_helpers.c
 INCLUDES_PATH += ${BOLOS_SDK}/lib_standard_app
 
+# carbs: ML-DSA-44 root key (post-quantum), on the large-screen devices only (RAM).
+# ML-DSA is not exported by the OS crypto library, so the SDK sources are compiled in.
+ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME),TARGET_STAX TARGET_FLEX TARGET_APEX_P))
+    DEFINES += HAVE_PQ_ROOT HAVE_MLDSA_OPTIMIZATION
+    APP_SOURCE_FILES += $(wildcard ${BOLOS_SDK}/lib_cxng/src/cx_mldsa*.c)
+    INCLUDES_PATH += ${BOLOS_SDK}/lib_cxng/src
+    PATH_SLIP21_APP_LOAD_PARAMS = "carbs ML-DSA-44"
+endif
+
 # Application icons following guidelines:
 # https://developers.ledger.com/docs/embedded-app/design-requirements/#device-icon
 ICON_NANOS = img/nanos_app_xrp.gif

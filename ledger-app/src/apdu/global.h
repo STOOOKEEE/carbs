@@ -66,9 +66,27 @@ typedef struct transactionContext_t {
     uint32_t raw_tx_length;
 } transactionContext_t;
 
+#ifdef HAVE_PQ_ROOT
+#include <lcx_mldsa.h>
+#define PQ_MAX_MESSAGE 2048U  // the signing data embeds the 1312-byte SigningPubKey
+
+/* ML-DSA-44 working buffers. They share the transaction context memory (union) because
+ * the Stax SRAM cannot hold both; the signature itself stays outside tmp_ctx. */
+typedef struct pqContext_t {
+    uint8_t message[PQ_MAX_MESSAGE];
+    uint32_t message_length;
+    uint8_t public_key[MLDSA44_PUBLICKEYBYTES];
+    uint8_t secret_key[MLDSA44_SECRETKEYBYTES];
+    bool public_key_ready;
+} pqContext_t;
+#endif
+
 typedef union {
     publicKeyContext_t public_key_context;
     transactionContext_t transaction_context;
+#ifdef HAVE_PQ_ROOT
+    pqContext_t pq_context;
+#endif
 } tmpCtx_t;
 
 extern tmpCtx_t tmp_ctx;

@@ -26,6 +26,9 @@
 #include "global.h"
 #include "io.h"
 #include "sign_transaction.h"
+#ifdef HAVE_PQ_ROOT
+#include "../pq/pq_root.h"
+#endif
 
 static unsigned char last_ins = 0;
 
@@ -51,6 +54,15 @@ int handle_apdu(void) {
                 G_io_apdu_buffer + OFFSET_CDATA, G_io_apdu_buffer[OFFSET_LC]);
         case INS_GET_APP_CONFIGURATION:
             return handle_get_app_configuration();
+#ifdef HAVE_PQ_ROOT
+        case INS_PQ_GET_PUBLIC_KEY:
+            return handle_pq_get_public_key(G_io_apdu_buffer[OFFSET_P1]);
+        case INS_PQ_SIGN:
+            return handle_pq_sign(G_io_apdu_buffer[OFFSET_P1], G_io_apdu_buffer[OFFSET_P2],
+                                  G_io_apdu_buffer + OFFSET_CDATA, G_io_apdu_buffer[OFFSET_LC]);
+        case INS_PQ_GET_SIGNATURE:
+            return handle_pq_get_signature(G_io_apdu_buffer[OFFSET_P1]);
+#endif
         default:
             return io_send_sw(0x6D00);
     }
