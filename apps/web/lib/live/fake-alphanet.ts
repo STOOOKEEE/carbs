@@ -93,6 +93,9 @@ export class FakeAlphaNet implements NodeClient {
       case "account_info":
         return this.accountInfo(String(params["account"]));
       case "account_objects":
+        if (!this.accounts.has(String(params["account"]))) {
+          throw new RpcError("account_objects", "actNotFound", "Account not found.");
+        }
         return {
           account: params["account"],
           account_objects:

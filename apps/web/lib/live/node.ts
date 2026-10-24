@@ -5,6 +5,7 @@
  * the node served, never with bundled ones.
  */
 import {
+  RpcError,
   encodeTx,
   fetchCommonFields,
   getAccountObjects,
@@ -101,9 +102,13 @@ export class LiveNode implements NodePort {
       body: JSON.stringify({ destination: address, userAgent: "carbs-web" }),
     });
     if (!response.ok) throw new Error(`faucet: HTTP ${response.status}`);
+    // Wait until the account is in a validated ledger: `account_objects` and the exposure check
+    // read the validated state and answer `actNotFound` before that.
     for (let i = 0; i < FUND_POLLS; i += 1) {
-      const info = await this.accountInfo(address);
-      if (info !== null) return info;
+      if ((await getAccountState(this.client, address, "validated")) !== undefined) {
+        const info = await this.accountInfo(address);
+        if (info !== null) return info;
+      }
       await this.sleep(FUND_POLL_MS);
     }
     throw new Error(
@@ -126,6 +131,18 @@ export class LiveNode implements NodePort {
   }
 
   async accountObjects(address: string): Promise<AccountObjects> {
+    try {
+      return await this.readAccountObjects(address);
+    } catch (error) {
+      // Funded in the open ledger, not yet in a validated one: nothing to list yet.
+      if (error instanceof RpcError && error.error === "actNotFound") {
+        return { sessions: [], passkeys: [], signerList: null };
+      }
+      throw error;
+    }
+  }
+
+  private async readAccountObjects(address: string): Promise<AccountObjects> {
     const [sessions, passkeys, signerLists] = await Promise.all([
       this.defs.hasSessions ? getAccountObjects(this.client, address, "signing_session") : [],
       this.safeObjects(address, "passkey_list"),

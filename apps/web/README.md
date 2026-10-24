@@ -9,6 +9,7 @@ pnpm install
 pnpm --filter web dev            # http://localhost:3000 (Chrome: the Ledger path needs WebHID)
 pnpm --filter web typecheck
 pnpm --filter web test           # node tests and component tests (vitest, happy-dom)
+XRPLD_BIN=… GENESIS_SEED=… pnpm demo   # the standalone node, its closer, a dev faucet and this app on the live backend
 pnpm --filter web generate       # static site in apps/web/.output/public (see docs/DEPLOY.md)
 ```
 
