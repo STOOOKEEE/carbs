@@ -54,7 +54,12 @@ function isDefinitionsData(value: unknown): value is DefinitionsData {
 export async function loadDefinitions(node: NodeClient): Promise<XrplDefinitions> {
   const answer = await node.request("server_definitions");
   if (!isDefinitionsData(answer)) throw new Error("server_definitions answer is incomplete");
-  return new XrplDefinitions(answer);
+  const definitions = new XrplDefinitions(answer);
+  // ripple-binary-codec 2.11 associates field types before it builds the PermissionValue
+  // lookup, so PermissionValue stays without a type and any Permissions array fails to
+  // encode. A second pass, with no extra types, binds it.
+  definitions.associateTypes({});
+  return definitions;
 }
 
 /** account_info of the current ledger; undefined only when the account does not exist yet. */
