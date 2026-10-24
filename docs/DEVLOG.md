@@ -143,8 +143,6 @@ Documentation only, and a proposal: ADR 0010 is `Proposed`, and nothing in §6 o
   - option 3 exempts the own close, rejects an overflowing range, names `terPRE_TICKET`, says that opening does not check the tickets, and cites the code it would touch;
   - the "if adopted" list is completed, and the ADR gains its Decision and Consequences parts.
 
-- **Device-track watch:** `git fetch --prune` shows `develop` holding the three device-track branches (merge `695e6df`). Open drafts #7, #10 and #11 are those branches. No number in `ledger-app/src/xrp/signing_session.h` changes, so there is nothing to adapt.
-
 ### Limits and roadmap (D16)
 
 Documentation only.
@@ -160,8 +158,10 @@ Documentation only.
   - `Batch` cannot migrate keys atomically;
   - 36 KB of device RAM.
 - **Batch, read in code.** The observation of the device track (an all-or-nothing `Batch` with `asfDisableMaster` returns `tesSUCCESS` and applies nothing) matches the code. An inner transaction has no `SigningPubKey` (`rippled/src/libxrpl/tx/transactors/system/Batch.cpp:279-285`), and `asfDisableMaster` needs the transaction's own key to be the master key (`rippled/src/libxrpl/tx/transactors/account/AccountSet.cpp:246-256`, `:307-313`).
-- **Stale P5 text updated.** §6.14 and §15 still called P5 unverified. They now give the N1 result (SIMULATED, a software authenticator) and the fix. §6.12 adds `fixPasskeyChallenge` to the standalone features, as `infra/README.md` already does.- **Review gate, round 1** (`VERDICT: CHANGES REQUIRED`, two blocking findings, both applied):
+- **Stale P5 text updated.** §6.14 and §15 still called P5 unverified. They now give the N1 result (SIMULATED, a software authenticator) and the fix. §6.12 adds `fixPasskeyChallenge` to the standalone features, as `infra/README.md` already does.
+- **Review gate, round 1** (`VERDICT: CHANGES REQUIRED`, two blocking findings, both applied):
   - Row 6 of §16 no longer says that side-channel attacks need the device in hand. The design claims nothing against them, and timing seen by a compromised host is **UNVERIFIED**.
   - The intro of §16 no longer says that no classical key can sign. The master key is disabled, as the AlphaNet's `tefMASTER_DISABLED` shows. The claim holds only while the account has no signer list, delegate or beneficiary key, and the ML-DSA-44 session key is a client policy that neither the ledger nor the device enforces.
   - The other blocking finding, a wrong line in ADR 0010, is fixed in that part.
   - Also fixed: N9 lists six features; the P5 paragraph cites the current lines; the §13 row on P5 records that it happened; `README.md` says "by default"; `docs/PLAN-CHECK.md` no longer calls the ML-DSA instructions proposals.
+- **Review gate, round 2:** `VERDICT: APPROVED`. It found every round 1 finding resolved and each new citation correct. Its two non-blocking findings were slips of the merge resolution in this entry, a duplicated bullet and two joined bullets; both are fixed before merging. It confirmed that these three pull requests do not change the N2 macro batch: §6.1, §6.2, §6.3, §6.10, §6.13 and appendix A are unchanged. The batch grows only if the owner adopts the ticket range of ADR 0010 before N2 (`sfSessionFirstTicket`, UINT32 115, and `sfTicketCount` on `SigningSessionSet` and the entry).
