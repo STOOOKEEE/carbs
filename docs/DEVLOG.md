@@ -121,6 +121,7 @@ Documentation only: no protocol, client or device code changed.
   - UNVERIFIED item 1 now says the AlphaNet accepted device signatures. A new item covers `@noble/post-quantum` signatures, which no node has checked yet.
   - The case 20 refusals name their codes, and three cases are added.
   - §7.7 gains the status words, the rule that the context is cleared when the instruction changes, the key derived on chunk 0, the signature length answer, and the devices the path is built for. The stale `LEDGER_ASSERT` sentence is gone.
+<<<<<<< HEAD
 
 ### Tickets and sessions, a design (D15)
 
@@ -142,3 +143,5 @@ Documentation only, and a proposal: ADR 0010 is `Proposed`, and nothing in §6 o
   - option 2 lists every code of the signer check;
   - option 3 exempts the own close, rejects an overflowing range, names `terPRE_TICKET`, says that opening does not check the tickets, and cites the code it would touch;
   - the "if adopted" list is completed, and the ADR gains its Decision and Consequences parts.
+=======
+>>>>>>> origin/develop

@@ -131,4 +131,8 @@ The quantum exposure check (`packages/core/src/quantum`) is tested with recorded
 
 ## Decisions
 
+<<<<<<< HEAD
 See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004, now for Mac accounts), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008, superseded in part by 0011), the licence (0009), a proposal for how sessions use tickets, which serve multisig coordination (0010, not adopted), and two account profiles with ML-DSA-44 session keys on Ledger accounts (0011).
+=======
+See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004, now for Mac accounts), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008, superseded in part by 0011), the licence (0009), and two account profiles with ML-DSA-44 session keys on Ledger accounts (0011).
+>>>>>>> origin/develop
