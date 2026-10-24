@@ -1,8 +1,8 @@
-# carbs: build specification
+# carbs: FIANSO-SPEC, the build specification
 
 | | |
 |---|---|
-| **Author** | Sofiane ([@STOOOKEEE](https://github.com/STOOOKEEE)). This is **my** specification. |
+| **Author** | Sofiane ("fianso", [@STOOOKEEE](https://github.com/STOOOKEEE)). This is **my** specification, hence its name. The decisions in §2 are mine and apply to the whole team. |
 | **Written** | 2026-10-24, before the XRPL Commons NYC hackathon kickoff (24 Oct 10:00 ET). |
 | **Nature** | Documentation and design only. It contains **no implementation code** and no code from any earlier prototype. All code in this repository is written during the hackathon (24-25 Oct 2026) after this file, apart from the unmodified upstream imports in `rippled/` and `ledger-app/` (§4). |
 | **Source** | Consolidates the preparation dossier `docs/carbs/` on branch `fianso` of [STOOOKEEE/TTT](https://github.com/STOOOKEEE/TTT) (SPEC, XLS-Sessions, BUILD-PLAN, TERRAIN, PITFALLS, REVIEW), re-checked against upstream code on 2026-10-24. |
@@ -32,7 +32,7 @@
 
 ## 2. Decisions
 
-Taken by Sofiane on 2026-10-24.
+Taken by Sofiane on 2026-10-24, **for the whole team**.
 
 | ID | Question | Decision |
 |---|---|---|
@@ -66,7 +66,7 @@ Taken by Sofiane on 2026-10-24.
 
 ```text
 carbs/
-  BUILD-SPEC.md              this file (Sofiane's spec, written before kickoff)
+  FIANSO-SPEC.md              this file (Sofiane's spec, written before kickoff)
   README.md                  what it is, "Existing before Oct 24 / Built during the hackathon", demo instructions
   UPSTREAM.md                SHA, URL, licence of each import (rippled: ISC; app-xrp: Apache-2.0)
   rippled/                   XRPLF/rippled:alphanet @ <head at kickoff>, imported unmodified, then the amendment
