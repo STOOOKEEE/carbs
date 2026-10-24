@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Author** | Sofiane ("fianso", [@STOOOKEEE](https://github.com/STOOOKEEE)). |
-| **Status** | **Draft of a possible next version.** [`FIANSO-SPEC.md`](FIANSO-SPEC.md) (v0, on `main`) remains the reference until a decision says otherwise. This file lives on the personal branch `fianso/spec-v1`. Nothing here is decided; items needing a decision are listed in [§9](#9-decisions-to-take-for-v1). |
-| **Written** | 2026-10-24, around noon ET, after the 10:00 ET kickoff and before any implementation code. Documentation only. |
-| **Relation to v0** | v1 keeps everything in v0 (protocol, Ledger clear signing, client, spikes, conventions) and **adds what makes it useful to the whole XRPL community** instead of one demo. Sections not repeated here are unchanged. Note that v1 was written after the kickoff, like v0 (see the README, "Before the kickoff / During the hackathon"). |
+| **Status** | **Adopted into [`FIANSO-SPEC.md`](FIANSO-SPEC.md)** (decisions D9 and D11, section 2 there), except the agent scene, which is reserved (D6). This file is kept for the evidence it records and the options it weighed. |
+| **Written** | 2026-10-24. Documentation only, no implementation code. |
+| **Relation to v0** | v1 keeps everything in v0 (protocol, Ledger clear signing, client, spikes, conventions) and **adds what makes it useful to the whole XRPL community** instead of one demo. Sections not repeated here are unchanged. |
 
 ---
 
@@ -41,7 +41,7 @@ Plus the documentation and developer-experience feedback to Ledger and to Ripple
 | XRPL-Standards [#236](https://github.com/XRPLF/XRPL-Standards/discussions/236) / [#237](https://github.com/XRPLF/XRPL-Standards/discussions/237) passkeys | Passkey signature support and ES256 | Our passkey opening builds on it |
 | `XRPL-Commons/xrpl-connect` `packages/adapters/ledger` | The Ledger adapter uses the **legacy** `@ledgerhq/hw-app-xrp` + `hw-transport-webhid` / `webusb`, plain `signTransaction`, no preview, package version 0.8.2 on `develop` (the coordinated v1.0.0 release PRs were merged in October) | A concrete, reviewable gap that Ledger itself wants closed (Device Management Kit, not legacy) |
 | `XRPL-Commons/scaffold-xrp` | `npx create-xrp` generates a Next.js or **Nuxt (Vue)** app with `xrpl-connect` (Xaman, GemWallet, WalletConnect), Testnet / Devnet; no Ledger | The starting point of new XRPL dApps, and it has no hardware-wallet path |
-| Hackathon platform | `Feedback Plugin` (`RippleDevRel/xrpl-devex-hook`) and Ledger's "XRP Signer" (DMK) and "Ledger for Agents" are the listed resources | Judges care about developer experience and the Ledger SDK path |
+| Published resources | `Feedback Plugin` (`RippleDevRel/xrpl-devex-hook`) and Ledger's "XRP Signer" (DMK) and "Ledger for Agents" are the listed resources | Reviewers care about developer experience and the Ledger SDK path |
 
 **Read from X on 2026-10-24 (read-only browsing; engagement figures as displayed; not independently re-verified).**
 
@@ -99,7 +99,7 @@ Unchanged from v0 §6 except:
 
 **Scene.** A person opens a mode-C session from the Ledger: "20 XRP, 10 minutes", read and approved on the Stax. An agent (a script, optionally driven by an LLM) holds only the non-extractible session key and pays x402 invoices from a paid API; the ledger refuses the payment that would exceed 20 XRP, `tefSESSION_LIMIT`, no matter what the agent's code or prompt says. The person can also kill the session at any time.
 
-**Why it lands.** It is the same sentence as Ledger's agentic bounty ("agents that pay, with a human approving on device"), the hackathon's "AI & Fintech" theme, and it contrasts with the only control layer visible today on X (an off-ledger policy engine): here the limit is a **consensus rule**.
+**Why it lands.** It is the same sentence as Ledger's agentic bounty ("agents that pay, with a human approving on device"), the "AI & Fintech" theme, and it contrasts with the only control layer visible today on X (an off-ledger policy engine): here the limit is a **consensus rule**.
 
 **Parts.** `examples/agent` (TypeScript): a minimal x402 client on XRPL, a toy paid endpoint, a loop that shows each payment with its node result; the web app's Session screen shows the same budget bar. **Spike K7** (before anything else): how x402 on XRPL works today (which scheme, which assets, which facilitator API, how the payment transaction is signed), so we pay an invoice with a **direct XRP `Payment`** a mode-C key may sign; if the schemes force RLUSD, see §3, option v1-B.
 
@@ -107,7 +107,7 @@ Unchanged from v0 §6 except:
 
 ## 7. Documentation and developer-experience feedback (extends v0 §7.6)
 
-- The Ripple DevRel capture hook (`RippleDevRel/xrpl-devex-hook`, listed on the hackathon platform as "Feedback Plugin" and presented at the kickoff workshop as "if you are using an agent to code, install this plug-in") is installed in the build repository. It records XRPL friction (docs gaps, misleading result codes, SDK footguns, retries) pseudonymously for the organizers. **`/xrpl-feedback <what happened>` takes five seconds**: use it every time something in the XRPL docs, `rippled`, `xrpl.js`, the faucets or the Ledger docs costs us time.
+- The Ripple DevRel capture hook (`RippleDevRel/xrpl-devex-hook`, listed in the published resources as "Feedback Plugin") is installed in the build repository. It records XRPL friction (docs gaps, misleading result codes, SDK footguns, retries) pseudonymously for the organizers. **`/xrpl-feedback <what happened>` takes five seconds**: use it every time something in the XRPL docs, `rippled`, `xrpl.js`, the faucets or the Ledger docs costs us time.
 - The same events feed `docs/ledger-dx-feedback.md` (Ledger) and the XRPL feedback (RippleX, XRPL Commons), with honest minutes lost, screenshots and pull requests.
 - XRPL Commons said developer experience is important to them: the xrpl-connect and scaffold-xrp contributions (§4, §5) are the strongest form of that feedback, because they fix what we hit.
 
@@ -152,4 +152,4 @@ Tracks and opt-ins as decided in v0 (D6: Protocol Innovation + Ledger Protocol I
 
 ## Appendix: sources checked on 2026-10-24
 
-GitHub API (discussions #657, #572, #574, #589, #236, #237, #222; `XRPL-Commons/xrpl-connect` adapter and CONTRIBUTING; `XRPL-Commons/scaffold-xrp` README; `RippleDevRel/xrpl-devex-hook`); the hackathon platform's published data (resources, tracks, team size 2 to 8); X posts listed in §2 (read-only).
+GitHub API (discussions #657, #572, #574, #589, #236, #237, #222; `XRPL-Commons/xrpl-connect` adapter and CONTRIBUTING; `XRPL-Commons/scaffold-xrp` README; `RippleDevRel/xrpl-devex-hook`); the published resources; X posts listed in §2 (read-only).
