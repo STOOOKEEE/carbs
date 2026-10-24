@@ -20,10 +20,13 @@
 
 #include <stdbool.h>
 #include "fields.h"
+#include "signing_session.h"
 
 bool is_time(field_t *field);
 bool is_time_delta(field_t *field);
+bool is_session_duration(field_t *field);
 void format_time(field_t *field, field_value_t *dst);
 void format_time_delta(field_t *field, field_value_t *dst);
+void format_session_duration(field_t *field, field_value_t *dst);
 
 #endif  // LEDGER_APP_XRP_TIME_H

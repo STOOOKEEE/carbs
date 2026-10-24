@@ -26,6 +26,7 @@
 #include "limitations.h"
 #include "percentage.h"
 #include "readers.h"
+#include "session_permissions.h"
 #include "time.h"
 #include "transaction_types.h"
 #include "xrp_helpers.h"
@@ -105,6 +106,10 @@ static const char* resolve_transaction_name(uint16_t value) {
             return "AMM Bid";
         case TRANSACTION_AMM_DELETE:
             return "AMM Delete";
+        case TRANSACTION_SIGNING_SESSION_SET:
+            return "Open session";
+        case TRANSACTION_SIGNING_SESSION_DELETE:
+            return "Close session";
         default:
             return "Unknown";
     }
@@ -121,6 +126,18 @@ void uint16_formatter(field_t* field, field_value_t* dst) {
     }
 }
 
+// A permission the app does not know is shown by number, but the parser has
+// already forced blind signing for it (xrp_parse.c, final pass).
+static void format_permission_value(field_t* field, field_value_t* dst) {
+    const char* name = resolve_permission_name(field->data.u32);
+    if (name != NULL) {
+        strncpy(dst->buf, name, sizeof(dst->buf));
+    } else {
+        snprintf(dst->buf, sizeof(dst->buf), "Unknown permission %u",
+                 field->data.u32);
+    }
+}
+
 void uint32_formatter(field_t* field, field_value_t* dst) {
     if (is_flag(field)) {
         format_flags(field, dst);
@@ -130,6 +147,10 @@ void uint32_formatter(field_t* field, field_value_t* dst) {
         format_time_delta(field, dst);
     } else if (is_percentage(field)) {
         format_percentage(field, dst);
+    } else if (is_session_duration(field)) {
+        format_session_duration(field, dst);
+    } else if (is_permission_value(field)) {
+        format_permission_value(field, dst);
     } else {
         uint32_t value = field->data.u32;
         snprintf(dst->buf, sizeof(dst->buf), "%u", value);
@@ -153,6 +174,7 @@ static bool should_format_blob_as_string(field_t* field) {
         case XRP_VL_MEMO_FORMAT:
         case XRP_VL_MEMO_DATA:
         case XRP_VL_URI:
+        case XRP_VL_SESSION_NOTE:
             return is_purely_ascii(field->data.ptr, field->length, false);
         default:
             return false;

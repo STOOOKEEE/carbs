@@ -1,0 +1,4 @@
+Transaction Type; Close session
+Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
+Session key;   rEmnmhwxmkDk    j9jKiibNuXx     P25VYHJ5Euy   
+Fee; XRP 0.000015

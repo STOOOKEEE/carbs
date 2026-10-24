@@ -1,0 +1,63 @@
+{
+  "TransactionType": "SigningSessionSet",
+  "Account": "rHH1wGruhP1ZSzJvvxYeimWLmXGG8WULED",
+  "Fee": "15",
+  "Sequence": 103,
+  "LastLedgerSequence": 5003,
+  "NetworkID": 24100,
+  "SigningPubKey": "03A9DF1DCF9A33E64B7ECF414B075BDE33888B7366A1CB70CE19EE8F20D6E121DA",
+  "SessionKey": "rHH1fLR86zy5uZjZXT8iEa4CHK145ksjAK",
+  "SessionDuration": 90,
+  "Permissions": [
+    {
+      "Permission": {
+        "PermissionValue": 1
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 2
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 3
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 5
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 8
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 9
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 21
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 28
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 65537
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 65545
+      }
+    }
+  ]
+}

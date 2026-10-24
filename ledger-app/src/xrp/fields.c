@@ -21,6 +21,8 @@
 
 #include "common.h"
 #include "flags.h"
+#include "sign_transaction.h"
+#include "transaction_types.h"
 
 #define HIDE(t, i)                                     \
     if (field->data_type == (t) && field->id == (i) && \
@@ -59,7 +61,11 @@ const char* resolve_field_name(field_t* field) {
             case 1:
                 return "Network ID";
             case 2:
-                return "Flags";
+                // A SigningSessionSet's only flag is its mode A: read as a rule.
+                return parse_context.transaction_type ==
+                               TRANSACTION_SIGNING_SESSION_SET
+                           ? "Allows"
+                           : "Flags";
             case 3:
                 return "Source Tag";
             case 4:
@@ -102,6 +108,10 @@ const char* resolve_field_name(field_t* field) {
                 return "Ticket Sequence";
             case 42:
                 return "NFToken Taxon";
+            case XRP_UINT32_PERMISSION_VALUE:
+                return "Allows";
+            case XRP_UINT32_SESSION_DURATION:
+                return "Valid for";
         }
     }
 
@@ -183,6 +193,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Create Amount";
             case 31:
                 return "LP Token Balance";
+            case XRP_UINT64_SESSION_CAP:
+                return "Max spend";
         }
     }
 
@@ -213,6 +225,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Fulfillment";
             case 17:
                 return "Condition";
+            case XRP_VL_SESSION_NOTE:
+                return "Note";
         }
     }
 
@@ -242,6 +256,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Regular Key";
             case 9:
                 return "NFToken Minter";
+            case XRP_ACCOUNT_SESSION_KEY:
+                return "Session key";
         }
     }
 

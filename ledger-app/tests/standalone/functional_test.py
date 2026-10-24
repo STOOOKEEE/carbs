@@ -295,6 +295,17 @@ def test_sign_valid_tx(
         pytest.skip(f"skip unrecognized-field tx from '{Path(raw_tx_path).stem}'")
     if raw_tx_path.endswith("28-all-zero-currency-issued-amount.raw"):
         pytest.skip(f"skip all-zero-currency tx from '{Path(raw_tx_path).stem}'")
+    # carbs: session vectors that must go blind or be refused (unit-tested in
+    # unit-tests/src/test_tx.c); 08-duplicate-flags.raw is skipped above.
+    for name in (
+        "06-unknown-permission.raw",
+        "07-unknown-flag.raw",
+        "09-truncated.raw",
+        "10-spoofed-note.raw",
+        "11-eleven-permissions.raw",
+    ):
+        if raw_tx_path.endswith(f"30-signing-session-set/{name}"):
+            pytest.skip(f"skip session tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
 
     xrp = XRPClient(backend, navigator)
 

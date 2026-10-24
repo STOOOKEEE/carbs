@@ -27,6 +27,7 @@
 #include "flags.h"
 #include "globals.h"
 #include "readers.h"
+#include "session_permissions.h"
 #include "transaction_types.h"
 #include "xrp_helpers.h"
 
@@ -125,6 +126,8 @@ static bool is_supported_transaction_type(uint16_t t) {
         case TRANSACTION_AMM_VOTE:
         case TRANSACTION_AMM_BID:
         case TRANSACTION_AMM_DELETE:
+        case TRANSACTION_SIGNING_SESSION_SET:
+        case TRANSACTION_SIGNING_SESSION_DELETE:
             return true;
         default:
             return false;
@@ -627,6 +630,12 @@ err_t post_process_field(parseContext_t* context, field_t* field) {
                 context->object_depth == 0) {
                 context->has_empty_pub_key = true;
             }
+            // The session "Note" row is the app's own text; a signed field
+            // claiming its id would let the sender write that row.
+            if (field->id == XRP_VL_SESSION_NOTE) {
+                err.err = INVALID_STATE;
+                return err;
+            }
             break;
         case STI_ACCOUNT:
             // Safety check to capture the illegal case where an account
@@ -656,6 +665,17 @@ err_t post_process_transaction(parseContext_t* context) {
         field->data_type = STI_ACCOUNT;
         field->id = XRP_ACCOUNT_REGULAR_KEY;
         field->data.ptr = NULL;  // Special value to indicate empty regular key
+    }
+
+    // A session review ends with what the session key can never do
+    // (FIANSO-SPEC 7.3 f): the node enforces it, the screen states it.
+    if (context->transaction_type == TRANSACTION_SIGNING_SESSION_SET) {
+        field_t* field;
+        CHECK(append_new_field(context, &field));
+        field->data_type = STI_VL;
+        field->id = XRP_VL_SESSION_NOTE;
+        field->data.ptr = (uint8_t*)SESSION_NOTE_TEXT;
+        field->length = sizeof(SESSION_NOTE_TEXT) - 1;
     }
 
     return err;
@@ -735,6 +755,17 @@ err_t parse_tx_internal(parseContext_t* context) {
     // next to a normal, otherwise-trustworthy-looking review.
     for (uint8_t i = 0; i < context->result.num_fields; ++i) {
         if (!is_field_recognized(&context->result.fields[i])) {
+            err.err = BLIND_SIGN_REQUIRED;
+            return err;
+        }
+    }
+
+    // A permission the app cannot name cannot be clear-signed (7.3 h): its
+    // row would say "Unknown permission" next to an otherwise normal review.
+    for (uint8_t i = 0; i < context->result.num_fields; ++i) {
+        field_t* field = &context->result.fields[i];
+        if (is_permission_value(field) &&
+            resolve_permission_name(field->data.u32) == NULL) {
             err.err = BLIND_SIGN_REQUIRED;
             return err;
         }

@@ -25,7 +25,9 @@
 #define MAX_BIP32_PATH     10
 #define MAX_ENC_INPUT_SIZE 26
 #define MAX_FIELDNAME_LEN  50
-#define MAX_ARRAY_LEN      8
+// 10, not upstream's 8: a SigningSessionSet can hold 10 permissions
+// (kPermissionMaxSize), one object each.
+#define MAX_ARRAY_LEN      10
 #define MAX_PATH_COUNT     6
 #define MAX_STEP_COUNT     8
 

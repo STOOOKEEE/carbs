@@ -44,6 +44,9 @@ add_library(xrp
   ../src/xrp/readers.h
   ../src/xrp/ascii_strings.c
   ../src/xrp/ascii_strings.h
+  ../src/xrp/session_permissions.c
+  ../src/xrp/session_permissions.h
+  ../src/xrp/signing_session.h
   ../src/xrp/time.c
   ../src/xrp/time.h
   ../src/xrp/transaction_types.h

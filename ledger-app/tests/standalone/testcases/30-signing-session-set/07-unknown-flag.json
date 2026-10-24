@@ -1,0 +1,12 @@
+{
+  "TransactionType": "SigningSessionSet",
+  "Account": "rHFqnKBYeky5tuRySHP4EzKoK5Xn2xZyYU",
+  "Fee": "18",
+  "Sequence": 106,
+  "LastLedgerSequence": 5006,
+  "NetworkID": 24100,
+  "SigningPubKey": "03CD9D95880DEE4488BA9D8B85877DF8973047B2EFB3BCD7A4ADECA7F81E5C201F",
+  "Flags": 196608,
+  "SessionKey": "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK",
+  "SessionDuration": 600
+}
