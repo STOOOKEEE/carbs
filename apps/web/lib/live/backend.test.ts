@@ -103,6 +103,12 @@ describe("the demo store on the live backend (real encoding and signing, test do
     expect(demo.state.info?.sequence).toBeGreaterThan(0);
   });
 
+  it("reads no objects, instead of failing, for an account the validated ledger does not have yet", async () => {
+    const { backend } = await live();
+    const objects = await backend.node.accountObjects(backend.counterparties.victim);
+    expect(objects).toEqual({ sessions: [], passkeys: [], signerList: null });
+  });
+
   it("opens a mode C session signed by the master key and shows the node's session entry", async () => {
     const { demo, fake } = await started();
     const result = await demo.openSession({
