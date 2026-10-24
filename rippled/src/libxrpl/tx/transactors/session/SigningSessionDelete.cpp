@@ -80,7 +80,12 @@ SigningSessionDelete::visitInvariantEntry(bool, SLE::const_ref, SLE::const_ref)
 }
 
 bool
-SigningSessionDelete::finalizeInvariants(STTx const&, TER, XRPAmount, ReadView const&, beast::Journal const&)
+SigningSessionDelete::finalizeInvariants(
+    STTx const&,
+    TER,
+    XRPAmount,
+    ReadView const&,
+    beast::Journal const&)
 {
     return true;
 }

@@ -5,15 +5,20 @@
 #include <xrpl/ledger/helpers/DirectoryHelpers.h>
 #include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Indexes.h>
+#include <xrpl/protocol/Protocol.h>
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/SField.h>
 #include <xrpl/protocol/STAmount.h>
+#include <xrpl/protocol/STArray.h>
 #include <xrpl/protocol/STLedgerEntry.h>
 #include <xrpl/protocol/TER.h>
+#include <xrpl/protocol/TxFlags.h>
 #include <xrpl/tx/transactors/session/SigningSession.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <unordered_set>
 
 namespace xrpl {
 
@@ -25,12 +30,14 @@ isPositiveXrp(STAmount const& amount)
     return isXRP(amount) && amount.signum() > 0;
 }
 
-/** True when `key` already has full authority on the account: its regular key or one of its passkeys. */
+/** True when `key` already has full authority on the account: its regular key or one of its
+ * passkeys. */
 bool
 hasFullAuthority(ReadView const& view, AccountID const& account, AccountID const& key)
 {
     auto const sleAccount = view.read(keylet::account(account));
-    if (sleAccount && sleAccount->isFieldPresent(sfRegularKey) && sleAccount->getAccountID(sfRegularKey) == key)
+    if (sleAccount && sleAccount->isFieldPresent(sfRegularKey) &&
+        sleAccount->getAccountID(sfRegularKey) == key)
         return true;
     auto const passkeys = view.read(keylet::passkeyList(account));
     if (!passkeys)
@@ -42,7 +49,42 @@ hasFullAuthority(ReadView const& view, AccountID const& account, AccountID const
     });
 }
 
+/** How many of the three modes the transaction asks for: Permissions (P), tfAllTransactions (A),
+ * SessionCap (C). */
+int
+modeCount(STTx const& tx)
+{
+    return static_cast<int>(tx.isFieldPresent(sfPermissions)) +
+        static_cast<int>(tx.isFlag(tfAllTransactions)) +
+        static_cast<int>(tx.isFieldPresent(sfSessionCap));
+}
+
+/** Mode P: 1..kPermissionMaxSize values, no duplicate, each one a permission a session may hold. */
+NotTEC
+checkSessionPermissions(STArray const& permissions, Rules const& rules)
+{
+    if (permissions.empty())
+        return temARRAY_EMPTY;
+    if (permissions.size() > kPermissionMaxSize)
+        return temARRAY_TOO_LARGE;
+
+    std::unordered_set<std::uint32_t> seen;
+    for (auto const& permission : permissions)
+    {
+        auto const value = permission[sfPermissionValue];
+        if (!seen.insert(value).second || !isSessionPermission(value, rules))
+            return temMALFORMED;
+    }
+    return tesSUCCESS;
+}
+
 }  // namespace
+
+std::uint32_t
+SigningSessionSet::getFlagsMask(PreflightContext const&)
+{
+    return tfSigningSessionSetMask;
+}
 
 NotTEC
 SigningSessionSet::preflight(PreflightContext const& ctx)
@@ -56,16 +98,29 @@ SigningSessionSet::preflight(PreflightContext const& ctx)
     if (duration == 0 || duration > kMaxSessionDuration)
         return temBAD_EXPIRATION;
 
-    // Mode C is the only mode for now (modes A and P come later): a cap is required.
-    if (!ctx.tx.isFieldPresent(sfSessionCap))
+    if (modeCount(ctx.tx) != 1)
         return temMALFORMED;
-    auto const cap = ctx.tx[sfSessionCap];
-    if (!isPositiveXrp(cap))
-        return temBAD_AMOUNT;
+
+    if (ctx.tx.isFieldPresent(sfPermissions))
+    {
+        if (auto const ret =
+                checkSessionPermissions(ctx.tx.getFieldArray(sfPermissions), ctx.rules))
+            return ret;
+    }
+
+    if (auto const cap = ctx.tx[~sfSessionCap])
+    {
+        if (!isPositiveXrp(*cap))
+            return temBAD_AMOUNT;
+    }
 
     if (auto const perTx = ctx.tx[~sfSessionMaxPerTx])
     {
-        if (!isPositiveXrp(*perTx) || *perTx > cap)
+        // A per-transaction bound only makes sense under a total cap (mode C).
+        auto const cap = ctx.tx[~sfSessionCap];
+        if (!cap)
+            return temMALFORMED;
+        if (!isPositiveXrp(*perTx) || *perTx > *cap)
             return temBAD_AMOUNT;
     }
 
@@ -91,7 +146,8 @@ SigningSessionSet::preclaim(PreclaimContext const& ctx)
     if (ctx.view.exists(keylet::signingSession(account, sessionKey)))
         return tecDUPLICATE;
 
-    if (auto const witness = ctx.tx[~sfSessionWitness]; witness && !ctx.view.exists(keylet::account(*witness)))
+    if (auto const witness = ctx.tx[~sfSessionWitness];
+        witness && !ctx.view.exists(keylet::account(*witness)))
         return tecNO_TARGET;
 
     return tesSUCCESS;
@@ -104,8 +160,12 @@ SigningSessionSet::doApply()
     if (!sleOwner)
         return tefINTERNAL;  // LCOV_EXCL_LINE
 
-    if (auto const ret =
-            checkReserve(ctx_.getApplyViewContext(), sleOwner, preFeeBalance_, {.ownerCountDelta = 1}, ctx_.journal);
+    if (auto const ret = checkReserve(
+            ctx_.getApplyViewContext(),
+            sleOwner,
+            preFeeBalance_,
+            {.ownerCountDelta = 1},
+            ctx_.journal);
         !isTesSuccess(ret))
         return ret;
 
@@ -118,14 +178,22 @@ SigningSessionSet::doApply()
         sfExpiration,
         static_cast<std::uint32_t>(view().parentCloseTime().time_since_epoch().count()) +
             ctx_.tx[sfSessionDuration]);
-    sle->setFieldAmount(sfSessionCap, ctx_.tx[sfSessionCap]);
-    sle->setFieldAmount(sfSessionSpent, STAmount{XRPAmount{0}});
+    if (auto const cap = ctx_.tx[~sfSessionCap])
+    {
+        sle->setFieldAmount(sfSessionCap, *cap);
+        sle->setFieldAmount(sfSessionSpent, STAmount{XRPAmount{0}});
+    }
+    if (ctx_.tx.isFlag(tfAllTransactions))
+        sle->setFieldU32(sfFlags, lsfAllTransactions);
+    if (ctx_.tx.isFieldPresent(sfPermissions))
+        sle->setFieldArray(sfPermissions, ctx_.tx.getFieldArray(sfPermissions));
     if (auto const perTx = ctx_.tx[~sfSessionMaxPerTx])
         sle->setFieldAmount(sfSessionMaxPerTx, *perTx);
     if (auto const witness = ctx_.tx[~sfSessionWitness])
         sle->setAccountID(sfSessionWitness, *witness);
 
-    auto const page = view().dirInsert(keylet::ownerDir(accountID_), key, describeOwnerDir(accountID_));
+    auto const page =
+        view().dirInsert(keylet::ownerDir(accountID_), key, describeOwnerDir(accountID_));
     if (!page)
         return tecDIR_FULL;  // LCOV_EXCL_LINE
     (*sle)[sfOwnerNode] = *page;
@@ -142,7 +210,12 @@ SigningSessionSet::visitInvariantEntry(bool, SLE::const_ref, SLE::const_ref)
 }
 
 bool
-SigningSessionSet::finalizeInvariants(STTx const&, TER, XRPAmount, ReadView const&, beast::Journal const&)
+SigningSessionSet::finalizeInvariants(
+    STTx const&,
+    TER,
+    XRPAmount,
+    ReadView const&,
+    beast::Journal const&)
 {
     return true;
 }

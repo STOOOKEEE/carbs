@@ -8,7 +8,10 @@
 
 namespace xrpl {
 
-/** Opens a signing session (FIANSO-SPEC 6.3). Mode C only for now: SessionCap is required. */
+/**
+ * Opens a signing session (FIANSO-SPEC 6.3) in exactly one mode: Permissions
+ * (P), tfAllTransactions (A) or SessionCap (C).
+ */
 class SigningSessionSet : public Transactor
 {
 public:
@@ -17,6 +20,9 @@ public:
     explicit SigningSessionSet(ApplyContext& ctx) : Transactor(ctx)
     {
     }
+
+    static std::uint32_t
+    getFlagsMask(PreflightContext const& ctx);
 
     static NotTEC
     preflight(PreflightContext const& ctx);

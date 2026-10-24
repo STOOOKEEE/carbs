@@ -57,7 +57,10 @@ class SigningSessions_test : public beast::unit_test::Suite
     }
 
     static json::Value
-    close(test::jtx::Account const& account, test::jtx::Account const& sessionKey, std::optional<test::jtx::Account> owner = {})
+    close(
+        test::jtx::Account const& account,
+        test::jtx::Account const& sessionKey,
+        std::optional<test::jtx::Account> owner = {})
     {
         json::Value jv;
         jv[jss::TransactionType] = "SigningSessionDelete";
@@ -69,7 +72,10 @@ class SigningSessions_test : public beast::unit_test::Suite
     }
 
     static std::shared_ptr<SLE const>
-    session(test::jtx::Env& env, test::jtx::Account const& owner, test::jtx::Account const& sessionKey)
+    session(
+        test::jtx::Env& env,
+        test::jtx::Account const& owner,
+        test::jtx::Account const& sessionKey)
     {
         return env.le(keylet::signingSession(owner.id(), sessionKey.id()));
     }
@@ -169,10 +175,18 @@ class SigningSessions_test : public beast::unit_test::Suite
         env(regkey(alice, sess), Sig(sess), Fee(fee), soon(env), Ter(tefSESSION_TX_NOT_ALLOWED));
         env(pay(alice, bob, XRP(1)), Sig(sess), Fee(fee), Ter(tefSESSION_TX_NOT_ALLOWED));
         // A token payment: mode C only bounds XRP.
-        env(pay(alice, bob, alice["USD"](1)), Sig(sess), Fee(fee), soon(env), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(pay(alice, bob, alice["USD"](1)),
+            Sig(sess),
+            Fee(fee),
+            soon(env),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
 
         // A fee far above what is required is refused.
-        env(pay(alice, bob, drops(1)), Sig(sess), Fee(fee * (kSessionFeeMultiple + 10)), soon(env), Ter(tefSESSION_LIMIT));
+        env(pay(alice, bob, drops(1)),
+            Sig(sess),
+            Fee(fee * (kSessionFeeMultiple + 10)),
+            soon(env),
+            Ter(tefSESSION_LIMIT));
     }
 
     void
@@ -254,7 +268,11 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
 
         env(pay(alice, bob, XRP(1)), Sig(sess), soon(env), Ter(tefSESSION_NO_WITNESS));
-        env(pay(alice, bob, XRP(1)), Sig(sess), Sig(sfWitnessSignature, mallory), soon(env), Ter(tefSESSION_NO_WITNESS));
+        env(pay(alice, bob, XRP(1)),
+            Sig(sess),
+            Sig(sfWitnessSignature, mallory),
+            soon(env),
+            Ter(tefSESSION_NO_WITNESS));
         env(pay(alice, bob, XRP(1)), Sig(sess), Sig(sfWitnessSignature, witness), soon(env));
         env.close();
         BEAST_EXPECT(env.balance(bob) == XRP(1001));

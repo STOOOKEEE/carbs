@@ -194,7 +194,8 @@ invokePreclaim(PreclaimContext const& ctx)
                         // its session, in place of checkSign (FIANSO-SPEC 6.5).
                         if (auto const session = sessionOf(ctx.view, ctx.tx))
                         {
-                            if (NotTEC const result = checkSession(ctx, *session))
+                            if (NotTEC const result =
+                                    checkSession(ctx, *session, &T::checkGranularSemantics))
                                 return result;
                         }
                         else if (NotTEC const result = T::checkSign(ctx))

@@ -954,8 +954,9 @@ LEDGER_ENTRY(ltTOKEN_ISSUANCE, 0x0099, TokenIssuance, token_issuance, ({
 }))
 
 /** A signing session: a key that may sign for Account, within bounds, until
-    Expiration (FIANSO-SPEC 6.2). Mode C: SessionCap. SessionMaxPerTx and
-    SessionWitness are optional carbs protections.
+    Expiration (FIANSO-SPEC 6.2). Exactly one mode: Permissions (mode P),
+    lsfAllTransactions (mode A) or SessionCap (mode C). SessionMaxPerTx
+    (mode C only) and SessionWitness are optional carbs protections.
     \sa keylet::signingSession
  */
 LEDGER_ENTRY(ltSIGNING_SESSION, 0x009A, SigningSession, signing_session, ({
@@ -966,6 +967,7 @@ LEDGER_ENTRY(ltSIGNING_SESSION, 0x009A, SigningSession, signing_session, ({
     {sfSessionSpent,         SoeOptional},
     {sfSessionMaxPerTx,      SoeOptional},
     {sfSessionWitness,       SoeOptional},
+    {sfPermissions,          SoeOptional},
     {sfOwnerNode,            SoeRequired},
     {sfPreviousTxnID,        SoeRequired},
     {sfPreviousTxnLgrSeq,    SoeRequired},

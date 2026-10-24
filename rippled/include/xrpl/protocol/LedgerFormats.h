@@ -219,6 +219,9 @@ enum LedgerEntryType : std::uint16_t {
     LEDGER_OBJECT(Subscription,                                                                                                    \
         LSF_FLAG(lsfSingleUse, 0x00010000))                     /* True, delete on first successful claim */                       \
                                                                                                                                    \
+    LEDGER_OBJECT(SigningSession,                                                                                                  \
+        LSF_FLAG(lsfAllTransactions, 0x00010000))               /* True, session in mode A (any eligible transaction) */           \
+                                                                                                                                   \
     LEDGER_OBJECT(TokenIssuance,                                                                                                   \
         LSF_FLAG(lsfTokenLocked, 0x00000001)                    /* True, per-currency global freeze */                             \
         LSF_FLAG(lsfTokenCannotLock, 0x00000002)                /* True, issuer renounced the per-currency lock */                 \
