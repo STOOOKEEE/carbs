@@ -221,3 +221,22 @@ describe("rate limits", () => {
     await expect(limited.request("server_info", {})).rejects.toMatchObject({ error: "tooBusy" });
   });
 });
+
+describe("local-check refusals", () => {
+  it("returns submit's invalidTransaction as a result with the node's exception text", async () => {
+    const node = new RecordedNode([
+      {
+        method: "submit",
+        params: { tx_blob: "AA" },
+        error: {
+          error: "invalidTransaction",
+          error_message: "",
+          error_exception: "fails local checks: Invalid signature.",
+        },
+      },
+    ]);
+    const final = await submitAndWait(node, "AA", "H4", 10);
+    expect(final).toMatchObject({ result: "invalidTransaction", validated: false });
+    expect(final.submit.engineResultMessage).toBe("fails local checks: Invalid signature.");
+  });
+});

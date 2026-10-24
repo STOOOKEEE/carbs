@@ -12,7 +12,7 @@ export interface RecordedCall {
   method: string;
   params: Record<string, unknown>;
   result?: unknown;
-  error?: { error: string; error_message?: string };
+  error?: { error: string; error_message?: string; error_exception?: string };
 }
 
 /** Stable JSON of the parameters: keys sorted, so the order of a literal does not matter. */
@@ -47,7 +47,14 @@ export class RecordedNode implements NodeClient {
     this.requests.push(key);
     const call = this.#answers.get(key);
     if (!call) throw new RecordedNodeMissError(`not recorded: ${key}`);
-    if (call.error) throw new RpcError(method, call.error.error, call.error.error_message ?? "");
+    if (call.error) {
+      throw new RpcError(
+        method,
+        call.error.error,
+        call.error.error_message ?? "",
+        call.error.error_exception ?? "",
+      );
+    }
     return structuredClone(call.result);
   }
 }
