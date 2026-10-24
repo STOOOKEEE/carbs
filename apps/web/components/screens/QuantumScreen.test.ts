@@ -1,3 +1,14 @@
+import {
+  addressFromPublicKey,
+  bytesToHex,
+  classicSignerFromSeed,
+  generateClassicSeed,
+} from "@carbs/sessions";
+import {
+  RecordedNode,
+  alphanetServerDefinitions,
+  type RecordedCall,
+} from "@carbs/sessions/testing";
 import { describe, expect, it } from "vitest";
 import QuantumScreen from "./QuantumScreen.vue";
 import { flushPromises, mountScreen } from "./test-utils";
@@ -11,6 +22,7 @@ describe("Quantum screen", () => {
     ["multisig", "Exposed"],
   ])("reports %s as %s, labelled SIMULATED", async (fixture, status) => {
     const { wrapper } = mountScreen(QuantumScreen);
+    await wrapper.get("[data-testid='source-simulated']").setValue(true);
     await wrapper.get(`[data-testid='fixture-${fixture}']`).trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='status']").text()).toBe(status);
@@ -20,6 +32,7 @@ describe("Quantum screen", () => {
 
   it("names the transaction that first revealed the master key", async () => {
     const { wrapper } = mountScreen(QuantumScreen);
+    await wrapper.get("[data-testid='source-simulated']").setValue(true);
     await wrapper.get("[data-testid='fixture-exposed-master']").trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='reason-master']").text()).toContain("first revealed in");
@@ -27,6 +40,7 @@ describe("Quantum screen", () => {
 
   it("checks a pasted address", async () => {
     const { wrapper, ctx } = mountScreen(QuantumScreen);
+    await wrapper.get("[data-testid='source-simulated']").setValue(true);
     const address = ctx.backend.fixtures.find((f) => f.id === "never-signed")?.address ?? "";
     await wrapper.get("[data-testid='address-input']").setValue(address);
     await wrapper.get("[data-testid='exposure-form']").trigger("submit");
@@ -77,5 +91,158 @@ describe("Quantum screen", () => {
       .map((n) => n.text());
     expect(codes).toEqual(["tesSUCCESS", "tesSUCCESS", "tesSUCCESS"]);
     expect(wrapper.get("[data-testid='after']").text()).toContain("No exposure found");
+  });
+});
+
+/** A node that answers like the real one for one account, recorded by hand (no network). */
+function nodeFor(address: string, txs: Record<string, unknown>[], created: boolean): RecordedNode {
+  const calls: RecordedCall[] = [
+    { method: "server_definitions", params: {}, result: alphanetServerDefinitions() },
+    {
+      method: "account_info",
+      params: { account: address, ledger_index: "validated" },
+      result: {
+        account_data: {
+          Account: address,
+          Flags: 0,
+          Sequence: 5,
+          Balance: "100000000",
+          OwnerCount: 0,
+        },
+      },
+    },
+    {
+      method: "account_tx",
+      params: {
+        account: address,
+        ledger_index_min: -1,
+        ledger_index_max: -1,
+        forward: true,
+        limit: 200,
+      },
+      result: {
+        account: address,
+        ledger_index_min: 1,
+        ledger_index_max: 1000,
+        validated: true,
+        transactions: txs.map((tx, index) => ({
+          hash: `${"AB".repeat(31)}${String(index).padStart(2, "0")}`,
+          ledger_index: 10 + index,
+          validated: true,
+          tx_json: tx,
+          meta: {
+            TransactionResult: "tesSUCCESS",
+            AffectedNodes:
+              created && index === 0
+                ? [
+                    {
+                      CreatedNode: {
+                        LedgerEntryType: "AccountRoot",
+                        NewFields: { Account: address },
+                      },
+                    },
+                  ]
+                : [],
+          },
+        })),
+      },
+    },
+    ...["passkey_list", "beneficiary", "delegate", "signer_list"].map((type): RecordedCall => ({
+      method: "account_objects",
+      params: { account: address, ledger_index: "validated", type },
+      result: { account: address, account_objects: [] },
+    })),
+  ];
+  return new RecordedNode(calls);
+}
+
+describe("Quantum screen, live source", () => {
+  const signer = classicSignerFromSeed(generateClassicSeed());
+  const address = addressFromPublicKey(signer.publicKey);
+
+  async function checkLive(txs: Record<string, unknown>[], created: boolean, network = "alphanet") {
+    const urls: string[] = [];
+    const node = nodeFor(address, txs, created);
+    const mounted = mountScreen(QuantumScreen, {
+      clientFactory: (url) => {
+        urls.push(url);
+        return node;
+      },
+    });
+    await mounted.wrapper.get("[data-testid='network']").setValue(network);
+    await mounted.wrapper.get("[data-testid='address-input']").setValue(address);
+    await mounted.wrapper.get("[data-testid='exposure-form']").trigger("submit");
+    await flushPromises();
+    return { ...mounted, node, urls };
+  }
+
+  const creation = {
+    TransactionType: "Payment",
+    Account: "rFunderFunderFunderFunderFunder",
+    Destination: address,
+    Amount: "100000000",
+    SigningPubKey: "02".padEnd(66, "1"),
+  };
+  const signedByMaster = {
+    TransactionType: "AccountSet",
+    Account: address,
+    SigningPubKey: bytesToHex(signer.publicKey),
+  };
+
+  it("is the default source and reads the real node, not the fixtures", async () => {
+    const { wrapper } = mountScreen(QuantumScreen);
+    expect((wrapper.get("[data-testid='source-live']").element as HTMLInputElement).checked).toBe(
+      true,
+    );
+    expect(wrapper.find("[data-testid='fixture-exposed-master']").exists()).toBe(false);
+  });
+
+  it("reports an account whose master key has signed as exposed, from the node's history, not SIMULATED", async () => {
+    const { wrapper, node, urls } = await checkLive([creation, signedByMaster], true);
+    expect(wrapper.get("[data-testid='status']").text()).toBe("Exposed");
+    expect(wrapper.get("[data-testid='reason-master']").text()).toContain("first revealed in");
+    expect(wrapper.find("[data-testid='report'] [data-testid='sim-badge']").exists()).toBe(false);
+    expect(wrapper.get("[data-testid='coverage']").text()).toContain("ledgers 1 to 1000");
+    expect(urls).toEqual(["https://rpc.alphanet.xrpl.org"]);
+    // Read-only: public query methods only, never submit or sign.
+    const methods = new Set(node.requests.map((r) => r.split(" ")[0]));
+    expect([...methods].sort()).toEqual([
+      "account_info",
+      "account_objects",
+      "account_tx",
+      "server_definitions",
+    ]);
+  });
+
+  it("reports a funded account that never signed as no exposure found", async () => {
+    const { wrapper } = await checkLive([creation], true);
+    expect(wrapper.get("[data-testid='status']").text()).toBe("No exposure found");
+  });
+
+  it("says unknown, not safe, when the node's history does not reach the creation", async () => {
+    const { wrapper } = await checkLive([signedByMaster].slice(1), false);
+    expect(wrapper.get("[data-testid='status']").text()).toBe("Unknown");
+    expect(wrapper.get("[data-testid='coverage']").text()).toContain("does not reach");
+  });
+
+  it("reads mainnet from its own node and offers no migration there", async () => {
+    const { wrapper, urls } = await checkLive([creation, signedByMaster], true, "mainnet");
+    expect(urls).toEqual(["https://xrplcluster.com"]);
+    expect(wrapper.get("[data-testid='status']").text()).toBe("Exposed");
+    expect(wrapper.find("[data-testid='migration-start']").exists()).toBe(false);
+  });
+
+  it("shows the error when the node cannot be reached", async () => {
+    const mounted = mountScreen(QuantumScreen, {
+      clientFactory: () => ({
+        async request() {
+          throw new Error("cannot connect");
+        },
+      }),
+    });
+    await mounted.wrapper.get("[data-testid='address-input']").setValue(address);
+    await mounted.wrapper.get("[data-testid='exposure-form']").trigger("submit");
+    await flushPromises();
+    expect(mounted.wrapper.text()).toContain("cannot connect");
   });
 });
