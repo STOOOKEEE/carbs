@@ -129,3 +129,20 @@ Documentation only, and a proposal: ADR 0010 is `Proposed`, and nothing in §6 o
 
 - **Every new code an option would need is free** on the public AlphaNet (`server_definitions` `hash` `34614C84…C3C5`, the hash of spike K5): UINT32 115 and 116, ACCOUNT 35, `tef` -169, and no flag defined for `SigningSessionSet`. It is free in the imported tree too, with the commands and output in the ADR. Nothing is allocated.
 - **Device-track watch:** `git fetch --prune` shows `develop` holding the three device-track branches (merge `695e6df`). Open drafts #7, #10 and #11 are those branches. No number in `ledger-app/src/xrp/signing_session.h` changes, so there is nothing to adapt.
+
+### Limits and roadmap (D16)
+
+Documentation only.
+
+- **Headline.** It stays "quantum-safe by default" (D11). The TL;DR now says so, and the default profile is the Ledger account (D13).
+- **No agent scene.** D6 and D9 are marked superseded by D16, and §8.8 no longer reserves the agent.
+- **§16 "Limits and roadmap"** is added to the spec, with a short table in `docs/ARCHITECTURE.md`. Each limit has its reason, its `path:line` where it comes from code, what bounds it today and what would lift it. The limits:
+  - P-256 sessions on Mac accounts;
+  - extractible ML-DSA session keys and large transactions on Ledger accounts;
+  - the passkey list that cannot be replaced (P6);
+  - the WebAuthn challenge defect (P5);
+  - ML-DSA v1 on the device without side-channel countermeasures;
+  - `Batch` cannot migrate keys atomically;
+  - 36 KB of device RAM.
+- **Batch, read in code.** The observation of the device track (an all-or-nothing `Batch` with `asfDisableMaster` returns `tesSUCCESS` and applies nothing) matches the code. An inner transaction has no `SigningPubKey` (`rippled/src/libxrpl/tx/transactors/system/Batch.cpp:279-285`), and `asfDisableMaster` needs the transaction's own key to be the master key (`rippled/src/libxrpl/tx/transactors/account/AccountSet.cpp:246-256`, `:307-313`).
+- **Stale P5 text updated.** §6.14 and §15 still called P5 unverified. They now give the N1 result (SIMULATED, a software authenticator) and the fix. §6.12 adds `fixPasskeyChallenge` to the standalone features, as `infra/README.md` already does.
