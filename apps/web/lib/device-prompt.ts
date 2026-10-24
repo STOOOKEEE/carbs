@@ -14,13 +14,21 @@ export interface DevicePrompt {
 
 export function createDevicePrompt(): DevicePrompt {
   let pending: ((approved: boolean) => void) | null = null;
+  // Reviews are shown one at a time: a second request waits for the answer to the first, instead
+  // of replacing it and leaving the first caller waiting for ever.
+  let queue: Promise<unknown> = Promise.resolve();
+  const ask = (review: DeviceReview) =>
+    new Promise<boolean>((resolve) => {
+      prompt.review = review;
+      pending = resolve;
+    });
   const prompt: DevicePrompt = reactive({
     review: null,
-    approver: (review: DeviceReview) =>
-      new Promise<boolean>((resolve) => {
-        prompt.review = review;
-        pending = resolve;
-      }),
+    approver: (review: DeviceReview) => {
+      const turn = queue.then(() => ask(review));
+      queue = turn.catch(() => undefined);
+      return turn;
+    },
     answer(approved: boolean) {
       const resolve = pending;
       pending = null;

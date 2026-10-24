@@ -259,6 +259,10 @@ export class SimulatedNode implements NodePort, SimClock {
     return common;
   }
 
+  transactionHash(tx: TxJson): string {
+    return simTxHash(tx);
+  }
+
   explorerUrl(): string | null {
     return null;
   }
@@ -283,6 +287,7 @@ export class SimulatedNode implements NodePort, SimClock {
       family: familyOf(code),
       success: false,
       feeClaimed: false,
+      final: true,
       hash,
       ledgerIndex: this.ledgerIndex,
     };
@@ -292,14 +297,14 @@ export class SimulatedNode implements NodePort, SimClock {
     const hash = simTxHash(tx);
     const reject = (code: string): NodeResult => this.reject(code, hash);
 
-    const account = this.accounts.get(tx.Account);
-    if (account === undefined) return reject("terNO_ACCOUNT");
-
+    // Stateless checks first (preflight), then the account (spec 6.5).
     const pre = this.preflight(tx);
     if (pre !== OK) return reject(pre);
     const signatureOk =
       tx.PasskeySignature !== undefined ? verifyPasskeyAssertion(tx) : verifySignature(tx);
     if (!signatureOk) return reject("temBAD_SIGNATURE");
+    const account = this.accounts.get(tx.Account);
+    if (account === undefined) return reject("terNO_ACCOUNT");
 
     // Sequence and LastLedgerSequence (before authorization, as upstream does).
     if (typeof tx.Sequence === "number") {
@@ -323,7 +328,9 @@ export class SimulatedNode implements NodePort, SimClock {
       if (verdict !== OK) return reject(verdict);
     }
 
+    // The fee is checked after the signature (spec 6.5): a stranger's key is refused first.
     const fee = Number(tx.Fee);
+    if (fee < SIM_BASE_FEE_DROPS) return reject("telINSUF_FEE_P");
     if (account.balance < fee) return reject("terINSUF_FEE_B");
 
     const applied = this.apply({ account, tx, fee, signerPub, signerId });
@@ -360,6 +367,7 @@ export class SimulatedNode implements NodePort, SimClock {
       family,
       success,
       feeClaimed: true,
+      final: true,
       hash,
       ledgerIndex: this.openLedger(),
     };
@@ -377,7 +385,6 @@ export class SimulatedNode implements NodePort, SimClock {
       return "temDISABLED";
     }
     if (!isDropsString(tx.Fee)) return "temMALFORMED";
-    if (Number(tx.Fee) < SIM_BASE_FEE_DROPS) return "telINSUF_FEE_P";
     if (typeof tx.SigningPubKey !== "string" || tx.SigningPubKey === "") return "temBAD_SIGNATURE";
     if (algorithmOfPublicKey(tx.SigningPubKey) === null) return "temBAD_SIGNATURE";
 

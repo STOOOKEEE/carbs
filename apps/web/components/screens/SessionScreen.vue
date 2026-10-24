@@ -67,6 +67,19 @@ const canOpen = computed(
     state.sessionKey === null &&
     (form.mode !== "P" || (form.permissions.length > 0 && !tooMany.value)),
 );
+/** The open button signs on the simulated Stax for a Ledger account, whatever the node is. */
+const openSimulated = computed(
+  () =>
+    backend.mode === "simulated" ||
+    (state.profile === "ledger" && backend.device.mode === "simulated"),
+);
+const openHint = computed(() => {
+  if (state.sessionKey !== null) return null;
+  if (form.mode === "P" && form.permissions.length === 0)
+    return "Tick at least one transaction type.";
+  if (form.mode === "P" && tooMany.value) return `Tick at most ${PERMISSION_MAX_SIZE} types.`;
+  return null;
+});
 const openLabel = computed(() =>
   state.profile === "ledger"
     ? "Open on the Ledger"
@@ -95,7 +108,7 @@ async function close(): Promise<void> {
       A short-lived key that signs without prompting. The ledger, not this page, confines it.
     </ScreenHeader>
 
-    <NeedAccount v-if="!state.address" />
+    <NeedAccount v-if="!state.ready" />
     <template v-else>
       <div class="grid gap-5 lg:grid-cols-2">
         <form class="panel space-y-4" data-testid="session-form" @submit.prevent="open">
@@ -153,8 +166,11 @@ async function close(): Promise<void> {
             data-testid="open-session"
           >
             {{ openLabel }}
-            <SimBadge v-if="backend.mode === 'simulated'" />
+            <SimBadge v-if="openSimulated" />
           </button>
+          <p v-if="openHint" class="text-sm text-muted-foreground" data-testid="open-hint">
+            {{ openHint }}
+          </p>
           <p v-if="state.sessionKey" class="text-sm text-muted-foreground">
             A session is already open. Close it to open another.
           </p>

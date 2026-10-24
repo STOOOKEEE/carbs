@@ -23,7 +23,6 @@ import { DEFAULT_FEE_DROPS } from "../constants";
 import type { Demo, Profile } from "../demo";
 import type { NetworkStore } from "../network-store";
 import type { Backend, KeyHandle, TxJson } from "../ports";
-import { accountIdOf, simTxHash } from "../sim/keys";
 import type { PasskeyMaterial } from "./passkey";
 import {
   DEMO_ACCOUNT,
@@ -109,9 +108,9 @@ abstract class CarbsAdapter implements WalletAdapter {
   async sign(transaction: Transaction): Promise<SignedTransaction> {
     const signed = await this.signJson(transaction);
     return {
-      hash: simTxHash(signed),
+      hash: this.host.backend.node.transactionHash(signed),
       signature: signed.TxnSignature ?? JSON.stringify(signed["PasskeySignature"] ?? ""),
-      signerAddress: accountIdOf(signed.SigningPubKey ?? ""),
+      signerAddress: this.host.demo.accountSignerAddress() ?? "",
       tx: signed,
     };
   }
@@ -217,12 +216,17 @@ export class PasskeyMacAdapter extends CarbsAdapter {
   }
 
   protected async open(): Promise<void> {
-    const ok = await this.host.demo.createAccount("mac", {
-      passkey: () => this.passkeys.create(),
-      passkeyLabel: this.passkeys.simulated
-        ? "Create a passkey (SIMULATED: software authenticator, no prompt)"
-        : "Create a passkey with this browser's authenticator",
-    });
+    const label = this.passkeys.simulated
+      ? "Create a passkey (SIMULATED: software authenticator, no prompt)"
+      : "Create a passkey with this browser's authenticator";
+    // On the live backend the wallet signs the node's binary signing data itself, with the same
+    // passkey source; on the simulation the passkey signs the simulated node's challenge.
+    const ok = await this.host.demo.createAccount(
+      "mac",
+      this.host.backend.mode === "live"
+        ? { passkeyLabel: label }
+        : { passkey: () => this.passkeys.create(), passkeyLabel: label },
+    );
     if (!ok)
       throw new Error(this.host.demo.state.error ?? `${this.name} could not set up the account`);
   }

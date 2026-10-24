@@ -12,6 +12,8 @@ pnpm dlx serve apps/web/.output/public  # open the printed URL: all five screens
 
 `node apps/web/scripts/check-static.mjs apps/web/.output/public` (run by CI after `generate`) fails if the built site has an inline script, a script or link to another origin, a `script-src` other than `'self'`, or a `connect-src` with a wildcard or a bare scheme.
 
+The Nitro runtime (`nuxt dev`, or the Node server of `nuxt build`) keeps the externalized script in memory of its process, so a **multi-instance or serverless deployment of the Node server** would answer 404 for it from another instance. Use the static output (below), which writes the file next to the pages.
+
 The static build contains `_carbs/inline/<hash>.js`, the file that holds Nuxt's runtime config (Nuxt writes it as an inline script, which `script-src 'self'` forbids). It is written during `generate` and referenced by every page, so keep it when you copy the output.
 
 ## One command per host

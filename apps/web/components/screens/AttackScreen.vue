@@ -34,7 +34,7 @@ function blocked(attack: Attack): string | null {
       a message written here.
     </ScreenHeader>
 
-    <NeedAccount v-if="!state.address" />
+    <NeedAccount v-if="!state.ready" />
     <template v-else>
       <p v-if="!state.sessionKey" class="mb-4 text-muted-foreground" data-testid="no-session">
         No session is open.

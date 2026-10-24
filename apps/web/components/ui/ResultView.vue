@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
-import { useBackend, useNetwork } from "~/lib/context";
+import { useBackend } from "~/lib/context";
 import { describeResult } from "~/lib/result-codes";
 import type { NodeResult } from "~/lib/ports";
 import { shortHex } from "~/lib/format";
@@ -14,7 +14,6 @@ const props = defineProps<{
 }>();
 
 const backend = useBackend();
-const network = useNetwork();
 
 const description = computed(() => describeResult(props.result.code));
 const tone = computed(() =>
@@ -27,8 +26,9 @@ const tone = computed(() =>
 // A simulated hash exists on no explorer; a real one is linked on the selected network's.
 const explorerLink = computed(() => {
   if (props.explorerUrl !== undefined) return props.explorerUrl;
+  // The link of the node the transaction was sent to, not of the network selected in the header.
   return backend.mode === "live" && props.result.feeClaimed
-    ? network.explorerTx(props.result.hash)
+    ? backend.node.explorerUrl(props.result.hash)
     : null;
 });
 </script>
@@ -39,6 +39,9 @@ const explorerLink = computed(() => {
       <span class="chip" :class="tone" data-testid="result-code">{{ result.code }}</span>
       <span class="text-muted-foreground">
         {{ result.feeClaimed ? "fee charged" : "no fee charged" }}
+      </span>
+      <span v-if="!result.final" class="chip chip-warn" data-testid="not-final">
+        not validated: this is a preliminary answer
       </span>
       <SimBadge v-if="simulated" />
     </div>

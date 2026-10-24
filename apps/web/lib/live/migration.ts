@@ -106,6 +106,8 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
   let mlDsa: BytesSigner | null = null;
   let proof: FinalResult | null = null;
   let backupDescription: string | null = null;
+  /** The seed of the device made by the latest `start()`; shown only when the person asks for the backup. */
+  let pendingSeed: string | null = null;
 
   async function guarded(work: () => Promise<void>): Promise<void> {
     state.busy = true;
@@ -145,6 +147,9 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
 
   async function start(): Promise<void> {
     await guarded(async () => {
+      // A previous run's seed must never be shown as the backup of this run's key.
+      pendingSeed = null;
+      state.recoverySeed = null;
       if (deps.network().readOnly) throw new Error("This network is read-only");
       const defs = await deps.clients.definitions("alphanet");
       // The simulated device: the contract, a software key, a seed made here and shown later.
@@ -163,6 +168,7 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
       const address = addressFromPublicKey(master.publicKey);
       await fundFresh(address);
       plan = buildPqMigration(address, mlDsa.publicKey, defs);
+      pendingSeed = bytesToHex(seed);
       proof = null;
       backupDescription = null;
       state.address = address;
@@ -173,12 +179,8 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
       state.recoveryConfirmed = false;
       state.after = null;
       state.before = await deps.exposure.check(address, "alphanet");
-      // Kept in a closure, shown only when the person asks for the backup.
-      pendingSeed = bytesToHex(seed);
     });
   }
-
-  let pendingSeed: string | null = null;
 
   async function proveRecoverable(): Promise<void> {
     await guarded(async () => {

@@ -42,7 +42,7 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   nuxtApp.vueApp.provide(LIVE_EXPOSURE_KEY, ctx.liveExposure);
   nuxtApp.vueApp.provide(LIVE_MIGRATION_KEY, ctx.liveMigration);
   nuxtApp.vueApp.provide(BACKEND_STATUS_KEY, status);
-  void ctx.demo.refresh();
+  void ctx.demo.tick();
   // The simulated ledger closes on its own, at the pace of the real one; a live node is polled.
   window.setInterval(() => {
     void ctx.demo.tick();

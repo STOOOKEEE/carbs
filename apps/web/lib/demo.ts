@@ -22,6 +22,9 @@ import {
 } from "./ports";
 import { ACTIONS, ATTACKS, type Attack, type ScenarioContext } from "./scenarios";
 
+/** The Actions and Attack logs keep this many entries. */
+const MAX_LOG_ENTRIES = 50;
+
 export type Profile = "mac" | "ledger" | "demo";
 
 export const PROFILE_LABELS: Record<Profile, string> = {
@@ -43,6 +46,8 @@ export interface Signer {
   label: string;
   algorithm: string;
   publicKey: string;
+  /** The address of that key. */
+  address: string;
   /** True when each signature is confirmed on the device. */
   onDevice: boolean;
   sign(tx: TxJson): Promise<TxJson>;
@@ -66,6 +71,8 @@ export interface LogEntry {
 
 export interface DemoState {
   profile: Profile | null;
+  /** The account is fully set up and can sign: the other screens wait for it. */
+  ready: boolean;
   passkeyOnly: boolean;
   address: string | null;
   info: AccountInfo | null;
@@ -85,6 +92,7 @@ export interface DemoState {
 export function createDemo(backend: Backend) {
   const state = reactive<DemoState>({
     profile: null,
+    ready: false,
     passkeyOnly: false,
     address: null,
     info: null,
@@ -107,15 +115,25 @@ export function createDemo(backend: Backend) {
 
   /* ---- reading the node ---- */
 
+  /** Only the latest read may write the state: a slow poll must not undo a newer refresh. */
+  let refreshSequence = 0;
+
   async function refresh(): Promise<void> {
-    state.server = await backend.node.serverInfo();
+    refreshSequence += 1;
+    const mine = refreshSequence;
+    const address = state.address;
+    const server = await backend.node.serverInfo();
+    const info = address === null ? null : await backend.node.accountInfo(address);
+    const objects = address === null ? null : await backend.node.accountObjects(address);
+    if (mine !== refreshSequence) return;
+    state.server = server;
     state.serverAt = Date.now();
-    if (state.address === null) return;
-    state.info = await backend.node.accountInfo(state.address);
-    state.objects = await backend.node.accountObjects(state.address);
+    if (address === null || objects === null) return;
+    state.info = info;
+    state.objects = objects;
     const key = state.sessionKey?.address;
     state.session =
-      key === undefined ? null : (state.objects.sessions.find((s) => s.sessionKey === key) ?? null);
+      key === undefined ? null : (objects.sessions.find((s) => s.sessionKey === key) ?? null);
   }
 
   /* ---- envelope: Sequence, Fee, LastLedgerSequence (spec 8.3) ---- */
@@ -142,7 +160,12 @@ export function createDemo(backend: Backend) {
     const prepared = await envelope(tx, options);
     const signed = await signer.sign(prepared);
     const result = await backend.node.submit(signed);
-    await refresh();
+    // The node's answer is what matters: a failed read afterwards must not lose it.
+    try {
+      await refresh();
+    } catch {
+      // The next poll refreshes the state.
+    }
     return result;
   }
 
@@ -203,6 +226,7 @@ export function createDemo(backend: Backend) {
       label,
       algorithm: key.algorithm,
       publicKey: key.publicKey,
+      address: key.address,
       onDevice: false,
       sign: (tx) => key.sign(tx),
     };
@@ -220,13 +244,18 @@ export function createDemo(backend: Backend) {
       else if (profile === "ledger") await setupLedger();
       else await setupDemo();
       await refresh();
+      state.ready = true;
       return true;
     });
     return done === true;
   }
 
   async function fund(address: string): Promise<void> {
-    const step = addStep("Fund the account (SIMULATED faucet)");
+    const step = addStep(
+      backend.node.mode === "simulated"
+        ? "Fund the account (SIMULATED faucet)"
+        : "Fund the account at the faucet",
+    );
     await backend.node.fundAccount(address);
     step.status = "ok";
   }
@@ -248,7 +277,10 @@ export function createDemo(backend: Backend) {
       ? await options.passkey()
       : await backend.wallet.createPasskey();
     addStep(
-      options.passkeyLabel ?? "Create a passkey (SIMULATED: software authenticator, no prompt)",
+      options.passkeyLabel ??
+        (backend.wallet.mode === "simulated"
+          ? "Create a passkey (SIMULATED: software authenticator, no prompt)"
+          : "Create a passkey"),
     ).status = "ok";
     await stepTx(
       "PasskeyListSet, signed by the master key",
@@ -273,6 +305,7 @@ export function createDemo(backend: Backend) {
   }
 
   async function setupLedger(): Promise<void> {
+    backend.device.reset();
     const classical = await backend.device.getPublicKey("secp256k1");
     const pq = await backend.device.getPublicKey("mldsa44");
     const onDevice = (algorithm: "secp256k1" | "mldsa44", label: string): Signer => {
@@ -281,6 +314,7 @@ export function createDemo(backend: Backend) {
         label,
         algorithm,
         publicKey: key.publicKey,
+        address: key.address,
         onDevice: true,
         sign: (tx) => backend.device.signTransaction(algorithm, tx),
       };
@@ -309,6 +343,7 @@ export function createDemo(backend: Backend) {
 
   function reset(): void {
     state.profile = null;
+    state.ready = false;
     state.address = null;
     state.info = null;
     state.objects = null;
@@ -379,6 +414,7 @@ export function createDemo(backend: Backend) {
         result,
       };
       state.actionLog.unshift(entry);
+      state.actionLog.length = Math.min(state.actionLog.length, MAX_LOG_ENTRIES);
       return entry;
     });
   }
@@ -406,7 +442,7 @@ export function createDemo(backend: Backend) {
           );
         }
       }
-      await ensureVictim();
+      if (attack.needsVictimAccount === true) await ensureVictim();
       const ctx = scenarioContext();
       const options: { fee?: string; omitLastLedger?: boolean } = {};
       if (attack.fee !== undefined) options.fee = attack.fee;
@@ -421,6 +457,7 @@ export function createDemo(backend: Backend) {
         result,
       };
       state.attackLog.unshift(entry);
+      state.attackLog.length = Math.min(state.attackLog.length, MAX_LOG_ENTRIES);
       return entry;
     });
   }
@@ -440,6 +477,10 @@ export function createDemo(backend: Backend) {
     return fullAuth?.publicKey ?? null;
   }
 
+  function accountSignerAddress(): string | null {
+    return fullAuth?.address ?? null;
+  }
+
   function disconnect(): void {
     reset();
   }
@@ -450,9 +491,15 @@ export function createDemo(backend: Backend) {
     await refresh();
   }
 
+  /** The poll: closes a simulated ledger, or reads the live node. Never throws, skips while a store action runs. */
   async function tick(): Promise<void> {
     backend.clock?.closeLedger();
-    await refresh();
+    if (state.busy) return;
+    try {
+      await refresh();
+    } catch {
+      // A node that does not answer now answers at the next tick; the actions show their own errors.
+    }
   }
 
   /* ---- Quantum screen: migration of an account the device controls ---- */
@@ -470,6 +517,7 @@ export function createDemo(backend: Backend) {
     prepare,
     signAsAccount,
     accountPublicKey,
+    accountSignerAddress,
     disconnect,
     sink,
     victim,
