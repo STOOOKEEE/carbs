@@ -24,7 +24,7 @@ import {
 } from "../constants.js";
 import type { Definitions } from "../definitions.js";
 import { RpcError } from "../errors.js";
-import { getAccountObjects, type NodeClient } from "../node.js";
+import { getAccountObjects, NodeClientError, type NodeClient } from "../node.js";
 
 export type ExposureStatus = "exposed" | "no-exposure-found" | "unknown";
 
@@ -93,6 +93,8 @@ export interface HistoryCoverage {
   /** The page bound was hit before the end of the history. */
   truncated: boolean;
   transactionsScanned: number;
+  /** `oldest-first` (`forward: true`), or `newest-first` when the node refused `forward`. */
+  order: "oldest-first" | "newest-first";
 }
 
 export interface ExposureReport {
@@ -176,8 +178,24 @@ function createsAccountRoot(meta: unknown, address: string): boolean {
   });
 }
 
-function recordFirst(map: Map<string, Reveal>, key: string, reveal: Reveal): void {
-  if (!map.has(key)) map.set(key, reveal);
+/**
+ * Keep the oldest reveal of a key. Oldest first, the first one seen wins a tie; newest first, the
+ * last one seen does (it came earlier in its ledger).
+ */
+function recordFirst(
+  map: Map<string, Reveal>,
+  key: string,
+  reveal: Reveal,
+  oldestFirst: boolean,
+): void {
+  const existing = map.get(key);
+  if (!existing) {
+    map.set(key, reveal);
+    return;
+  }
+  const a = reveal.ledgerIndex ?? Number.MAX_SAFE_INTEGER;
+  const b = existing.ledgerIndex ?? Number.MAX_SAFE_INTEGER;
+  if (a < b || (a === b && !oldestFirst)) map.set(key, reveal);
 }
 
 /** Walk the account's validated history from the oldest transaction, bounded by `pageLimit`. */
@@ -198,6 +216,7 @@ async function scanHistory(
     pageLimit,
     truncated: false,
     transactionsScanned: 0,
+    order: "oldest-first",
   };
   let marker: unknown;
   for (;;) {
@@ -209,15 +228,26 @@ async function scanHistory(
       account: address,
       ledger_index_min: -1,
       ledger_index_max: -1,
-      forward: true,
       limit: pageSize,
     };
+    if (coverage.order === "oldest-first") params["forward"] = true;
     if (marker !== undefined) params["marker"] = marker;
     let result: unknown;
     try {
       result = await node.request("account_tx", params);
     } catch (error) {
       if (error instanceof RpcError && error.error === "actNotFound") break;
+      // Some public proxies refuse `forward` (the AlphaNet answers HTTP 403 to any request that
+      // carries it): search newest first instead, which needs the whole history for the oldest reveal.
+      if (
+        error instanceof NodeClientError &&
+        /HTTP 403/.test(error.message) &&
+        coverage.order === "oldest-first" &&
+        coverage.pagesScanned === 0
+      ) {
+        coverage.order = "newest-first";
+        continue;
+      }
       throw error;
     }
     coverage.pagesScanned += 1;
@@ -238,12 +268,17 @@ async function scanHistory(
       if (tx["Account"] === address) {
         const spk = asString(tx["SigningPubKey"]);
         if (spk !== undefined && spk.length > 0 && keyTypeOf(spk) !== undefined) {
-          recordFirst(keyReveals, addressFromPublicKey(spk), {
-            hash,
-            ledgerIndex,
-            transactionType,
-            publicKey: spk,
-          });
+          recordFirst(
+            keyReveals,
+            addressFromPublicKey(spk),
+            {
+              hash,
+              ledgerIndex,
+              transactionType,
+              publicKey: spk,
+            },
+            coverage.order === "oldest-first",
+          );
         }
         if (Array.isArray(tx["Signers"])) {
           for (const wrapped of tx["Signers"]) {
@@ -252,12 +287,17 @@ async function scanHistory(
             const account = asString(signer?.["Account"]);
             const signerKey = asString(signer?.["SigningPubKey"]);
             if (account !== undefined && signerKey !== undefined && signerKey.length > 0) {
-              recordFirst(signerReveals, account, {
-                hash,
-                ledgerIndex,
-                transactionType,
-                publicKey: signerKey,
-              });
+              recordFirst(
+                signerReveals,
+                account,
+                {
+                  hash,
+                  ledgerIndex,
+                  transactionType,
+                  publicKey: signerKey,
+                },
+                coverage.order === "oldest-first",
+              );
             }
           }
         }
@@ -277,6 +317,21 @@ async function scanHistory(
     if (marker === undefined) break;
   }
   return { keyReveals, signerReveals, otherKeys, coverage };
+}
+
+/**
+ * `account_objects` of one entry type, or none when the node's definitions do not list the type
+ * (mainnet has no passkey list or beneficiary entry, and refuses the filter with `invalidParams`).
+ */
+async function objectsIfKnown(
+  node: NodeClient,
+  defs: Definitions,
+  address: string,
+  rpcType: string,
+  entryType: string,
+): Promise<JsonObject[]> {
+  if (defs.raw.LEDGER_ENTRY_TYPES[entryType] === undefined) return [];
+  return getAccountObjects(node, address, rpcType);
 }
 
 /** The history covers the account: its creation was found and the search was not cut short. */
@@ -441,9 +496,7 @@ export async function checkExposure(
 
   if (!covered) {
     if (scan.coverage.truncated) {
-      reasons.push(
-        `not found within ${pageLimit} pages of ${pageSize} transactions: the search was cut short`,
-      );
+      reasons.push(`the search stopped after ${pageLimit} pages of ${pageSize} transactions`);
     }
     if (!scan.coverage.creationFound) {
       reasons.push(
@@ -503,7 +556,7 @@ export async function checkExposure(
 
   // Rule 3: authorities that survive asfDisableMaster.
   if (data) {
-    const passkeyLists = await getAccountObjects(node, address, "passkey_list");
+    const passkeyLists = await objectsIfKnown(node, defs, address, "passkey_list", "PasskeyList");
     for (const list of passkeyLists) {
       const passkeys = Array.isArray(list["Passkeys"]) ? list["Passkeys"] : [];
       for (const wrapped of passkeys) {
@@ -536,7 +589,7 @@ export async function checkExposure(
       }
     }
 
-    for (const entry of await getAccountObjects(node, address, "beneficiary")) {
+    for (const entry of await objectsIfKnown(node, defs, address, "beneficiary", "Beneficiary")) {
       const beneficiary = asString(entry["Beneficiary"]);
       if (beneficiary === undefined) continue;
       const status = await keyStatus(
@@ -560,7 +613,7 @@ export async function checkExposure(
       });
     }
 
-    for (const entry of await getAccountObjects(node, address, "delegate")) {
+    for (const entry of await objectsIfKnown(node, defs, address, "delegate", "Delegate")) {
       const delegate = asString(entry["Authorize"]);
       if (delegate === undefined || entry["Account"] !== address) continue;
       const status = await accountKeysStatus(node, delegate, undefined, defs, subLimit, pageSize);
@@ -582,7 +635,7 @@ export async function checkExposure(
     }
 
     // Rule 4: signer lists.
-    for (const list of await getAccountObjects(node, address, "signer_list")) {
+    for (const list of await objectsIfKnown(node, defs, address, "signer_list", "SignerList")) {
       const quorum = Number(list["SignerQuorum"] ?? 0);
       const entries = Array.isArray(list["SignerEntries"]) ? list["SignerEntries"] : [];
       const signers: SignerFinding[] = [];
@@ -668,6 +721,9 @@ export async function checkExposure(
   else if (counted.includes("unknown") || (!covered && !pseudoAccount) || data === undefined)
     status = "unknown";
   else status = "no-exposure-found";
+  if (status !== "exposed" && scan.coverage.truncated) {
+    reasons.push(`not found within ${pageLimit} pages of ${pageSize} transactions`);
+  }
 
   for (const finding of findings) {
     if (finding.status === "exposed" && finding.active && finding.quantumVulnerable !== false) {

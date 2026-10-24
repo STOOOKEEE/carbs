@@ -7,6 +7,8 @@
 import {
   kLastLedgerSequenceOffset,
   kNetworkIdRequiredAbove,
+  kRpcBusyBackoffMs,
+  kRpcBusyRetries,
   kValidationPollIntervalMs,
 } from "./constants.js";
 import { RpcError } from "./errors.js";
@@ -31,6 +33,9 @@ const kAllowedMethods = new Set([
   "submit",
   "tx",
 ]);
+
+/** Answers of a public server's rate limiter. */
+const kBusyErrors = new Set(["tooBusy", "slowDown"]);
 
 export class NodeClientError extends Error {
   override readonly name = "NodeClientError";
@@ -65,21 +70,44 @@ export function unwrapResult(method: string, answer: unknown): JsonObject {
 }
 
 /** JSON-RPC over HTTP(S) with `fetch`. */
+export interface JsonRpcOptions {
+  /** Retries after `tooBusy` or `slowDown` (a public server's rate limit), default `kRpcBusyRetries`. */
+  busyRetries?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
 export class JsonRpcClient implements NodeClient {
+  readonly #busyRetries: number;
+  readonly #sleep: (ms: number) => Promise<void>;
+
   constructor(
     readonly url: string,
     private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis),
-  ) {}
+    options: JsonRpcOptions = {},
+  ) {
+    this.#busyRetries = options.busyRetries ?? kRpcBusyRetries;
+    this.#sleep = options.sleep ?? defaultSleep;
+  }
 
   async request(method: string, params: JsonObject): Promise<unknown> {
     assertAllowed(method);
-    const response = await this.fetcher(this.url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ method, params: [params] }),
-    });
-    if (!response.ok) throw new NodeClientError(`${method}: HTTP ${response.status}`);
-    return unwrapResult(method, await response.json());
+    for (let attempt = 0; ; attempt += 1) {
+      const response = await this.fetcher(this.url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ method, params: [params] }),
+      });
+      if (!response.ok) throw new NodeClientError(`${method}: HTTP ${response.status}`);
+      try {
+        return unwrapResult(method, await response.json());
+      } catch (error) {
+        const busy = error instanceof RpcError && kBusyErrors.has(error.error);
+        if (!busy || attempt >= this.#busyRetries) throw error;
+        // "retry in ~7428ms" when the server says how long; otherwise back off.
+        const hinted = /retry in ~(\d+)ms/.exec(error.errorMessage)?.[1];
+        await this.#sleep(hinted ? Number(hinted) : kRpcBusyBackoffMs * (attempt + 1));
+      }
+    }
   }
 }
 
