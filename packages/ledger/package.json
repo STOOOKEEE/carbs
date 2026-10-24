@@ -9,5 +9,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@ledgerhq/device-management-kit": "1.11.0",
+    "@ledgerhq/device-signer-kit-xrp": "0.3.0",
+    "@ledgerhq/device-transport-kit-web-hid": "1.2.4",
+    "@noble/post-quantum": "0.7.1",
+    "ripple-binary-codec": "2.11.0",
+    "ripple-keypairs": "3.1.0",
+    "rxjs": "7.8.2"
   }
 }
