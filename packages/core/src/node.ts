@@ -169,6 +169,7 @@ export class WebSocketClient implements NodeClient {
         method,
         String(answer["error"] ?? "error"),
         String(answer["error_message"] ?? ""),
+        String(answer["error_exception"] ?? ""),
       );
     }
     return unwrapResult(method, answer);

@@ -17,6 +17,7 @@ import {
   NodeClientError,
   submitAndWait,
   submitBlob,
+  WebSocketClient,
 } from "./node.js";
 import { RecordedNode, type RecordedCall } from "./testing/recorded-node.js";
 
@@ -238,5 +239,51 @@ describe("local-check refusals", () => {
     const final = await submitAndWait(node, "AA", "H4", 10);
     expect(final).toMatchObject({ result: "invalidTransaction", validated: false });
     expect(final.submit.engineResultMessage).toBe("fails local checks: Invalid signature.");
+  });
+});
+
+describe("WebSocket client", () => {
+  it("sends `command` with the parameters and maps the answer and the error", async () => {
+    const sent: Record<string, unknown>[] = [];
+    class FakeSocket extends EventTarget {
+      static readonly OPEN = 1;
+      readyState = 1;
+      constructor(readonly url: string) {
+        super();
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+      send(text: string) {
+        const message = JSON.parse(text) as Record<string, unknown>;
+        sent.push(message);
+        const reply =
+          message["command"] === "submit"
+            ? {
+                id: message["id"],
+                status: "error",
+                error: "invalidTransaction",
+                error_exception: "fails local checks: Invalid signature.",
+              }
+            : { id: message["id"], status: "success", result: { info: { network_id: 0 } } };
+        queueMicrotask(() =>
+          this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(reply) })),
+        );
+      }
+      close() {}
+    }
+    const original = globalThis.WebSocket;
+    Object.defineProperty(globalThis, "WebSocket", { value: FakeSocket, configurable: true });
+    try {
+      const client = new WebSocketClient("ws://node");
+      await expect(client.request("server_info", {})).resolves.toEqual({ info: { network_id: 0 } });
+      expect(sent[0]).toEqual({ id: 1, command: "server_info" });
+      await expect(submitBlob(client, "AB")).resolves.toMatchObject({
+        engineResult: "invalidTransaction",
+        engineResultMessage: "fails local checks: Invalid signature.",
+      });
+      await expect(client.request("sign", {})).rejects.toThrow(NodeClientError);
+      client.close();
+    } finally {
+      Object.defineProperty(globalThis, "WebSocket", { value: original, configurable: true });
+    }
   });
 });
