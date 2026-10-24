@@ -19,6 +19,7 @@
 - **Three exclusive modes**: **A** all delegable types minus an exclusion list, **P** a list of XLS-75 permissions, **C** direct XRP `Payment` only with a total cap (fees included).
 - **Opened** by a passkey (P-256, Face ID / Touch ID) **or** by a **Ledger Stax** that clear-signs the rules on its screen ("Valid for 10 minutes · All transactions · Cannot change keys").
 - **Ledger app**: `LedgerHQ/app-xrp` extended with clear signing for the two new transactions (L1). Stretch: ML-DSA-44 signing on the device (post-quantum root), a P-256 key on the device usable as a passkey, `Batch` clear signing.
+- **Documentation feedback for Ledger** is a first-class deliverable, judged "as much as the code" (Ledger bounty judging, announced at the Ledger workshop): a running log kept from the first minute, screenshots, and pull requests to the docs ([§7.6](#76-documentation-and-developer-experience-feedback)).
 - **Client**: TypeScript (`packages/core`, `apps/web`), WebCrypto non-extractible P-256 session keys, Ledger over WebHID with the Device Management Kit and custom APDUs.
 - **Single public repository** `carbs`; upstream bases imported unmodified in their own commits; PRs and commits in the XRPLF style.
 
@@ -435,11 +436,38 @@ Note               Cannot change keys, signers or the account   (synthetic line;
 
 **L6: a P-256 key on the device usable as a passkey** (idea to validate on the device). Add `secp256r1` to `CURVE_APP_LOAD_PARAMS` and a new P2 value (proposed `0x20`; **UNVERIFIED**); sign `SHA-256(signed data)`, return DER, **normalize to low-S**; public key `0xF6 ‖ X ‖ Y`. The node already accepts a raw P-256 signature (no `PasskeySignature`) then looks the key up in the `PasskeyList`, so no node change is needed. The device key and the Face ID key must be in the **same first** `PasskeyListSet` of the account (a second `PasskeyListSet` on the same account is not supported by this build). Alternative with no Ledger code: the **Ledger Security Key** FIDO2 app as a WebAuthn authenticator (Stax and Flex), which is **blind** (shows the domain only) and depends on P5. Acceptance: a transaction signed on the device by a key listed in the `PasskeyList` is accepted.
 
-**L3: `Batch` clear signing.** `master` forces blind on a nested type and follows one array level; 8 inner transactions of ~10 fields exceed `MAX_FIELD_COUNT` (60). **L4**: written DX feedback (base `develop` vs `master`, SDK, ML-DSA, what was missing; the Ledger page judges it "as much as the code") is **MVP**, a `packages/ledger` library on the DMK (`previewSession`, clear / blind / refuse prediction) is stretch. **L5**: `BatchSigner` co-signature (`BCH\0`).
+**L3: `Batch` clear signing.** `master` forces blind on a nested type and follows one array level; 8 inner transactions of ~10 fields exceed `MAX_FIELD_COUNT` (60). **L4**: documentation feedback is **MVP** and specified in [§7.6](#76-documentation-and-developer-experience-feedback); a `packages/ledger` library on the DMK (`previewSession`, clear / blind / refuse prediction) is stretch. **L5**: `BatchSigner` co-signature (`BCH\0`).
 
 ### 7.5 Open device questions (to answer in L0)
 
 Loading route on this Stax; whether the device shows an "unsafe app" prompt or needs a developer mode; behaviour of the genuine check in Ledger Live (the loading routes do not depend on Ledger Live); how the 10 permission lines paginate on the Stax screen.
+
+### 7.6 Documentation and developer-experience feedback
+
+The Ledger bounty judging slide (shown at the Ledger workshop on 24 Oct) is explicit: **"We judge the Developer Experience feedback as much as the code. Help us improve our docs."** It asks for three things, and lists three bonus items. We treat all of it as a deliverable with the same standing as L1, not as an afterthought written on Sunday morning.
+
+| Asked ("What to include") | What we deliver |
+|---|---|
+| Feedback on the overall experience using Ledger docs and SDKs | One overall section per area we touch: app-xrp and the C SDK (build, `ledger-app-builder`, loading on a Stax), clear signing for a new transaction type, ML-DSA in `ledger-secure-sdk`, the Device Management Kit and `device-signer-kit-xrp`, the XRPL workshop and `developers.ledger.com/xrplnyc` |
+| Gaps, confusing flows, or missing context | Each finding is an entry in the log with the page or file, what we expected, what happened, and the time it cost us |
+| Specific improvements with screenshots or PRs | Every entry carries a screenshot or a proposed text; where we can, a **pull request** to the documentation or sample repository (the DMK docs live in `LedgerHQ/device-sdk-ts`, `apps/docs`; the SDK and app templates in their own repositories) |
+
+| Bonus point | Our plan |
+|---|---|
+| Better tutorial or code sample ideas | A written tutorial outline "clear-sign a new XRPL transaction type on a Ledger app" built from what L1 actually required (the checklist of §7.3 is already that tutorial in embryo), and a minimal sample for sending a custom transaction through the DMK |
+| Navigation or search improvements for the portal | Record, as we search for things, what we typed, what we expected to find, and where it was (or was not) |
+| "Time-saver" suggestions for future integrators | A short list at the top of the document: "if we had known this at hour 0, we would have saved N minutes" (loading an app on a Stax from a Mac, the `STX\0` prefix added by the app, `MAX_ARRAY_LEN`, `has_unknown_flags`, deterministic ML-DSA keygen, SLIP-21 install parameter) |
+
+**Method.**
+1. **Start the log at kickoff**, in `docs/ledger-dx-feedback.md`, and append during the work, not afterwards: a finding forgotten at 03:00 is lost. One line is enough at the time; it is cleaned up later.
+2. Entry template: `date/time · area · doc page or repo path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR link`.
+3. Keep `minutes lost` honest: it is the evidence that makes feedback useful, and it must not be inflated.
+4. Capture screenshots as we hit the problem (the Stax screen showing "cannot be clear-signed", the build error, the page that did not help).
+5. Turn the best findings into pull requests while the details are fresh; link them from the document. A PR is stronger than a paragraph.
+6. Final structure of `docs/ledger-dx-feedback.md`: top "time-savers"; overall experience per area; gaps and confusing flows (the log, cleaned); proposed tutorial and sample ideas; portal navigation and search notes; list of PRs and screenshots.
+7. The README links to the document, and the pitch has a slide with the three best findings and the PR links (§11).
+
+**Things we already know are likely to appear** (to confirm while doing them, not to pre-write): loading a custom app on a Stax from macOS when the builder image cannot reach USB; the README of `ledgerctl` not listing the Stax; which of the three loading routes works; clear signing for a transaction type the app does not know (the L1 checklist spans parser, fields, flags and display limits, and a miss falls back to blind signing without an error); `MAX_ARRAY_LEN`; the app adding the signing prefix itself; ML-DSA deterministic key generation existing only behind an internal header; the SLIP-21 install parameter; the DMK send-APDU API for custom commands.
 
 ---
 
@@ -537,7 +565,7 @@ Two tracks; **who does what is not decided (D5)**. Durations are not estimated h
 
 ### 10.2 Ledger track (`ledger-app/`)
 
-L0 (MVP), L1 (MVP), L4 DX feedback (MVP), then stretch L2, L3, L4 library, L5, L6 as in §7. Gate: L1 on the device with a session opened on the node.
+L0 (MVP), L1 (MVP), L4 documentation feedback (MVP, [§7.6](#76-documentation-and-developer-experience-feedback), log kept from the first minute), then stretch L2, L3, L4 library, L5, L6 as in §7. Gate: L1 on the device with a session opened on the node.
 
 ### 10.3 Client track
 
@@ -554,7 +582,7 @@ L0 (MVP), L1 (MVP), L4 DX feedback (MVP), then stretch L2, L3, L4 library, L5, L
 
 ### 10.4 Delivery (everyone)
 
-Working demo that can be run ("a working demo we can run, not a slide deck": Ledger page), demo video **and** pitch video, PDF deck, public repository, honest README, `pnpm demo`. Pitches at 14:15 on Sunday in parallel with sponsor pitches; exact format to confirm on site, prepare 3 minutes.
+The documentation feedback document (`docs/ledger-dx-feedback.md`, §7.6) and its pull requests. Working demo that can be run ("a working demo we can run, not a slide deck": Ledger page), demo video **and** pitch video, PDF deck, public repository, honest README, `pnpm demo`. Pitches at 14:15 on Sunday in parallel with sponsor pitches; exact format to confirm on site, prepare 3 minutes.
 
 ### 10.5 Schedule anchors (New York time)
 
@@ -580,7 +608,8 @@ Working demo that can be run ("a working demo we can run, not a slide deck": Led
 | 0:20-1:30 | **Live, session opened from the Ledger**: the Stax shows the rules; 5 actions of different types with no prompt (mode A, 60 s so expiry can be shown); the "stolen" key tries `SetRegularKey` and `PasskeyListSet` → node refusals; after 60 s `tefSESSION_EXPIRED` |
 | 1:30-2:10 | **Mode C, the agent**: a 20 XRP cap, payments sized so that, fees included, exactly the 6th exceeds it (for example 3.9 XRP each), the 6th refused by the ledger; then the **Face** account with a passkey; then the **PQ** account: session opened by an ML-DSA-44 signature made on the device (if delivered) |
 | 2:10-2:30 | Honesty slide: before 24 Oct a spec and **a full prototype that is not reused**; during the hackathon all submitted code, commit ranges; **passkey defects found (P1, P3, P5)** (D7) |
-| 2:30-3:00 | Potential: embedded wallets, agents, games and micro-payments, custody; the Foundation's pipeline (XLS, implementation, signing devices) |
+| 2:30-2:45 | **Ledger developer-experience feedback**: the three best findings, the time they cost, the PR links (§7.6) |
+| 2:45-3:00 | Potential: embedded wallets, agents, games and micro-payments, custody; the Foundation's pipeline (XLS, implementation, signing devices) |
 
 Rehearse three times on a real passkey and the real Stax. Figures in the pitch are the README's figures (tests, durations, types); nothing rounded in our favour. Demo script mentions that modes A and P do not bound what signed transactions leave behind.
 
@@ -695,10 +724,11 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 
 - Upstream: [XRPLF/rippled `alphanet`](https://github.com/XRPLF/rippled/tree/alphanet) · [LedgerHQ/app-xrp](https://github.com/LedgerHQ/app-xrp) · [ledger-secure-sdk PR #1617 (ML-DSA)](https://github.com/LedgerHQ/ledger-secure-sdk/pull/1617) · [ledger-app-zond](https://github.com/cyyber/ledger-app-zond) · [ledger-app-builder](https://github.com/LedgerHQ/ledger-app-builder) · [DMK XRPL workshop](https://github.com/LedgerHQ/device-management-kit-ts-workshop/tree/main/xrpl-hackathon).
 - Standards and discussions: [XLS-75 permission delegation / #657 expiry](https://github.com/XRPLF/XRPL-Standards/discussions/657) · [#572 agent identity (amount cap)](https://github.com/XRPLF/XRPL-Standards/discussions/572) · [XLS-83 passkeys, one object vs list](https://github.com/XRPLF/XRPL-Standards/discussions/236) · [XLS-86 Firewall](https://github.com/XRPLF/XRPL-Standards/discussions/255) · [XLS-103 on-chain co-signer](https://github.com/XRPLF/XRPL-Standards/discussions/589) · [session keys sketch by Denis, Transia #29](https://github.com/Transia-RnD/rippled/pull/29#issuecomment-4243346546) · [role-based signature prefixes, rippled #8162](https://github.com/XRPLF/rippled/pull/8162).
-- Event: Ledger page https://developers.ledger.com/xrplnyc (Protocol Innovation, "there is still no XRPL transaction Clear Signing"; real device required; DX feedback judged "as much as the code").
+- Event: Ledger page https://developers.ledger.com/xrplnyc (Protocol Innovation, "there is still no XRPL transaction Clear Signing"; real device required; documentation feedback judged "as much as the code": what to include = overall experience with the Ledger docs and SDKs, gaps / confusing flows / missing context, specific improvements with screenshots or PRs; bonus = better tutorial or code sample ideas, portal navigation or search improvements, time-saver suggestions).
 
 ## Appendix C: kickoff checklist
 
+- [ ] `docs/ledger-dx-feedback.md` created with its entry template; log started (§7.6).
 - [ ] Disk space freed, `conan` on `PATH`, builder image pulled, `STAX_SDK` set.
 - [ ] Stax unlocked, on the dashboard, firmware 1.11 confirmed, loading route chosen.
 - [ ] Head of `XRPLF/rippled:alphanet` read; SHA recorded; background build started.
