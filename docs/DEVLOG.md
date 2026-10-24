@@ -12,7 +12,7 @@ What was done, removed, ignored or simulated, dated. This is the source of the R
 - Licence: Apache-2.0 for the code written here.
 - Installed locally and not committed: the Ripple DevRel DevEx capture hook.
 - The daemon of this repository is built from `rippled/` (Debug, with the existing Conan cache): `xrpld version 3.4.1+DEBUG`; the upstream `PasskeyListSet` suite passes on the imported tree (11 cases, 250 tests, 0 failures). Recipe in `docs/BUILDING.md`.
-- **Not done yet**: the Ledger app has not been built or loaded on the Stax; no spike (K1 to K8) has run; the protocol codes have not been re-checked on the imported tree (spike K5).
+- **Not done yet**: the Ledger app has not been built or loaded on the Stax; no spike (K1 to K8) had run at that point; the protocol codes had not been re-checked on the imported tree (spike K5 has run since: see "Plan check, spike K5 and review gate 1").
 - **Simulated**: nothing.
 
 ### N0: test baselines of the imported tree
@@ -40,4 +40,14 @@ Run on `rippled/` as imported (`git diff 516f6a5 HEAD -- rippled/` is empty, tre
 
 Header levelization (rippled's `.github/scripts/levelization/generate.py`, run on a scratch copy so that its results folder in the tree is left alone): the imported tree has one dependency that the committed `results/ordering.txt` lacks, `test.server > xrpl.rdb`, from `rippled/src/test/server/Wallet_test.cpp:10`. Not ours; left as it is.
 
-These are the base failures. A later run counts a failure as ours only if it is not in this list.
+These are the base failures. `docs/base-failures.txt` lists them one failing assertion per line (file, line and message); a later run counts a failure as ours when it adds a line there.
+
+### Plan check, spike K5 and review gate 1
+
+- `docs/PLAN-CHECK.md` lists, for every task in scope, the files we will touch and the upstream code we mirror, each with the full `path:line` of the imported tree. Every citation was printed again and read (its section 6).
+- **Spike K5 done.** Every code of spec section 6.1 is free on the imported tree and in the `server_definitions` answers of a standalone node of this build and of the public AlphaNet, which are identical (`hash` `34614C84…C3C5`). Nothing is renumbered. The device-track branch uses the same numbers for every field the app parses.
+- **Deviation: "green before and after" is judged per assertion.** Before any change, the upstream `Delegate` suite fails its delegable-type counter (71 counted, 60 pinned at `rippled/src/test/app/Delegate_test.cpp:2846`) and `MPToken` fails its completeness assertion (`rippled/src/test/app/MPToken_test.cpp:2095`). The spec asks these suites to stay green; they are not green before we start, so a run counts as clean when it adds no line to `docs/base-failures.txt`. Re-pinning the `Delegate` counter is not allowed: both session types are `NotDelegable` and leave it at 71. N2 adds a `SigningSessionSet` case to the `MPToken` completeness test, so that our type is covered instead of hidden in a set that is already not empty.
+- **Deviation: the device track** (the Ledger app, loading it on the Stax, K4, K6, photographs of the screens) belongs to a teammate, the device-track owner (decision D5, partly settled). These goals build the protocol, the client, the device contract and a simulated device, and never touch a device.
+- **Deviation, planned: the passkey wallet** (an account that signs with its passkey only, after `SetRegularKey` to the blackhole address and `asfDisableMaster`) is not in spec section 8.5. It is built with the client, and that spec section is updated in the pull request that adds it.
+- **Review gate 1**, round 1 (an independent reviewer, model Opus, read-only, given `PLAN.md`, the spec and `docs/PLAN-CHECK.md`): `VERDICT: CHANGES REQUIRED`. Blocking: the `MPToken` completeness test would hide our type, and the "green before and after" reading needed this entry. Non-blocking: the activation of a P5 fix had to be argued in both directions and cover a third `BAD` site; N1 lands as a test pull request, then a fix pull request; rows for W3 and W7; N2 risks (generated code behind the macros, a hand-written `jss` name, transaction settings); the `feature` listing of N9 is unverified; the citation command missed short references; two line numbers were off. All are applied in `docs/PLAN-CHECK.md`.
+- **Process:** the N1 test was written and run once on this machine while round 1 ran, to learn whether a fix was needed; a valid WebAuthn signature was refused (N1 records it). Nothing was committed or opened as a pull request before the verdict.
