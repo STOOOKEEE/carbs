@@ -1,6 +1,6 @@
 # 0008. A post-quantum root on the device; session keys are P-256 by default and ML-DSA when asked
 
-**Status:** Accepted (2026-10-24)
+**Status:** Accepted (2026-10-24). Superseded in part by [0011](0011-two-account-profiles.md): the session key follows the account profile (ML-DSA-44 on a Ledger account, P-256 on a Mac account) instead of a default.
 
 **Context.** A public key becomes visible once an account has signed, and a quantum computer could later forge signatures for it. XRPL can rotate keys without changing the address. ML-DSA signatures are large (2 420 bytes for ML-DSA-44) and the Stax has 36 KB of SRAM, so signing on the device is the expensive step, while a browser can sign with ML-DSA cheaply. Ledger's own note says the pre-hash ML-DSA variant does not fit clear signing.
 
