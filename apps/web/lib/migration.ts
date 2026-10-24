@@ -100,6 +100,7 @@ export function createMigration(backend: Backend) {
   /** A fresh account whose master key is the device's classical key. */
   async function start(): Promise<void> {
     await guarded(async () => {
+      backend.device.reset();
       const classical = await backend.device.getPublicKey("secp256k1");
       await backend.node.fundAccount(classical.address);
       state.address = classical.address;

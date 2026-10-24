@@ -37,21 +37,24 @@ const MASTER_PATH = "44'/144'/0'/0/0";
 type Algorithm = DeviceKey["algorithm"];
 
 export function createLiveDevice(defs: Definitions, approver: () => DeviceApprover): DevicePort {
-  const transport = new ContractDevice({
-    defs,
-    bip39Seed: crypto.getRandomValues(new Uint8Array(DEVICE_SEED_BYTES)),
-    classicSeeds: {
-      secp256k1: generateClassicSeed("ecdsa-secp256k1"),
-      ed25519: generateClassicSeed("ed25519"),
-    },
-    approve: (review) =>
-      approver()({
-        title: review.kind === "blind" ? "Blind signing required" : "Review transaction",
-        lines: review.lines.map((line) => ({ label: line.label, value: line.value })),
-        simulated: true,
-      }),
-  });
-  const signers = new Map<Algorithm, Promise<BytesSigner>>();
+  function makeTransport(): ContractDevice {
+    return new ContractDevice({
+      defs,
+      bip39Seed: crypto.getRandomValues(new Uint8Array(DEVICE_SEED_BYTES)),
+      classicSeeds: {
+        secp256k1: generateClassicSeed("ecdsa-secp256k1"),
+        ed25519: generateClassicSeed("ed25519"),
+      },
+      approve: (review) =>
+        approver()({
+          title: review.kind === "blind" ? "Blind signing required" : "Review transaction",
+          lines: review.lines.map((line) => ({ label: line.label, value: line.value })),
+          simulated: true,
+        }),
+    });
+  }
+  let transport = makeTransport();
+  let signers = new Map<Algorithm, Promise<BytesSigner>>();
 
   function signer(algorithm: Algorithm): Promise<BytesSigner> {
     let existing = signers.get(algorithm);
@@ -68,6 +71,10 @@ export function createLiveDevice(defs: Definitions, approver: () => DeviceApprov
   return {
     mode: "simulated",
     model: "SIMULATED Ledger Stax (software double of the device contract)",
+    reset() {
+      transport = makeTransport();
+      signers = new Map();
+    },
     async getPublicKey(algorithm) {
       const key = (await signer(algorithm)).publicKey;
       return {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
 import { useWallets } from "~/lib/context";
 import { shortAddress } from "~/lib/format";
@@ -8,6 +8,16 @@ import { PART_LABELS, type SimulatedPart, type WalletId } from "~/lib/wallets/ca
 const wallets = useWallets();
 const state = wallets.state;
 const open = ref(false);
+const dialog = ref<HTMLElement | null>(null);
+const trigger = ref<HTMLElement | null>(null);
+
+// Focus moves into the dialog when it opens (so Esc works) and back to the button when it closes.
+watch(open, async (isOpen) => {
+  // After the DOM update: the dialog exists (or no longer does) when the focus moves.
+  await nextTick();
+  if (isOpen) dialog.value?.focus();
+  else trigger.value?.focus();
+});
 
 onMounted(() => {
   void wallets.refresh();
@@ -32,7 +42,13 @@ async function connect(id: WalletId): Promise<void> {
         </button>
       </div>
     </template>
-    <button v-else class="btn btn-primary !min-h-8" data-testid="wallet-open" @click="open = true">
+    <button
+      v-else
+      ref="trigger"
+      class="btn btn-primary !min-h-8"
+      data-testid="wallet-open"
+      @click="open = true"
+    >
       Connect wallet
     </button>
 
@@ -43,6 +59,8 @@ async function connect(id: WalletId): Promise<void> {
       aria-modal="true"
       aria-label="Connect a wallet"
       data-testid="wallet-modal"
+      ref="dialog"
+      tabindex="-1"
       @keydown.esc="open = false"
       @click.self="open = false"
     >

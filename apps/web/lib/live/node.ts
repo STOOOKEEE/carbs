@@ -119,7 +119,12 @@ export class LiveNode implements NodePort {
   async accountInfo(address: string): Promise<AccountInfo | null> {
     const state = await getAccountState(this.client, address, "current");
     if (state === undefined) return null;
-    const flag = this.defs.raw.LEDGER_ENTRY_FLAGS?.["AccountRoot"]?.["lsfDisableMaster"] ?? 0;
+    const flag = this.defs.raw.LEDGER_ENTRY_FLAGS?.["AccountRoot"]?.["lsfDisableMaster"];
+    if (flag === undefined) {
+      throw new Error(
+        "server_definitions: LEDGER_ENTRY_FLAGS.AccountRoot.lsfDisableMaster is missing",
+      );
+    }
     return {
       address,
       balanceDrops: Number(state.balanceDrops),
@@ -278,6 +283,10 @@ export class LiveNode implements NodePort {
     const last =
       typeof tx.LastLedgerSequence === "number" ? tx.LastLedgerSequence : Number.MAX_SAFE_INTEGER;
     return toNodeResult(await submitAndWait(this.client, blob, hash, last));
+  }
+
+  transactionHash(tx: TxJson): string {
+    return transactionHash(encodeTx(tx, this.defs));
   }
 
   explorerUrl(hash: string): string | null {

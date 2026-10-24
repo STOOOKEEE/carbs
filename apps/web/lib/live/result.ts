@@ -7,8 +7,10 @@ export function toNodeResult(final: FinalResult): NodeResult {
   return {
     code: final.result,
     family,
-    success: final.result === "tesSUCCESS",
-    feeClaimed: isIncluded(final.result),
+    // A preliminary tes or tec that never validated is not the node's last word.
+    final: final.validated || !isIncluded(final.result),
+    success: final.validated && final.result === "tesSUCCESS",
+    feeClaimed: final.validated && isIncluded(final.result),
     hash: final.hash,
     ledgerIndex: final.ledgerIndex ?? 0,
   };
