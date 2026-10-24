@@ -327,3 +327,7 @@ Documentation only.
 
 - **Production Node server checked over HTTP** (`nuxt build`, then `node .output/server/index.mjs`): the Content-Security-Policy and the other headers are sent, the page holds no executable inline script, `/_carbs/inline/<hash>.js` is served as `text/javascript`, and the meta fallback is present. The dev server and the static build were checked earlier. No browser was driven.
 - **Wording and paths:** the import recipe in `UPSTREAM.md` no longer carries an absolute path, and an attack title that said "deadline" now says "last ledger" (it is `LastLedgerSequence`).
+
+### Transactions found by account and sequence
+
+- FIANSO-SPEC.md section 8.3 asks the client to identify a transaction by `(Account, Sequence)`, not by hash, while P-256 malleability exists (the node does not enforce low-S, so a relay can re-encode a P-256 signature and change the id). `submitAndWait` waited by hash only; with `WaitOptions.identity` (set by `submitSignedAndWait`, which the migration and the passkey wallet now use) it also looks the transaction up in `account_tx` once the account's validated sequence has moved past it (or by `TicketSequence`), and returns the id the ledger holds. Tested with a recorded answer whose id differs from ours.

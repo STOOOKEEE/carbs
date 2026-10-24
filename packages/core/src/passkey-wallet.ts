@@ -26,7 +26,12 @@ import {
   type Authenticator,
   type PasskeyCredential,
 } from "./keys/passkey.js";
-import { fetchCommonFields, submitAndWait, type FinalResult, type NodeClient } from "./node.js";
+import {
+  fetchCommonFields,
+  submitSignedAndWait,
+  type FinalResult,
+  type NodeClient,
+} from "./node.js";
 import { signTransaction, type BytesSigner, type SignedTx } from "./sign.js";
 
 export type PasskeyWalletStepKind =
@@ -133,7 +138,7 @@ export async function submitWithPasskey(
   );
   return {
     signed,
-    result: await submitAndWait(node, signed.blob, signed.hash, common.LastLedgerSequence),
+    result: await submitSignedAndWait(node, signed, common.LastLedgerSequence),
   };
 }
 
@@ -145,7 +150,7 @@ async function submitWithKey(
 ): Promise<FinalResult> {
   const common = await fetchCommonFields(node, tx.Account);
   const signed = await signTransaction({ ...tx, ...common }, signer, defs);
-  return submitAndWait(node, signed.blob, signed.hash, common.LastLedgerSequence);
+  return submitSignedAndWait(node, signed, common.LastLedgerSequence);
 }
 
 const accepted = (r: FinalResult) => r.validated && r.result === "tesSUCCESS";

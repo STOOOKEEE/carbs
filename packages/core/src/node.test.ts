@@ -17,6 +17,9 @@ import {
   NodeClientError,
   submitAndWait,
   submitBlob,
+  submitSignedAndWait,
+  findBySequence,
+  identityOf,
   WebSocketClient,
 } from "./node.js";
 import { RecordedNode, type RecordedCall } from "./testing/recorded-node.js";
@@ -285,5 +288,80 @@ describe("WebSocket client", () => {
     } finally {
       Object.defineProperty(globalThis, "WebSocket", { value: original, configurable: true });
     }
+  });
+});
+
+describe("identity by (Account, Sequence)", () => {
+  it("finds a transaction whose id changed on the way (a re-encoded P-256 signature)", async () => {
+    const node = new RecordedNode([
+      ...network,
+      {
+        method: "submit",
+        params: { tx_blob: "BB" },
+        result: {
+          engine_result: "tesSUCCESS",
+          engine_result_code: 0,
+          engine_result_message: "",
+          accepted: true,
+        },
+      },
+      { method: "tx", params: { transaction: "OURS" }, error: { error: "txnNotFound" } },
+      {
+        method: "account_info",
+        params: { account, ledger_index: "validated" },
+        result: {
+          account_data: { Account: account, Sequence: 8, Flags: 0, Balance: "1", OwnerCount: 0 },
+        },
+      },
+      {
+        method: "account_tx",
+        params: { account, ledger_index_min: -1, ledger_index_max: -1, limit: 20 },
+        result: {
+          transactions: [
+            {
+              hash: "THEIRS",
+              ledger_index: 900,
+              validated: true,
+              tx_json: { Account: account, Sequence: 7 },
+              meta: { TransactionResult: "tesSUCCESS" },
+            },
+          ],
+        },
+      },
+    ]);
+    const final = await submitSignedAndWait(
+      node,
+      {
+        blob: "BB",
+        hash: "OURS",
+        tx: { TransactionType: "Payment", Account: account, Sequence: 7 },
+      },
+      1100,
+      { sleep: async () => undefined },
+    );
+    expect(final).toMatchObject({
+      hash: "THEIRS",
+      result: "tesSUCCESS",
+      validated: true,
+      ledgerIndex: 900,
+    });
+  });
+
+  it("waits while the account's validated sequence has not moved past the transaction", async () => {
+    const node = new RecordedNode([
+      {
+        method: "account_info",
+        params: { account, ledger_index: "validated" },
+        result: {
+          account_data: { Account: account, Sequence: 7, Flags: 0, Balance: "1", OwnerCount: 0 },
+        },
+      },
+    ]);
+    await expect(findBySequence(node, { account, sequence: 7 })).resolves.toBeUndefined();
+    expect(identityOf({ Account: account, Sequence: 0, TicketSequence: 3 })).toEqual({
+      account,
+      sequence: 0,
+      ticketSequence: 3,
+    });
   });
 });
