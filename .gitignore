@@ -32,3 +32,4 @@ xrpl-devex-hook/
 .cursor/
 .codex/
 .grok/
+.omp/hooks/post/xrpl-devex.ts
