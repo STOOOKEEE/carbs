@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
+    />
+    <title>carbs · wallet passkey</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>carbs · wallet passkey</h1>
+        <p class="muted">
+          Proof of concept sur le nœud carbs (standalone) : les transactions sont signées par la
+          passkey de cet appareil (Touch ID), vérifiées nativement par le XRPL.
+        </p>
+        <p class="muted" id="node-status">Nœud : connexion…</p>
+      </header>
+
+      <section id="account-section">
+        <h2>1. Compte</h2>
+        <div id="account-info" class="muted">Aucun compte dans ce navigateur.</div>
+        <div class="actions">
+          <button id="open-account" type="button">Créer un compte (faucet)</button>
+          <button id="forget-account" type="button" class="secondary">Oublier ce compte</button>
+        </div>
+      </section>
+
+      <section id="passkey-section">
+        <h2>2. Passkey</h2>
+        <div id="passkey-info" class="muted">Pas de passkey.</div>
+        <div class="actions">
+          <button id="register-passkey" type="button">
+            Créer la passkey et l'enregistrer (PasskeyListSet)
+          </button>
+          <button id="lock-account" type="button" class="secondary">
+            Passkey uniquement (désactiver la clé maître)
+          </button>
+        </div>
+      </section>
+
+      <section id="pay-section">
+        <h2>3. Payer avec la passkey</h2>
+        <form id="pay-form">
+          <label>Destination <input id="pay-destination" required placeholder="r…" /></label>
+          <label
+            >Montant (XRP)
+            <input id="pay-amount" required type="number" min="0.000001" step="any" value="1"
+          /></label>
+          <button type="submit">Signer avec Touch ID et envoyer</button>
+        </form>
+      </section>
+
+      <section id="ledger-section">
+        <h2>Ledger Stax</h2>
+        <p class="muted">
+          Chrome ou Edge (WebHID), Stax déverrouillée sur l'app XRP. Chaque transaction est relue en
+          clair sur l'écran avant la signature.
+        </p>
+        <div id="ledger-info" class="muted">Stax non connectée.</div>
+        <div class="actions">
+          <button id="ledger-connect" type="button">Connecter la Stax</button>
+          <button id="ledger-fund" type="button" class="secondary">
+            Financer le compte Stax (faucet)
+          </button>
+          <button id="ledger-migrate" type="button" class="secondary">
+            Migrer en post-quantique (RegularKey ML-DSA + clé maître désactivée)
+          </button>
+        </div>
+        <form id="ledger-pay-form">
+          <label>Destination <input id="ledger-pay-destination" required placeholder="r…" /></label>
+          <label
+            >Montant (XRP)
+            <input
+              id="ledger-pay-amount"
+              required
+              type="number"
+              min="0.000001"
+              step="any"
+              value="1"
+          /></label>
+          <label class="inline"
+            ><input id="ledger-pay-pq" type="checkbox" /> signer en ML-DSA-44</label
+          >
+          <button type="submit">Signer sur la Stax et envoyer</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Journal</h2>
+        <ol id="log"></ol>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
