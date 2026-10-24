@@ -1054,12 +1054,12 @@ Transactor::checkSign(PreclaimContext const& ctx)
 NotTEC
 Transactor::checkSession(
     PreclaimContext const& ctx,
+    Keylet const& sessionKeylet,
     bool overridesCheckSign,
     std::function<XRPAmount()> const& baseFee,
     GranularSemantics const& granularSemantics)
 {
-    auto const keylet = signingSessionOf(ctx.view, ctx.tx);
-    auto const session = keylet ? ctx.view.read(*keylet) : nullptr;
+    auto const session = ctx.view.read(sessionKeylet);
     if (!session)
         return tefINTERNAL;  // LCOV_EXCL_LINE
 
@@ -1087,7 +1087,9 @@ Transactor::checkSession(
         {
             // Mode P: the XLS-75 sequence of checkPermission, with the session
             // entry in place of the delegate entry.
-            if (isSessionExcluded(type))
+            // The type must still be one mode A could sign, under the
+            // rules of this ledger.
+            if (!isSessionEligibleType(type, ctx.view.rules()))
                 return tefSESSION_TX_NOT_ALLOWED;
 
             if (!isTesSuccess(checkTxPermission(session, ctx.tx)))
@@ -1224,10 +1226,13 @@ Transactor::checkSingleSign(
         if (slePasskeyList)
         {
             auto const passkeys = slePasskeyList->getFieldArray(sfPasskeys);
-            auto hasMatchingPasskey =
-                std::any_of(passkeys.begin(), passkeys.end(), [&idSigner](STObject const& passkey) {
+            auto hasMatchingPasskey = std::any_of(
+                passkeys.begin(),
+                passkeys.end(),
+                [&idSigner](STObject const& passkey) {
                     return passkey.isFieldPresent(sfPublicKey) &&
-                        calcAccountID(PublicKey(makeSlice(passkey.getFieldVL(sfPublicKey)))) ==
+                        calcAccountID(PublicKey(
+                            makeSlice(passkey.getFieldVL(sfPublicKey)))) ==
                         idSigner;
                 });
             if (hasMatchingPasskey)

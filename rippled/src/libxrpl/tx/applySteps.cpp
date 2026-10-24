@@ -192,8 +192,9 @@ invokePreclaim(PreclaimContext const& ctx)
 
                         // A session-signed transaction is authorized by its
                         // session alone, in place of the signature check.
-                        if (NotTEC const result = isSessionSigned(ctx.view, ctx.tx)
-                                ? Transactor::invokeCheckSession<T>(ctx)
+                        auto const session = signingSessionOf(ctx.view, ctx.tx);
+                        if (NotTEC const result = session
+                                ? Transactor::invokeCheckSession<T>(ctx, *session)
                                 : T::checkSign(ctx))
                             return result;
 

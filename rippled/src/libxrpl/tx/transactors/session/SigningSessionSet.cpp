@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <unordered_set>
 
 namespace xrpl {
@@ -90,10 +91,15 @@ SigningSessionSet::preflight(PreflightContext const& ctx)
             if (!Permission::getInstance().isDelegable(value, ctx.rules))
                 return temMALFORMED;
 
-            // A transaction-level value is the type plus one; granular values
-            // are above every type and never name an excluded one.
-            if (value <= std::numeric_limits<std::uint16_t>::max() &&
-                isSessionExcluded(static_cast<TxType>(value - 1)))
+            // The type the value names, transaction-level (the type plus one)
+            // or granular: a session never holds a right over a type that
+            // mode A could not sign, so a granular permission of a
+            // non-delegable type (AccountSet) is refused too.
+            auto const type = value <= std::numeric_limits<std::uint16_t>::max()
+                ? std::optional<TxType>{static_cast<TxType>(value - 1)}
+                : Permission::getInstance().getGranularTxType(
+                      static_cast<GranularPermissionType>(value));
+            if (!type || !isSessionEligibleType(*type, ctx.rules))
                 return temMALFORMED;
         }
     }
@@ -120,7 +126,10 @@ SigningSessionSet::preclaim(PreclaimContext const& ctx)
         return terNO_ACCOUNT;  // LCOV_EXCL_LINE
 
     if ((*sleAccount)[~sfRegularKey] == sessionKey)
+    {
+        JLOG(ctx.j.trace()) << "SigningSessionSet: the session key is the RegularKey";
         return tecNO_PERMISSION;
+    }
 
     if (auto const passkeys = ctx.view.read(keylet::passkeyList(account)))
     {
@@ -128,17 +137,26 @@ SigningSessionSet::preclaim(PreclaimContext const& ctx)
         {
             if (passkey.isFieldPresent(sfPublicKey) &&
                 calcAccountID(PublicKey(makeSlice(passkey.getFieldVL(sfPublicKey)))) == sessionKey)
+            {
+                JLOG(ctx.j.trace()) << "SigningSessionSet: the session key is a passkey";
                 return tecNO_PERMISSION;
+            }
         }
     }
 
     if (auto const beneficiary = ctx.view.read(keylet::beneficiary(account));
         beneficiary && (*beneficiary)[sfBeneficiary] == sessionKey)
+    {
+        JLOG(ctx.j.trace()) << "SigningSessionSet: the session key is the beneficiary";
         return tecNO_PERMISSION;
+    }
 
     // No update: a session is deleted and opened again.
     if (ctx.view.exists(keylet::signingSession(account, sessionKey)))
+    {
+        JLOG(ctx.j.trace()) << "SigningSessionSet: the session already exists";
         return tecDUPLICATE;
+    }
 
     return tesSUCCESS;
 }

@@ -16,6 +16,7 @@
 #include <test/jtx/session.h>
 #include <test/jtx/sig.h>
 #include <test/jtx/sponsor.h>
+#include <test/jtx/subscription.h>
 #include <test/jtx/ter.h>
 #include <test/jtx/ticket.h>
 #include <test/jtx/trust.h>
@@ -36,6 +37,7 @@
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/Serializer.h>
 #include <xrpl/protocol/TxFlags.h>
+#include <xrpl/protocol/TxFormats.h>
 #include <xrpl/protocol/jss.h>
 #include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
@@ -549,7 +551,10 @@ class SigningSessions_test : public beast::unit_test::Suite
               "SigningSessionDelete",
               "PasskeyListSet",
               "SubscriptionSet",
-              "SponsorshipSet"})
+              "SponsorshipSet",
+              // Granular permissions of a non-delegable type.
+              "AccountDomainSet",
+              "AccountTransferRateSet"})
         {
             env(session::set(alice, key, 60), session::Permissions({name}), Ter(temMALFORMED));
         }
@@ -638,9 +643,34 @@ class SigningSessions_test : public beast::unit_test::Suite
         // Case 13: closing another key's session, or a missing one, is not
         // the own close.
         env(session::del(alice, other), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(session::set(alice, other, 600), Txflags(tfAllTransactions));
+        env.close();
+        env(session::del(alice, other), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        BEAST_EXPECT(sessionEntry(env, alice, other));
+
+        // A Batch (non-delegable, and its inner transactions are not signed
+        // again) whose inner transaction changes the RegularKey.
+        {
+            auto const seq = env.seq(alice);
+            env(batch::outer(alice, seq, batch::calcBatchFee(env, 0, 2), tfAllOrNothing),
+                batch::Inner(regkey(alice, other), seq + 1),
+                batch::Inner(pay(alice, bob, XRP(1)), seq + 2),
+                Sig(key),
+                lls(),
+                Ter(tefSESSION_TX_NOT_ALLOWED));
+        }
 
         // Excluded types, although delegable.
         env(passkeyListSet(alice, Account{"pk", KeyType::P256}, "AA"),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(sponsor::set_fee(alice, 0, XRP(1)),
+            sponsor::SponseeAcc(bob),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(subscription::create(alice, bob, XRP(10), NetClock::duration{3600}),
             Sig(key),
             lls(),
             Ter(tefSESSION_TX_NOT_ALLOWED));
@@ -840,6 +870,28 @@ class SigningSessions_test : public beast::unit_test::Suite
             lls(),
             Ter(tefBAD_AUTH));
 
+        // The session key as the counterparty signer of a firewall of which
+        // alice is the counterparty.
+        {
+            Account const dave{"dave"};
+            env.fund(XRP(10000), dave);
+            env(firewall::set(dave.id(), alice.id(), backup.id()));
+            env.close();
+            env(firewall::set(dave.id(), keylet::firewall(dave.id()).key),
+                Sig(sfCounterpartySignature, key),
+                Fee(drops(20)),
+                Ter(tefBAD_AUTH));
+        }
+
+        // A pre-funded fee sponsor, without a SponsorSignature.
+        env(sponsor::set_fee(sponsor, 0, XRP(1)), sponsor::SponseeAcc(alice));
+        env.close();
+        env(pay(alice, bob, XRP(1)),
+            sponsor::As(sponsor, spfSponsorFee),
+            Sig(key),
+            lls(),
+            Ter(tefBAD_AUTH));
+
         // A Batch whose inner payment of alice is signed by her session key.
         auto const aliceSeq = env.seq(alice);
         auto const bobSeq = env.seq(bob);
@@ -928,6 +980,31 @@ class SigningSessions_test : public beast::unit_test::Suite
         env(pay(alice, bob, XRP(1)), Sig(key), LastLedgerSeq(seq + kSessionMaxLedgerWindow));
         env.close();
 
+        // Case 17b, a documented limitation: with a fee sponsor, or as a Batch
+        // inner signer, a key that is both the RegularKey and a session key
+        // follows the existing rules, and acts with the RegularKey.
+        {
+            Account const sponsor{"sponsor"};
+            env.fund(XRP(10000), sponsor);
+            env.close();
+            auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+            env(pay(alice, bob, XRP(1)),
+                sponsor::As(sponsor, spfSponsorFee),
+                Sig(sfSponsorSignature, sponsor),
+                Sig(key),
+                lls());
+            env.close();
+            auto const aliceSeq = env.seq(alice);
+            auto const bobSeq = env.seq(bob);
+            env(batch::outer(bob, bobSeq, batch::calcBatchFee(env, 1, 2), tfAllOrNothing),
+                batch::Inner(pay(alice, bob, XRP(1)), aliceSeq),
+                batch::Inner(pay(bob, alice, XRP(1)), bobSeq + 1),
+                batch::Sig(Reg{alice, key}),
+                lls());
+            env.close();
+            BEAST_EXPECT(env.seq(alice) == aliceSeq + 1);
+        }
+
         // Once the owner deletes the session with its master key, the key has
         // the RegularKey's full authority.
         env(session::del(alice, key), Sig(alice));
@@ -1005,6 +1082,24 @@ class SigningSessions_test : public beast::unit_test::Suite
             env(session::del(alice, key), Sig(key), lls());
             env.close();
             BEAST_EXPECT(!sessionEntry(env, alice, key));
+        }
+
+        // A P-256 session key may also sign through WebAuthn: the signature
+        // is checked as a passkey's, the authority is still the session's.
+        {
+            Env env{*this, features};
+            Account const alice{"alice"}, bob{"bob"};
+            Account const key{"session", KeyType::P256};
+            env.fund(XRP(10000), alice, bob);
+            env.close();
+            env(session::set(alice, key, 600), session::Permissions({"Payment"}));
+            env.close();
+            auto const lls = LastLedgerSeq(env.current()->seq() + 10);
+            env(pay(alice, bob, XRP(1)), WebAuthnSig(key, "AA"), lls);
+            env(ticket::create(alice, 1),
+                WebAuthnSig(key, "AA"),
+                LastLedgerSeq(env.current()->seq() + 10),
+                Ter(tefSESSION_TX_NOT_ALLOWED));
         }
     }
 
@@ -1215,6 +1310,34 @@ class SigningSessions_test : public beast::unit_test::Suite
         }
         env.close();
         env.require(Owners(alice, eligible.size()));
+
+        // Granular permissions: only those of an eligible type.
+        std::set<std::string> const eligibleGranular = {
+            "TrustlineAuthorize",
+            "TrustlineFreeze",
+            "TrustlineUnfreeze",
+            "PaymentMint",
+            "PaymentBurn",
+            "MPTokenIssuanceLock",
+            "MPTokenIssuanceUnlock",
+        };
+        std::vector<std::string> granular;
+#pragma push_macro("GRANULAR_PERMISSION")
+#undef GRANULAR_PERMISSION
+#define GRANULAR_PERMISSION(name, ...) granular.push_back(#name);
+#include <xrpl/protocol/detail/permissions.macro>
+#undef GRANULAR_PERMISSION
+#pragma pop_macro("GRANULAR_PERMISSION")
+        BEAST_EXPECT(granular.size() > eligibleGranular.size());
+        for (auto const& name : granular)
+        {
+            Account const key{"granular" + name};
+            auto const expected =
+                eligibleGranular.contains(name) ? Ter(tesSUCCESS) : Ter(temMALFORMED);
+            env(session::set(alice, key, 60), session::Permissions({name}), expected);
+        }
+        env.close();
+        env.require(Owners(alice, eligible.size() + eligibleGranular.size()));
     }
 
 public:

@@ -365,7 +365,8 @@ public:
         NotTEC(ReadView const&, STTx const&, std::unordered_set<GranularPermissionType> const&)>;
 
     /**
-     * Authorizes a session-signed transaction (isSessionSigned) in place of
+     * Authorizes a session-signed transaction, whose session signingSessionOf
+     * found at `sessionKeylet`, in place of
      * T::checkSign: the session alone authorizes it, never the master key,
      * the RegularKey, a passkey or a beneficiary (FIANSO-SPEC 6.5).
      *
@@ -375,16 +376,17 @@ public:
      */
     template <class T>
     static NotTEC
-    invokeCheckSession(PreclaimContext const& ctx)
+    invokeCheckSession(PreclaimContext const& ctx, Keylet const& sessionKeylet)
     {
-        // A type with a signature check of its own (Batch, LoanSet, the
-        // firewall types) is never authorized by a session.
+        // A type with a signature check of its own (Batch, LoanSet) is never
+        // authorized by a session.
         using CheckSign = NotTEC (*)(PreclaimContext const&);
         bool const overridesCheckSign =
             static_cast<CheckSign>(&T::checkSign) != static_cast<CheckSign>(&Transactor::checkSign);
 
         return checkSession(
             ctx,
+            sessionKeylet,
             overridesCheckSign,
             [&ctx] { return T::calculateBaseFee(ctx.view, ctx.tx); },
             [](ReadView const& view,
@@ -401,6 +403,7 @@ public:
     static NotTEC
     checkSession(
         PreclaimContext const& ctx,
+        Keylet const& sessionKeylet,
         bool overridesCheckSign,
         std::function<XRPAmount()> const& baseFee,
         GranularSemantics const& granularSemantics);
