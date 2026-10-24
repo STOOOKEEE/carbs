@@ -26,6 +26,7 @@ export function mountScreen(
     network?: NetworkStoreOptions;
     clientFactory?: ClientFactory;
     fetcher?: typeof fetch;
+    props?: Record<string, unknown>;
   } = {},
 ) {
   const ctx: AppContext = createAppContext(options.network, {
@@ -43,6 +44,7 @@ export function mountScreen(
     ctx.prompt.approver = async () => true;
   }
   const wrapper = mount(component, {
+    ...(options.props === undefined ? {} : { props: options.props }),
     global: {
       stubs: { NuxtLink: RouterLinkStub },
       plugins: [
