@@ -18,6 +18,7 @@
 #include <xrpl/protocol/Firewall.h>
 #include <xrpl/protocol/Indexes.h>
 #include <xrpl/protocol/LedgerFormats.h>
+#include <xrpl/protocol/MPTIssue.h>
 #include <xrpl/protocol/Permissions.h>
 #include <xrpl/protocol/Protocol.h>
 #include <xrpl/protocol/TxFlags.h>
@@ -195,23 +196,27 @@ class SigningSessions_test : public beast::unit_test::Suite
         auto const reserve = env.current()->fees().reserve;
         auto const increment = env.current()->fees().increment;
 
-        // Enough for the account reserve and two fees, not for one more object.
-        env.fund(reserve + fee * 2, alice);
+        // The reserve is checked on the balance before the fee: one drop short
+        // of the reserve of one more object is refused ...
+        env.fund(reserve + increment - drops(1), alice);
         env.close();
-
         env(session::set(alice, key, 60), Txflags(tfAllTransactions), Ter(tecINSUFFICIENT_RESERVE));
+        // The open ledger retries a tec when the ledger closes: close now, so
+        // that the payment below cannot turn this refusal into a success.
         env.close();
         env.require(Owners(alice, 0));
         BEAST_EXPECT(!sessionEntry(env, alice, key));
-        BEAST_EXPECT(env.balance(alice) == reserve + fee);
+        BEAST_EXPECT(env.balance(alice) == reserve + increment - drops(1) - fee);
 
-        // Exactly the reserve of one more object, before the fee.
-        env(pay(env.master, alice, drops(increment)));
+        // ... and exactly that reserve before the fee is enough, although the
+        // balance after the fee is below it.
+        env(pay(env.master, alice, drops(1) + fee));
         env.close();
+        BEAST_EXPECT(env.balance(alice) == reserve + increment);
         env(session::set(alice, key, 60), Txflags(tfAllTransactions));
         env.close();
         env.require(Owners(alice, 1));
-        BEAST_EXPECT(env.balance(alice) == reserve + increment);
+        BEAST_EXPECT(env.balance(alice) == reserve + increment - fee);
     }
 
     // Case 18, the closes that do not need the session path: the owner, a
@@ -245,22 +250,51 @@ class SigningSessions_test : public beast::unit_test::Suite
         // Owner == Account is malformed: the owner closes without Owner.
         env(session::del(alice, key, alice), Ter(temMALFORMED));
 
-        // A stranger cannot close a live session ...
-        env(session::set(alice, key, 25), session::Cap(XRP(10)));
+        // A stranger cannot close a live session, up to the last ledger
+        // before Expiration ... Close times move in steps of 10 seconds, so a
+        // duration of 30 makes Expiration a parent close time.
+        env(session::set(alice, key, 30), session::Cap(XRP(10)));
         env.close();
         auto const expiration = (*sessionEntry(env, alice, key))[sfExpiration];
-        BEAST_EXPECT(parentCloseTime(env) < expiration);
-        env(session::del(carol, key, alice), Ter(tecNO_PERMISSION));
+        int refused = 0;
+        while (parentCloseTime(env) < expiration)
+        {
+            env(session::del(carol, key, alice), Ter(tecNO_PERMISSION));
+            ++refused;
+            env.close();
+        }
+        BEAST_EXPECT(refused > 0);
         BEAST_EXPECT(sessionEntry(env, alice, key));
 
         // ... and can once it has expired, at Expiration exactly.
-        while (parentCloseTime(env) < expiration)
-            env.close();
+        BEAST_EXPECT(parentCloseTime(env) == expiration);
         env(session::del(carol, key, alice));
         env.close();
         BEAST_EXPECT(!sessionEntry(env, alice, key));
         env.require(Owners(alice, 0));
         env.require(Owners(carol, 0));
+    }
+
+    // SessionCap is an XRP amount: an MPT amount fails the local checks of
+    // the transaction format (PLAN-CHECK finding 3).
+    void
+    testMptCap(FeatureBitset features)
+    {
+        testcase("MPT cap refused");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, key{"key"};
+        env.fund(XRP(10000), alice);
+        env.close();
+
+        STAmount const mpt{MPTIssue{makeMptID(1, alice)}, UINT64_C(100)};
+        auto const jt = env.jt(session::set(alice, key, 60), session::Cap(mpt));
+        Serializer s;
+        jt.stx->add(s);
+        auto const jr = env.rpc("submit", strHex(s.slice()));
+        BEAST_EXPECT(jr[jss::result][jss::error] == "invalidTransaction");
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
     // Case 19: sessions are not obligations, AccountDelete removes them.
@@ -395,6 +429,7 @@ public:
         testFlags(all);
         testReserve(all);
         testDelete(all);
+        testMptCap(all);
         testAccountDelete(all);
         testRpc(all);
         testSponsorship(all);

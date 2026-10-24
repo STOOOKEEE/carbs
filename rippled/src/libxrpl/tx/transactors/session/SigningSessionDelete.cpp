@@ -98,7 +98,7 @@ SigningSessionDelete::deleteSession(ApplyView& view, SLE::ref sle, beast::Journa
 void
 SigningSessionDelete::visitInvariantEntry(bool, SLE::const_ref, SLE::const_ref)
 {
-    // The ValidSigningSession check covers this transaction.
+    // No transaction-specific invariants yet.
 }
 
 bool
@@ -109,7 +109,7 @@ SigningSessionDelete::finalizeInvariants(
     ReadView const&,
     beast::Journal const&)
 {
-    // The ValidSigningSession check covers this transaction.
+    // No transaction-specific invariants yet.
     return true;
 }
 
