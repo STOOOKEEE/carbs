@@ -3,12 +3,17 @@ import { computed, ref } from "vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
-import { useBackend, useMigration } from "~/lib/context";
+import { useBackend, useMigration, useNetwork } from "~/lib/context";
 import { shortHex } from "~/lib/format";
 import type { ExposureReport, NetworkName } from "~/lib/ports";
 
 const backend = useBackend();
 const migration = useMigration();
+const networkStore = useNetwork();
+const quantumNetworks = computed(() => {
+  const all = networkStore.networks();
+  return [all.alphanet, all.mainnet];
+});
 const mstate = migration.state;
 
 const address = ref("");
@@ -66,8 +71,9 @@ async function useFixture(value: string): Promise<void> {
         <label class="field">
           <span>Network</span>
           <select v-model="network" class="input" data-testid="network">
-            <option value="alphanet">AlphaNet</option>
-            <option value="mainnet">XRPL mainnet (read-only)</option>
+            <option v-for="option in quantumNetworks" :key="option.id" :value="option.id">
+              {{ option.name }}
+            </option>
           </select>
         </label>
       </div>

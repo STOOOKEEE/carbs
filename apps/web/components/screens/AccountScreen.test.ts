@@ -44,3 +44,23 @@ describe("Account screen", () => {
     expect(codesIn(wrapper)).toEqual([]);
   });
 });
+
+describe("Account screen, browser support", () => {
+  it("says to use Chrome when navigator.hid is missing", () => {
+    Reflect.deleteProperty(navigator, "hid");
+    const { wrapper } = mountScreen(AccountScreen);
+    const warning = wrapper.get("[data-testid='hid-warning']").text();
+    expect(warning).toContain("Use Chrome");
+    expect(warning).toContain("WebHID");
+  });
+
+  it("shows no warning when WebHID exists", () => {
+    Object.defineProperty(navigator, "hid", { value: {}, configurable: true });
+    try {
+      const { wrapper } = mountScreen(AccountScreen);
+      expect(wrapper.find("[data-testid='hid-warning']").exists()).toBe(false);
+    } finally {
+      Reflect.deleteProperty(navigator, "hid");
+    }
+  });
+});

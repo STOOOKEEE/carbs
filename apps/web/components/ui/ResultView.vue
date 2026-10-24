@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
+import { useBackend, useNetwork } from "~/lib/context";
 import { describeResult } from "~/lib/result-codes";
 import type { NodeResult } from "~/lib/ports";
 import { shortHex } from "~/lib/format";
 
-const props = defineProps<{
-  result: NodeResult;
-  simulated: boolean;
-  explorerUrl?: string | null;
-}>();
+const props = defineProps<{ result: NodeResult; simulated: boolean }>();
+
+const backend = useBackend();
+const network = useNetwork();
 
 const description = computed(() => describeResult(props.result.code));
 const tone = computed(() =>
@@ -18,6 +18,10 @@ const tone = computed(() =>
     : props.result.family === "tec"
       ? "chip-warn"
       : "chip-danger",
+);
+// A simulated hash exists on no explorer; a real one is linked on the selected network's.
+const explorerUrl = computed(() =>
+  backend.mode === "live" && props.result.feeClaimed ? network.explorerTx(props.result.hash) : null,
 );
 </script>
 
@@ -33,11 +37,15 @@ const tone = computed(() =>
     <p>{{ description.sentence }}</p>
     <p v-if="description.rule" class="text-muted-foreground">{{ description.rule }}</p>
     <p class="mono text-muted-foreground">
-      <template v-if="explorerUrl">
-        <a :href="explorerUrl" target="_blank" rel="noreferrer" class="underline">{{
-          shortHex(result.hash)
-        }}</a>
-      </template>
+      <a
+        v-if="explorerUrl"
+        :href="explorerUrl"
+        target="_blank"
+        rel="noreferrer"
+        class="underline"
+        data-testid="explorer-link"
+        >{{ shortHex(result.hash) }}</a
+      >
       <template v-else>{{ shortHex(result.hash) }}</template>
     </p>
   </div>

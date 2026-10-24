@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
+import { WEBHID_MESSAGE, hasWebHid } from "~/lib/browser-support";
 import { useBackend, useDemo } from "~/lib/context";
 import { formatXrp, shortAddress } from "~/lib/format";
 import type { Profile } from "~/lib/demo";
@@ -11,6 +12,9 @@ const backend = useBackend();
 const demo = useDemo();
 const state = demo.state;
 const passkeyOnly = ref(false);
+const webHid = hasWebHid();
+// The simulated Stax needs no browser support; the real one does.
+const ledgerBlocked = computed(() => backend.mode === "live" && !webHid);
 
 const PROFILES: readonly { id: Profile; title: string; body: string; note: string }[] = [
   {
@@ -54,9 +58,20 @@ async function create(profile: Profile): Promise<void> {
           <input v-model="passkeyOnly" type="checkbox" data-testid="passkey-only" />
           Passkey-only recipe: regular key to the blackhole address, master key disabled
         </label>
+        <p
+          v-if="profile.id === 'ledger' && !webHid"
+          class="text-sm text-warn"
+          role="note"
+          data-testid="hid-warning"
+        >
+          {{ WEBHID_MESSAGE }}
+          <template v-if="backend.mode === 'simulated'">
+            The simulated Stax below works in any browser; the real one needs Chrome.
+          </template>
+        </p>
         <button
           class="btn btn-primary"
-          :disabled="state.busy"
+          :disabled="state.busy || (profile.id === 'ledger' && ledgerBlocked)"
           :data-testid="`create-${profile.id}`"
           @click="create(profile.id)"
         >
