@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Author** | Sofiane ("fianso", [@STOOOKEEE](https://github.com/STOOOKEEE)). This is **my** specification, hence its name. The decisions in §2 are mine and apply to the whole team. |
-| **Written** | 2026-10-24, before the XRPL Commons NYC hackathon kickoff (24 Oct 10:00 ET). |
+| **Written** | 2026-10-24, 10:54 to 11:34 ET, in the first hours after the XRPL Commons NYC kickoff (24 Oct 10:00 ET), **before any implementation code**. It consolidates and translates the preparation dossier `docs/carbs/` of `STOOOKEEE/TTT`, first committed at 08:32 ET, before the kickoff, and amended until noon. |
 | **Nature** | Documentation and design only. It contains **no implementation code** and no code from any earlier prototype. All code in this repository is written during the hackathon (24-25 Oct 2026) after this file, apart from the unmodified upstream imports in `rippled/` and `ledger-app/` (§4). |
 | **Source** | Consolidates the preparation dossier `docs/carbs/` on branch `fianso` of [STOOOKEEE/TTT](https://github.com/STOOOKEEE/TTT) (SPEC, XLS-Sessions, BUILD-PLAN, TERRAIN, PITFALLS, REVIEW), re-checked against upstream code on 2026-10-24. |
 | **Not this** | An earlier "v2" design and prototype (`feat/signing-sessions` in `STOOOKEEE/TTT`: witness co-signer, `ForceQuantum`, XRP-only payments) is a different design, is declared in the README, and is **not reused**. |
@@ -53,7 +53,7 @@ Taken by Sofiane on 2026-10-24, **for the whole team**.
 
 1. **Everything submitted is written during the hackathon**, in this repository. Upstream code (`rippled/`, `ledger-app/`) is imported **unmodified, in its own first commit per directory**, with SHA, URL and licence recorded in `UPSTREAM.md`. `git diff <import-commit>..HEAD -- rippled/` must show our work alone.
 2. **No fork, no submodule.** A submodule renders as a link and clones empty without `--recursive`; a private or deleted fork breaks the review.
-3. **README states "Existing before Oct 24 / Built during the hackathon"** with dates and commit ranges. `docs/DEVLOG.md` is dated and records what was done, removed, ignored or simulated.
+3. **README states "Before the kickoff / During the hackathon"** with dates, times and commit ranges. `docs/DEVLOG.md` is dated and records what was done, removed, ignored or simulated.
 4. **One base defect per commit**, never mixed with the amendment.
 5. **No security claim without a test that proves it.** No upstream test removed or edited to go green (a changed delegable-type counter is re-pinned with a written justification in the commit).
 6. **No secret in the repository** (standalone genesis seed from an environment variable). No third-party script in the web app (CSP `script-src 'self'`).
@@ -67,8 +67,8 @@ Taken by Sofiane on 2026-10-24, **for the whole team**.
 
 ```text
 carbs/
-  FIANSO-SPEC.md              this file (Sofiane's spec, written before kickoff)
-  README.md                  what it is, "Existing before Oct 24 / Built during the hackathon", demo instructions
+  FIANSO-SPEC.md              this file (Sofiane's spec, consolidating the pre-kickoff dossier)
+  README.md                  what it is, "Before the kickoff / During the hackathon", demo instructions
   UPSTREAM.md                SHA, URL, licence of each import (rippled: ISC; app-xrp: Apache-2.0)
   rippled/                   XRPLF/rippled:alphanet @ <head at kickoff>, imported unmodified, then the amendment
   ledger-app/                LedgerHQ/app-xrp master @ 7b5185ff (v2.8.2), imported unmodified, then clear signing
@@ -607,7 +607,7 @@ The documentation feedback document (`docs/ledger-dx-feedback.md`, §7.6) and it
 | 0:00-0:20 | The problem: on XRPL a key has all the authority or none |
 | 0:20-1:30 | **Live, session opened from the Ledger**: the Stax shows the rules; 5 actions of different types with no prompt (mode A, 60 s so expiry can be shown); the "stolen" key tries `SetRegularKey` and `PasskeyListSet` → node refusals; after 60 s `tefSESSION_EXPIRED` |
 | 1:30-2:10 | **Mode C, the agent**: a 20 XRP cap, payments sized so that, fees included, exactly the 6th exceeds it (for example 3.9 XRP each), the 6th refused by the ledger; then the **Face** account with a passkey; then the **PQ** account: session opened by an ML-DSA-44 signature made on the device (if delivered) |
-| 2:10-2:30 | Honesty slide: before 24 Oct a spec and **a full prototype that is not reused**; during the hackathon all submitted code, commit ranges; **passkey defects found (P1, P3, P5)** (D7) |
+| 2:10-2:30 | Honesty slide: before the kickoff a spec dossier and **a full prototype that is not reused**; during the hackathon all submitted code, commit ranges; **passkey defects found (P1, P3, P5)** (D7) |
 | 2:30-2:45 | **Ledger developer-experience feedback**: the three best findings, the time they cost, the PR links (§7.6) |
 | 2:45-3:00 | Potential: embedded wallets, agents, games and micro-payments, custody; the Foundation's pipeline (XLS, implementation, signing devices) |
 
@@ -686,7 +686,7 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 
 **`docs/DEVLOG.md`**: dated entries — what was done, removed, ignored or simulated; it is the source of the README's "before / during" table and of the honesty slide.
 
-**README "Existing before Oct 24 / Built during the hackathon"**: before = idea, this specification, the preparation dossier, and the earlier prototype (not reused); during = everything else, with the commit range.
+**README "Before the kickoff / During the hackathon"**: before (up to 24 Oct 10:00 ET) = the idea, the preparation dossier, and the earlier prototype of 21-23 Oct (not reused); during = this repository from its first commit (11:24 ET): this specification (documentation, a consolidation of the dossier), the upstream imports, and everything built after, with the commit ranges.
 
 ---
 
