@@ -392,6 +392,18 @@ static void format_amm_withdraw_flags(uint32_t value, field_value_t* dst) {
     }
 }
 
+// SigningSessionSet: mode A is its only flag (signing_session.h).
+// SigningSessionDelete has no flag at all.
+#define SIGNING_SESSION_SET_KNOWN_FLAGS    TF_ALL_TRANSACTIONS
+#define SIGNING_SESSION_DELETE_KNOWN_FLAGS 0u
+
+static void format_signing_session_set_flags(uint32_t value,
+                                             field_value_t* dst) {
+    if (HAS_FLAG(value, TF_ALL_TRANSACTIONS)) {
+        append_item(dst, 0, "All transactions");
+    }
+}
+
 void format_flags(field_t* field, field_value_t* dst) {
     uint32_t value = field->data.u32;
     switch (parse_context.transaction_type) {
@@ -421,6 +433,9 @@ void format_flags(field_t* field, field_value_t* dst) {
             break;
         case TRANSACTION_AMM_WITHDRAW:
             format_amm_withdraw_flags(value, dst);
+            break;
+        case TRANSACTION_SIGNING_SESSION_SET:
+            format_signing_session_set_flags(value, dst);
             break;
         default:
             snprintf(dst->buf, sizeof(dst->buf),
@@ -472,6 +487,14 @@ bool has_unknown_flags(uint16_t transaction_type, uint32_t value) {
             break;
         case TRANSACTION_AMM_WITHDRAW:
             known |= AMM_WITHDRAW_KNOWN_FLAGS;
+            break;
+        // Both session types need an explicit case: the default below does
+        // not check anything, which would clear-sign unknown bits (7.3 h2).
+        case TRANSACTION_SIGNING_SESSION_SET:
+            known |= SIGNING_SESSION_SET_KNOWN_FLAGS;
+            break;
+        case TRANSACTION_SIGNING_SESSION_DELETE:
+            known |= SIGNING_SESSION_DELETE_KNOWN_FLAGS;
             break;
         default:
             // No specific-flag formatter for this type: nothing to check.

@@ -1,0 +1,9 @@
+Transaction Type; Open session
+Account;   rEmnmhwxmkDk    j9jKiibNuXx     P25VYHJ5Euy   
+Session key;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
+Network ID; 24100
+Valid for; 5 minutes
+Fee; XRP 0.000013
+Allows [1]; Payment
+Allows [2]; OfferCreate
+Note; Cannot change keys, signers or the account

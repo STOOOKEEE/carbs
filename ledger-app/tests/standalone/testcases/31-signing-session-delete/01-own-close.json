@@ -1,0 +1,9 @@
+{
+  "TransactionType": "SigningSessionDelete",
+  "Account": "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK",
+  "SessionKey": "rEmnmhwxmkDkj9jKiibNuXxP25VYHJ5Euy",
+  "Fee": "15",
+  "Sequence": 7,
+  "LastLedgerSequence": 6000,
+  "SigningPubKey": "02EB0511FD55C2693C1A0E4C767D37ADF1C45B0138AC6ACE236DF58EB152E5E9AB"
+}

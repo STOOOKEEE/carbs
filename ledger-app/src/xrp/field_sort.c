@@ -26,7 +26,12 @@ uint8_t get_priority_score(field_t* field) {
         return 0;
     }
 
-    if (is_normal_account_field(field)) {
+    // The session key is what a session review is about: keep it next to the
+    // account (Account is serialized before it, and the sort is stable).
+    if (is_normal_account_field(field) ||
+        (field->data_type == STI_ACCOUNT &&
+         field->id == XRP_ACCOUNT_SESSION_KEY &&
+         field->array_info.type == ARRAY_NONE)) {
         return 1;
     }
 

@@ -7,6 +7,7 @@
 // clang-format on
 #include <string.h>
 
+#include "../src/globals.h"
 #include "../src/xrp/fmt.h"
 #include "../src/xrp/xrp_helpers.h"
 #include "../src/xrp/xrp_parse.h"
@@ -133,6 +134,21 @@ static const char* testcases[] = {
     "../../tests/standalone/testcases/28-amm-bid/01-basic.raw",
     "../../tests/standalone/testcases/28-amm-bid/02-min-max.raw",
     "../../tests/standalone/testcases/29-amm-vote/01-basic.raw",
+    // carbs: SigningSessionSet in modes A, P and C, and SigningSessionDelete.
+    // Each .json shows the fields; the .raw was encoded from it with
+    // ripple-binary-codec and the SigningSessions numbers (FIANSO-SPEC 6.1).
+    "../../tests/standalone/testcases/30-signing-session-set/01-mode-all.raw",
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "02-mode-permissions.raw",
+    "../../tests/standalone/testcases/30-signing-session-set/03-mode-cap.raw",
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "04-ten-permissions.raw",
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "05-short-duration.raw",
+    "../../tests/standalone/testcases/31-signing-session-delete/"
+    "01-own-close.raw",
+    "../../tests/standalone/testcases/31-signing-session-delete/"
+    "02-expired-by-third-party.raw",
     NULL,
 };
 
@@ -336,10 +352,76 @@ void test_invalid_transactions(void** state) {
     }
 }
 
+// A session review the app cannot fully explain must go blind (FIANSO-SPEC
+// 7.3 h, h2), never clear-sign with a row missing or unlabeled.
+static const char* session_blind_testcases[] = {
+    // Permission value 999999 is neither a delegable type + 1 nor granular.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "06-unknown-permission.raw",
+    // Flags 0x00030000: mode A plus a bit SigningSessionSet does not define.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "07-unknown-flag.raw",
+    // Two top-level Flags fields.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "08-duplicate-flags.raw",
+    NULL,
+};
+
+// Malformed session data is refused outright, not offered for blind signing.
+static const char* session_refused_testcases[] = {
+    // 01-mode-all with its last 5 bytes cut.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "09-truncated.raw",
+    // A signed field claiming the id of the app's own "Note" row.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "10-spoofed-note.raw",
+    // 11 permissions: one more than a session can hold.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "11-eleven-permissions.raw",
+    NULL,
+};
+
+static int parse_file(const char* filename) {
+    size_t size;
+    uint8_t* data = load_transaction_data(filename, &size);
+
+    memset(&parse_context, 0, sizeof(parse_context));
+    parse_context.data = data;
+    parse_context.length = size;
+    int result = parse_tx(&parse_context);
+
+    free(data);
+    return result;
+}
+
+void test_session_blind_required(void** state) {
+    (void)state;
+
+    for (const char** testcase = session_blind_testcases; *testcase != NULL;
+         testcase++) {
+        printf("[*] %s\n", *testcase);
+        assert_int_equal(parse_file(*testcase), BLIND_SIGN_REQUIRED);
+    }
+}
+
+void test_session_refused(void** state) {
+    (void)state;
+
+    for (const char** testcase = session_refused_testcases; *testcase != NULL;
+         testcase++) {
+        printf("[*] %s\n", *testcase);
+        int result = parse_file(*testcase);
+        assert_int_not_equal(result, 0);
+        assert_int_not_equal(result, BLIND_SIGN_REQUIRED);
+    }
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_transactions),
         cmocka_unit_test(test_invalid_transactions),
+        cmocka_unit_test(test_session_blind_required),
+        cmocka_unit_test(test_session_refused),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

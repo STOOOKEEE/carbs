@@ -1,0 +1,8 @@
+Transaction Type; Open session
+Account;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
+Session key;   rHH1wGruhP1Z    SzJvvxYeimW     LmXGG8WULED   
+Network ID; 24100
+Valid for; 1 minute
+Fee; XRP 0.000014
+Max spend; XRP 20
+Note; Cannot change keys, signers or the account

@@ -1,0 +1,17 @@
+Transaction Type; Open session
+Account;   rHH1wGruhP1Z    SzJvvxYeimW     LmXGG8WULED   
+Session key;   rHH1fLR86zy5    uZjZXT8iEa4     CHK145ksjAK   
+Network ID; 24100
+Valid for; 1 min 30 s
+Fee; XRP 0.000015
+Allows [1]; Payment
+Allows [2]; EscrowCreate
+Allows [3]; EscrowFinish
+Allows [4]; EscrowCancel
+Allows [5]; OfferCreate
+Allows [6]; OfferCancel
+Allows [7]; TrustSet
+Allows [8]; NFTokenCreateOffer
+Allows [9]; TrustlineAuthorize
+Allows [10]; PaymentMint
+Note; Cannot change keys, signers or the account

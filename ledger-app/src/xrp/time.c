@@ -62,6 +62,30 @@ bool is_time_delta(field_t* field) {
            field->id == XRP_UINT32_SETTLE_DELAY;
 }
 
+bool is_session_duration(field_t* field) {
+    return field->data_type == STI_UINT32 &&
+           field->id == XRP_UINT32_SESSION_DURATION;
+}
+
+#define SECONDS_PER_MINUTE 60U
+
+// "10 minutes", "1 minute", "45 s" or "1 min 30 s": a session lasts at most
+// 600 s, so minutes are what a user can check at a glance.
+void format_session_duration(field_t* field, field_value_t* dst) {
+    uint32_t minutes = field->data.u32 / SECONDS_PER_MINUTE;
+    uint32_t seconds = field->data.u32 % SECONDS_PER_MINUTE;
+
+    if (minutes == 0) {
+        snprintf(dst->buf, sizeof(dst->buf), "%u s", seconds);
+    } else if (seconds != 0) {
+        snprintf(dst->buf, sizeof(dst->buf), "%u min %u s", minutes, seconds);
+    } else if (minutes == 1) {
+        snprintf(dst->buf, sizeof(dst->buf), "1 minute");
+    } else {
+        snprintf(dst->buf, sizeof(dst->buf), "%u minutes", minutes);
+    }
+}
+
 // Inspired from
 // http://git.musl-libc.org/cgit/musl/tree/src/time/__secs_to_tm.c?h=v0.9.15
 static int ripple_epoch_to_tm(long long t, tm_mini_t* tm) {
