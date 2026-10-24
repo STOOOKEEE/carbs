@@ -257,9 +257,16 @@ describe("WebSocket client", () => {
         sent.push(message);
         const reply =
           message["command"] === "submit"
-            ? { id: message["id"], status: "error", error: "invalidTransaction", error_exception: "fails local checks: Invalid signature." }
+            ? {
+                id: message["id"],
+                status: "error",
+                error: "invalidTransaction",
+                error_exception: "fails local checks: Invalid signature.",
+              }
             : { id: message["id"], status: "success", result: { info: { network_id: 0 } } };
-        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(reply) })));
+        queueMicrotask(() =>
+          this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(reply) })),
+        );
       }
       close() {}
     }
