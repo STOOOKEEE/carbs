@@ -14,6 +14,7 @@
 #include <xrpl/json/json_value.h>
 #include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Batch.h>
+#include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/HashPrefix.h>
 #include <xrpl/protocol/MPTIssue.h>
 #include <xrpl/protocol/Protocol.h>
@@ -269,8 +270,9 @@ STTx::checkSign(Rules const& rules, STObject const& sigObject, SignatureRole rol
         Blob const& signingPubKey = sigObject.getFieldVL(sfSigningPubKey);
         bool const multiSigning = signingPubKey.empty();
         auto const prefix = signingPrefix(role, multiSigning, rules);
-        return multiSigning ? checkMultiSign(sigObject, prefix)
-                            : checkSingleSign(sigObject, prefix);
+        bool const challengeAsBytes = rules.enabled(fixPasskeyChallenge);
+        return multiSigning ? checkMultiSign(sigObject, prefix, challengeAsBytes)
+                            : checkSingleSign(sigObject, prefix, challengeAsBytes);
     }
     catch (...)
     {
@@ -445,12 +447,16 @@ STTx::getMetaSQL(
     Validates that the clientDataJSON challenge matches the expected signing
     data, then verifies the ECDSA signature against the WebAuthn authenticator
     data. Returns true if the signature is valid, false otherwise.
+
+    challengeAsBytes is true once fixPasskeyChallenge is enabled: the challenge
+    is then compared with the signing data byte for byte.
 */
 static bool
 verifyPasskeySignature(
     Slice const& publicKey,
     STObject const& passkeySig,
-    Slice const& expectedSigningData) noexcept
+    Slice const& expectedSigningData,
+    bool challengeAsBytes) noexcept
 {
     try
     {
@@ -476,9 +482,22 @@ verifyPasskeySignature(
 
         // Decode the base64url-encoded challenge and compare
         auto const challengeBytes = base64urlDecode(parsed["challenge"].asString());
-        if (challengeBytes.size() != expectedSigningData.size() ||
+        if (challengeAsBytes)
+        {
+            // The decoded challenge is a std::string. Comparing its chars
+            // with the uint8_t signing data fails for every byte at or above
+            // 0x80 where char is signed, and the signing data always holds
+            // one: the 0xF6 prefix of the P-256 SigningPubKey. Compare the
+            // bytes instead.
+            if (makeSlice(challengeBytes) != expectedSigningData)
+                return false;
+        }
+        else if (
+            challengeBytes.size() != expectedSigningData.size() ||
             !std::equal(challengeBytes.begin(), challengeBytes.end(), expectedSigningData.data()))
+        {
             return false;
+        }
 
         // Build WebAuthn signing data: authenticatorData || SHA-256(clientDataJSON)
         auto const clientDataHash = sha256(makeSlice(clientDataJSON));
@@ -503,7 +522,7 @@ verifyPasskeySignature(
     signatures (sfPasskeySignature with WebAuthn challenge validation).
 */
 static bool
-verifySigObject(STObject const& sigObject, Slice const& data) noexcept
+verifySigObject(STObject const& sigObject, Slice const& data, bool challengeAsBytes) noexcept
 {
     try
     {
@@ -516,7 +535,7 @@ verifySigObject(STObject const& sigObject, Slice const& data) noexcept
         {
             auto const& passkeySig =
                 static_cast<STObject const&>(sigObject.peekAtField(sfPasskeySignature));
-            return verifyPasskeySignature(makeSlice(spk), passkeySig, data);
+            return verifyPasskeySignature(makeSlice(spk), passkeySig, data, challengeAsBytes);
         }
 
         Blob const signature = sigObject.getFieldVL(sfTxnSignature);
@@ -529,7 +548,7 @@ verifySigObject(STObject const& sigObject, Slice const& data) noexcept
 }
 
 static std::expected<void, std::string>
-singleSignHelper(STObject const& sigObject, Slice const& data)
+singleSignHelper(STObject const& sigObject, Slice const& data, bool challengeAsBytes)
 {
     // We don't allow both a non-empty sfSigningPubKey and an sfSigners.
     // That would allow the transaction to be signed two ways.  So if both
@@ -537,17 +556,17 @@ singleSignHelper(STObject const& sigObject, Slice const& data)
     if (sigObject.isFieldPresent(sfSigners))
         return std::unexpected("Cannot both single- and multi-sign.");
 
-    if (!verifySigObject(sigObject, data))
+    if (!verifySigObject(sigObject, data, challengeAsBytes))
         return std::unexpected("Invalid signature.");
 
     return {};
 }
 
 std::expected<void, std::string>
-STTx::checkSingleSign(STObject const& sigObject, HashPrefix prefix) const
+STTx::checkSingleSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const
 {
     auto const data = getSigningData(*this, prefix);
-    return singleSignHelper(sigObject, makeSlice(data));
+    return singleSignHelper(sigObject, makeSlice(data), challengeAsBytes);
 }
 
 std::expected<void, std::string>
@@ -557,14 +576,16 @@ STTx::checkBatchSingleSign(STObject const& batchSigner, std::vector<uint256> con
     Serializer msg;
     serializeBatch(msg, getAccountID(sfAccount), getSeqProxy().value(), getFlags(), txIds);
     finishMultiSigningData(batchSigner.getAccountID(sfAccount), msg);
-    return singleSignHelper(batchSigner, msg.slice());
+    // A BatchSigner has no sfPasskeySignature, so no challenge is compared.
+    return singleSignHelper(batchSigner, msg.slice(), false);
 }
 
 std::expected<void, std::string>
 multiSignHelper(
     STObject const& sigObject,
     std::optional<AccountID> txnAccountID,
-    std::function<Serializer(AccountID const&)> makeMsg)
+    std::function<Serializer(AccountID const&)> makeMsg,
+    bool challengeAsBytes)
 {
     // Make sure the MultiSigners are present.  Otherwise they are not
     // attempting multi-signing and we just have a bad SigningPubKey.
@@ -612,7 +633,7 @@ multiSignHelper(
         try
         {
             auto const msgSerializer = makeMsg(accountID);
-            validSig = verifySigObject(signer, msgSerializer.slice());
+            validSig = verifySigObject(signer, msgSerializer.slice(), challengeAsBytes);
         }
         catch (std::exception const& e)
         {
@@ -642,16 +663,20 @@ STTx::checkBatchMultiSign(STObject const& batchSigner, std::vector<uint256> cons
     Serializer dataStart;
     serializeBatch(dataStart, getAccountID(sfAccount), getSeqProxy().value(), getFlags(), txIds);
     dataStart.addBitString(batchSignerAccount);
+    // A Signer has no sfPasskeySignature, so no challenge is compared.
     return multiSignHelper(
-        batchSigner, batchSignerAccount, [&dataStart](AccountID const& accountID) -> Serializer {
+        batchSigner,
+        batchSignerAccount,
+        [&dataStart](AccountID const& accountID) -> Serializer {
             Serializer s = dataStart;
             finishMultiSigningData(accountID, s);
             return s;
-        });
+        },
+        false);
 }
 
 std::expected<void, std::string>
-STTx::checkMultiSign(STObject const& sigObject, HashPrefix prefix) const
+STTx::checkMultiSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const
 {
     // Used inside the loop in multiSignHelper to enforce that
     // the account owner may not multisign for themselves.
@@ -665,11 +690,14 @@ STTx::checkMultiSign(STObject const& sigObject, HashPrefix prefix) const
     // with the stuff that stays constant from signature to signature.
     Serializer dataStart = startMultiSigningData(*this, prefix);
     return multiSignHelper(
-        sigObject, txnAccountID, [&dataStart](AccountID const& accountID) -> Serializer {
+        sigObject,
+        txnAccountID,
+        [&dataStart](AccountID const& accountID) -> Serializer {
             Serializer s = dataStart;
             finishMultiSigningData(accountID, s);
             return s;
-        });
+        },
+        challengeAsBytes);
 }
 
 void

@@ -37,7 +37,10 @@ enum class HashRouterFlags : std::uint16_t {
     PRIVATE6 = 0x2000,
     // Used in apply.cpp
     PRIVATE7 = 0x4000,
-    PRIVATE8 = 0x8000
+    PRIVATE8 = 0x8000,
+    // Used in apply.cpp. The private range above is full; no public flag
+    // uses this bit.
+    PRIVATE9 = 0x0020
 };
 
 constexpr HashRouterFlags

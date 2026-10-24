@@ -198,10 +198,10 @@ private:
     checkSign(Rules const& rules, STObject const& sigObject, SignatureRole role) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkSingleSign(STObject const& sigObject, HashPrefix prefix) const;
+    checkSingleSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkMultiSign(STObject const& sigObject, HashPrefix prefix) const;
+    checkMultiSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const;
 
     [[nodiscard]] std::expected<void, std::string>
     checkBatchSingleSign(STObject const& batchSigner, std::vector<uint256> const& txIds) const;

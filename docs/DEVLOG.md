@@ -53,3 +53,26 @@ These are the base failures. `docs/base-failures.txt` lists them one failing ass
 - **Review gate 1, round 1** (an independent reviewer, model Opus, read-only, given `PLAN.md`, the spec and `docs/PLAN-CHECK.md`): `VERDICT: CHANGES REQUIRED`. Blocking: the `MPToken` completeness test would hide our type, and the "green before and after" reading needed this entry. Non-blocking: the activation of a P5 fix had to be argued in both directions and cover a third `BAD` site; N1 lands as a test pull request, then a fix pull request; rows for W3 and W7; N2 risks (generated code behind the macros, a hand-written `jss` name, transaction settings); the `feature` listing of N9 is unverified; the citation command missed short references; two line numbers were off. Applied in `docs/PLAN-CHECK.md`, in `docs/base-failures.txt` (the failures per assertion) and in this entry.
 - **Review gate 1, round 2:** `VERDICT: APPROVED`. Its non-blocking findings are applied before merging: the **SIMULATED** labels and the output above; the cost and the rules each caller uses, worded exactly; the WebAuthn condition narrowed to a P-256 `SigningPubKey` with `sfPasskeySignature`; every refusal next to an accepted control; the preconditions of the peer test; the suites of the fix pull request and the full run for code in `apply.cpp`, `NetworkOPs.cpp` or `PeerImp.cpp`; raw messages in `docs/base-failures.txt`; small accuracy fixes. One is applied differently from its wording: the reviewer asked to document that a forced signature verdict is not honoured before the fix; it is honoured instead, with one more private router flag, because ledger replay would otherwise stop reproducing a pre-fix ledger that holds a WebAuthn transaction. Review gate 2 checks it on the fix pull request.
 - **Process:** the N1 test was written and run once on this machine while round 1 ran, to learn whether a fix was needed. Nothing was committed or opened as a pull request before the verdict.
+
+### N1: the WebAuthn challenge comparison (P5)
+
+**SIMULATED:** every result here comes from a software WebAuthn authenticator (`rippled/src/test/jtx/webauthn.h`). No device and no browser ceremony was used.
+
+- **Test first.** The authenticator and the refusals landed first (`test:` pull request). Before any change, on this machine (`char` signed), a valid WebAuthn payment was refused with `invalidTransaction`, "fails local checks: Invalid signature." (output in "Plan check, spike K5 and review gate 1"). P5 is confirmed.
+- **Fix**, a separate `fix:` commit gated by a new amendment, `fixPasskeyChallenge` (top of `features.macro`, `Supported::Yes`, `DefaultNo`). With it, the challenge is compared with the signing data as two `Slice`s; without it, the old comparison stays. Only that comparison changes.
+- **Activation.** While the amendment is disabled, a transaction signed through WebAuthn (a P-256 `SigningPubKey` with `sfPasskeySignature`) bypasses the signature cache of `checkValidity`, so no verdict crosses the activation in either direction. `NetworkOPs` and `PeerImp` do not mark it `BAD` either. A verdict forced by `forceValidity` (cluster relay, ledger replay, signature checks off) still holds: one more private router flag, `PRIVATE9` on the unused bit `0x0020`, records it. `isSignatureVerdictCacheable` holds the condition in one place. Cost: one WebAuthn verification per `checkValidity` call for such a transaction, until the amendment is enabled.
+- **Tests** (suites `PasskeyWebAuthn` and `PasskeyRelay`):
+  - a challenge with a byte at or above `0x80`, under both amendment states;
+  - every refusal next to an accepted control;
+  - the same signed blob refused before the amendment and accepted after it;
+  - `checkValidity` with one router and the rules of both eras;
+  - a forced verdict on both sides of the fix;
+  - the condition itself;
+  - `NetworkOPs::processTransaction`;
+  - a copy relayed by an overlay test peer.
+
+  Before the amendment, a signature is refused where `char` is signed and accepted where it is unsigned. The unsigned branch is **UNVERIFIED** here, since this machine has signed `char`.
+
+- **Also in the fix:** an `API-CHANGELOG.md` entry for the `submit` error condition, and one new levelization dependency, `test.overlay > xrpl.core`.
+- `infra/standalone.cfg` (N9) has to enable `fixPasskeyChallenge`, otherwise every WebAuthn transaction fails on that node. The public AlphaNet serves the definitions of the imported tree (K5) and has no such amendment, so its answer to a WebAuthn transaction may depend on its validators' platforms (**UNVERIFIED**; spike K2 is not run).
+- Kept to the facts on purpose: no upstream pull request and no message about this defect (decision D7).

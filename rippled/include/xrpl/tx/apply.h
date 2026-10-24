@@ -67,6 +67,17 @@ void
 forceValidity(HashRouter& router, uint256 const& txid, Validity validity);
 
 /**
+ * Whether the signature verdict of a transaction may be kept under `rules`.
+ *
+ * Until fixPasskeyChallenge is enabled, whether a WebAuthn passkey signature
+ * (a P-256 SigningPubKey with sfPasskeySignature) verifies depends on the
+ * platform, and the amendment changes the verdict. checkValidity then keeps
+ * no verdict on such a transaction, and its callers do not mark it BAD.
+ */
+bool
+isSignatureVerdictCacheable(STTx const& tx, Rules const& rules);
+
+/**
  * Apply a transaction to an `OpenView`.
  *
  * This function is the canonical way to apply a transaction

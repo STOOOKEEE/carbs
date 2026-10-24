@@ -1480,10 +1480,13 @@ NetworkOPsImp::preProcessTransaction(std::shared_ptr<Transaction>& transaction)
         transaction->setResult(temBAD_SIGNATURE);
         // See the matching guard in PeerImp::checkTransaction: only cache
         // BAD for a role-signature transaction once fixCleanup3_4_0 is
-        // enabled on this node. Remove together with the amendment.
-        if (viewRules.enabled(fixCleanup3_4_0) ||
-            (!sttx.isFieldPresent(sfSponsorSignature) &&
-             !sttx.isFieldPresent(sfCounterpartySignature)))
+        // enabled on this node. Remove together with the amendment. The same
+        // holds for a WebAuthn passkey signature until fixPasskeyChallenge is
+        // enabled (see isSignatureVerdictCacheable).
+        if ((viewRules.enabled(fixCleanup3_4_0) ||
+             (!sttx.isFieldPresent(sfSponsorSignature) &&
+              !sttx.isFieldPresent(sfCounterpartySignature))) &&
+            isSignatureVerdictCacheable(sttx, viewRules))
         {
             registry_.get().getHashRouter().setFlags(transaction->getID(), HashRouterFlags::BAD);
         }
@@ -1728,7 +1731,12 @@ NetworkOPsImp::apply(std::unique_lock<std::mutex>& batchLock)
 
             e.transaction->setResult(e.result);
 
-            if (isTemMalformed(e.result))
+            // A WebAuthn passkey signature refused before fixPasskeyChallenge
+            // may be good once it is enabled (see isSignatureVerdictCacheable):
+            // do not mark it BAD until then. preProcessTransaction refuses such
+            // a transaction first, under the same rules, so this is defensive.
+            if (isTemMalformed(e.result) &&
+                isSignatureVerdictCacheable(*e.transaction->getSTransaction(), newOL->rules()))
             {
                 registry_.get().getHashRouter().setFlags(
                     e.transaction->getID(), HashRouterFlags::BAD);

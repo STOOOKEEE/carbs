@@ -3146,10 +3146,13 @@ PeerImp::checkTransaction(
                 // era-scoped cache handles the repeat lookups; setting BAD
                 // would block a correctly new-prefix-signed transaction until
                 // the router entry ages out. Remove the guard together with
-                // the amendment.
-                if (validatedRules.enabled(fixCleanup3_4_0) ||
-                    (!stx->isFieldPresent(sfSponsorSignature) &&
-                     !stx->isFieldPresent(sfCounterpartySignature)))
+                // the amendment. The same holds for a WebAuthn passkey
+                // signature until fixPasskeyChallenge is enabled (see
+                // isSignatureVerdictCacheable).
+                if ((validatedRules.enabled(fixCleanup3_4_0) ||
+                     (!stx->isFieldPresent(sfSponsorSignature) &&
+                      !stx->isFieldPresent(sfCounterpartySignature))) &&
+                    isSignatureVerdictCacheable(*stx, validatedRules))
                 {
                     app_.getHashRouter().setFlags(stx->getTransactionID(), HashRouterFlags::BAD);
                 }

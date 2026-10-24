@@ -1,6 +1,7 @@
 #include <xrpl/tx/apply.h>
 
 #include <xrpl/basics/Log.h>
+#include <xrpl/basics/Slice.h>
 #include <xrpl/basics/base_uint.h>
 #include <xrpl/beast/utility/Journal.h>
 #include <xrpl/beast/utility/instrumentation.h>
@@ -9,6 +10,8 @@
 #include <xrpl/ledger/ApplyView.h>
 #include <xrpl/ledger/OpenView.h>
 #include <xrpl/protocol/Feature.h>
+#include <xrpl/protocol/KeyType.h>
+#include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/Rules.h>
 #include <xrpl/protocol/SField.h>
 #include <xrpl/protocol/STObject.h>
@@ -24,8 +27,8 @@
 
 namespace xrpl {
 
-// This file owns HashRouterFlags::PRIVATE1-4 and PRIVATE7-8 in HashRouter.h.
-// These are the first four; the other two are below.
+// This file owns HashRouterFlags::PRIVATE1-4 and PRIVATE7-9 in HashRouter.h.
+// These are the first four; the other three are below.
 constexpr HashRouterFlags kSfSigbad = HashRouterFlags::PRIVATE1;     // Signature is bad
 constexpr HashRouterFlags kSfSiggood = HashRouterFlags::PRIVATE2;    // Signature is good
 constexpr HashRouterFlags kSfLocalbad = HashRouterFlags::PRIVATE3;   // Local checks failed
@@ -55,6 +58,13 @@ constexpr HashRouterFlags kSfLocalgood = HashRouterFlags::PRIVATE4;  // Local ch
 // in features.macro.
 constexpr HashRouterFlags kSfSigbadOldPrefix = HashRouterFlags::PRIVATE7;
 constexpr HashRouterFlags kSfSiggoodOldPrefix = HashRouterFlags::PRIVATE8;
+
+// A verdict forced by forceValidity, which verified nothing. Before
+// fixPasskeyChallenge, checkValidity keeps no verdict on a WebAuthn passkey
+// signature (see isSignatureVerdictCacheable), but a forced verdict has to
+// hold in every era, so it is recorded here too. Remove this flag when
+// PasskeyChallenge is retired in features.macro.
+constexpr HashRouterFlags kSfSigforced = HashRouterFlags::PRIVATE9;
 
 //------------------------------------------------------------------------------
 
@@ -94,21 +104,31 @@ checkValidity(HashRouter& router, STTx const& tx, Rules const& rules)
     auto const sigbadFlag = oldPrefixSig ? kSfSigbadOldPrefix : kSfSigbad;
     auto const siggoodFlag = oldPrefixSig ? kSfSiggoodOldPrefix : kSfSiggood;
 
-    if (any(flags & sigbadFlag))
+    // Before fixPasskeyChallenge, the verdict on a WebAuthn passkey signature
+    // depends on the platform, and the fix changes it (see
+    // isSignatureVerdictCacheable). Verify such a transaction on every call
+    // and neither read nor record a verdict, so that none crosses the
+    // activation in either direction. A verdict forced by forceValidity still
+    // holds. Remove this when PasskeyChallenge is retired in features.macro.
+    bool const uncachedSig = !isSignatureVerdictCacheable(tx, rules) && !any(flags & kSfSigforced);
+
+    if (!uncachedSig && any(flags & sigbadFlag))
     {
         // Signature is known bad
         return {Validity::SigBad, "Transaction has bad signature."};
     }
 
-    if (!any(flags & siggoodFlag))
+    if (uncachedSig || !any(flags & siggoodFlag))
     {
         auto const sigVerify = tx.checkSign(rules);
         if (!sigVerify)
         {
-            router.setFlags(id, sigbadFlag);
+            if (!uncachedSig)
+                router.setFlags(id, sigbadFlag);
             return {Validity::SigBad, sigVerify.error()};
         }
-        router.setFlags(id, siggoodFlag);
+        if (!uncachedSig)
+            router.setFlags(id, siggoodFlag);
     }
 
     // Signature is now known good
@@ -152,7 +172,9 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity)
     // whether checkValidity verified a post-fix signature or a caller forced
     // the result. An already cached bad verdict still wins, since checkValidity
     // tests its bad flag first. Drop kSfSiggoodOldPrefix when Cleanup3_4_0 is
-    // retired.
+    // retired. kSfSigforced keeps the forced verdict for a WebAuthn passkey
+    // signature before fixPasskeyChallenge, which checkValidity otherwise
+    // verifies on every call; drop it when PasskeyChallenge is retired.
     HashRouterFlags flags = HashRouterFlags::UNDEFINED;
     switch (validity)
     {
@@ -160,7 +182,7 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity)
             flags |= kSfLocalgood;
             [[fallthrough]];
         case Validity::SigGoodOnly:
-            flags |= kSfSiggood | kSfSiggoodOldPrefix;
+            flags |= kSfSiggood | kSfSiggoodOldPrefix | kSfSigforced;
             [[fallthrough]];
         case Validity::SigBad:
             // would be silly to call directly
@@ -168,6 +190,19 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity)
     }
     if (any(flags))
         router.setFlags(txid, flags);
+}
+
+bool
+isSignatureVerdictCacheable(STTx const& tx, Rules const& rules)
+{
+    // Only the WebAuthn branch of signature verification changes with
+    // fixPasskeyChallenge: a P-256 SigningPubKey with sfPasskeySignature (see
+    // verifySigObject in STTx.cpp). Both are fixed for a transaction ID:
+    // SigningPubKey is signed, and sfPasskeySignature, although not signed, is
+    // part of the ID.
+    if (rules.enabled(fixPasskeyChallenge) || !tx.isFieldPresent(sfPasskeySignature))
+        return true;
+    return publicKeyType(makeSlice(tx.getSigningPubKey())) != KeyType::P256;
 }
 
 template <typename PreflightChecks>
