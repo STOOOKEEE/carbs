@@ -1,6 +1,6 @@
 # carbs
 
-**Quantum-safe, delegable signing for the XRP Ledger: the rules are enforced by the ledger and read on a Ledger device.**
+**Quantum-safe by default, delegable signing for the XRP Ledger: the rules are enforced by the ledger and read on a Ledger device.**
 
 On XRPL a key has all the authority of an account or none, and a public key that has signed once stays visible forever, which is a forgery target for a future quantum computer. carbs adds three things that fit together:
 

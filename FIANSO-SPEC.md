@@ -13,7 +13,7 @@
 
 ## TL;DR
 
-**carbs makes XRPL quantum-safe and delegable at the same time, with the rules enforced by the ledger and read on a Ledger device.**
+**carbs makes XRPL quantum-safe by default and delegable at the same time, with the rules enforced by the ledger and read on a Ledger device.**
 
 - **Protocol**: a rippled amendment `SigningSessions`. An account opens a *session*: a short-lived (at most 10 minutes) ephemeral key that signs without prompting, and that the **ledger itself** confines in time, in transaction types (or in XRP spent), and in fee burn. It can never change who controls the account. Built on the XLS-75 permission engine, in `rippled/` (base: `XRPLF/rippled:alphanet`).
 - **Three exclusive modes**: **A** all delegable types minus an exclusion list, **P** a list of XLS-75 permissions, **C** direct XRP `Payment` only, with a total cap (fees included).
@@ -38,7 +38,7 @@
 
 ## 1. Contents
 
-2. [Decisions](#2-decisions) · 3. [Ground rules](#3-ground-rules) · 4. [Repository](#4-repository-layout-and-imports) · 5. [Environment](#5-environment-and-toolchain) · 6. [Protocol](#6-protocol) · 7. [Ledger app](#7-ledger-application) · 8. [Client](#8-client) · 9. [Spikes](#9-spikes-k1-k8) · 10. [Work breakdown](#10-work-breakdown) · 11. [Demo and presentation](#11-demo-and-presentation) · 12. [Security](#12-security-model) · 13. [Risks and plan B](#13-risks-and-plan-b) · 14. [Git workflow](#14-git-workflow-commits-and-pull-requests) · 15. [Open items](#15-open-items) · [A. Constants](#appendix-a-constants) · [B. References](#appendix-b-references) · [C. Setup checklist](#appendix-c-setup-checklist)
+2. [Decisions](#2-decisions) · 3. [Ground rules](#3-ground-rules) · 4. [Repository](#4-repository-layout-and-imports) · 5. [Environment](#5-environment-and-toolchain) · 6. [Protocol](#6-protocol) · 7. [Ledger app](#7-ledger-application) · 8. [Client](#8-client) · 9. [Spikes](#9-spikes-k1-k8) · 10. [Work breakdown](#10-work-breakdown) · 11. [Demo and presentation](#11-demo-and-presentation) · 12. [Security](#12-security-model) · 13. [Risks and plan B](#13-risks-and-plan-b) · 14. [Git workflow](#14-git-workflow-commits-and-pull-requests) · 15. [Open items](#15-open-items) · 16. [Limits and roadmap](#16-limits-and-roadmap) · [A. Constants](#appendix-a-constants) · [B. References](#appendix-b-references) · [C. Setup checklist](#appendix-c-setup-checklist)
 
 ---
 
@@ -54,16 +54,17 @@ Taken by Sofiane, **for the whole team**.
 | **D3** | One ledger object per session, or entries in the passkey list | Default kept: **one object per session** (the XLS-83 question raised by Mayukha). **To ask Denis** at the next occasion. |
 | **D4** | Exact exclusion list for mode A | **Postponed.** Default kept: `PasskeyListSet`, `SubscriptionSet`, `SponsorshipSet` plus everything non-delegable; an enumeration test forces an explicit decision for every delegable type ([§6.8](#68-exclusion-list-and-enumeration-test)). In plain terms: *which transaction types an "all transactions" session must never be able to sign.* |
 | **D5** | Who does what | **No split for now.** This spec describes two work tracks (protocol; Ledger and client), not people. |
-| **D6** | Prize opt-ins | **Protocol Innovation track + Ledger Protocol Innovation.** Nothing else. The agent scene (§8.8) is **reserved**: it is not part of the plan and not an opt-in. |
+| **D6** | Prize opt-ins | **Protocol Innovation track + Ledger Protocol Innovation.** Nothing else. The agent scene (§8.8) is **reserved**: it is not part of the plan and not an opt-in. **Superseded by D16:** there is no agent scene. |
 | **D7** | Passkey defects found in the base | **Presentation only.** No upstream PR and no message to Denis for now. The one exception inside the build is P5: it is *tested* on our node first, and fixed in a separate commit only if our passkey path fails because of it ([§6.14](#614-passkey-path-and-key-formats)). |
 | **D8** | After L1, which Ledger item first: ML-DSA on device (L2) or a P-256 passkey key on device (L6) | **Proposed: L2 first.** The headline is the post-quantum root (§7.7); L6 follows. Spike K4 (memory) decides whether L2 is hardware or falls back to software signing, said as such. |
-| **D9** | Adopt the ecosystem scope (adapter, library, template) | **Adopted**, without the agent scene (reserved, D6). |
+| **D9** | Adopt the ecosystem scope (adapter, library, template) | **Adopted**, without the agent scene (reserved, D6). **Superseded by D16:** there is no agent scene. |
 | **D10** | Front base | **The `create-xrp` Nuxt template**, generated and recorded in `UPSTREAM.md` (ADR 0007). |
 | **D11** | Headline | **Adopted: quantum-safe by default**: post-quantum root on the Stax, quantum exposure check and migration, sessions on top (§7.7, §8.7). |
 | **D12** | Licence | **Apache-2.0** for the code written here (the `ledger-app/` base is Apache-2.0); changes meant for `rippled/` follow its ISC licence. See `LICENSE` and the README. |
 | **D13** | Account profiles | **Two profiles, one session engine** ([ADR 0011](docs/adr/0011-two-account-profiles.md), §8.5). **Ledger account**: master key disabled, `RegularKey` = the device's ML-DSA-44 key, **never a passkey** (a passkey has full authority and cannot be replaced or removed, so it would defeat the device and the post-quantum root); every transaction made with the account's own authority, session openings included, is signed on the device; its session keys are ML-DSA-44 keys generated in the client. **Mac account**: master key and a passkey; sessions are opened by the passkey; the session key is a non-extractible P-256 WebCrypto key. |
 | **D14** | ML-DSA-44 session keys | **The amendment accepts them.** Nothing in it depends on the key type of a session key; the code path, and the tests that settle what is still unverified, are in §6.14. Case 20 with ML-DSA-44 belongs to N4. |
 | **D15** | Tickets and sessions | **Tickets serve multisig coordination**: collecting signatures out of order without blocking the account sequence. How sessions should use tickets is a **proposal, not adopted**: [ADR 0010](docs/adr/0010-tickets-for-multisig-coordination.md) (three options, codes checked free, a recommendation). Nothing is implemented for it, and §6 is unchanged until an option is adopted. |
+| **D16** | Headline, agent scene, limits | **The headline stays "quantum-safe by default"** (D11): the default profile is the Ledger account (D13). **No agent scene.** The limits of the design, and what would lift each one, are written down in [§16](#16-limits-and-roadmap) and in `docs/ARCHITECTURE.md`. |
 
 ---
 
@@ -317,7 +318,7 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 
 ### 6.12 Standalone node (`infra/`)
 
-- `infra/standalone.cfg` with `[features]`: `Passkey`, `Quantum`, `SigningSessions`, `BatchV1_1`, `PermissionDelegationV1_1` (check whether `fixBatchV1_2` is needed, **UNVERIFIED**). `feature` must list them; `server_definitions` must expose our types. Ports: a **public (non-admin)** WebSocket for the app and a separate **admin** port reserved for the ledger closer (`ledger_accept`); the app is never wired to the admin port.
+- `infra/standalone.cfg` with `[features]`: `Passkey`, `Quantum`, `SigningSessions`, `BatchV1_1`, `PermissionDelegationV1_1` and `fixPasskeyChallenge` (P5, §6.14; check whether `fixBatchV1_2` is needed, **UNVERIFIED**). `feature` must list them; `server_definitions` must expose our types. Ports: a **public (non-admin)** WebSocket for the app and a separate **admin** port reserved for the ledger closer (`ledger_accept`); the app is never wired to the admin port.
 - Ledger close: one process (a small `infra/closer.ts`) calls `ledger_accept` every 1-3 s. Session expiry is measured on the ledger's `parentCloseTime`: in standalone time only advances when a ledger closes.
 - Genesis seed from an environment variable, never committed. Public (non-admin) WebSocket for the app.
 - `infra/Dockerfile` for the node (published image is stretch).
@@ -347,7 +348,7 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 
 **Passkey in alphanet** (`featurePasskey`, Denis Angell): P-256 public key = 65 bytes `0xF6 ‖ X ‖ Y` (`PublicKey.cpp:252`); `ltPASSKEY_LIST` (one per account); `PasskeyListSet` (114 on XRPLF, 118 on Transia); `PasskeySignature {PasskeyID, AuthenticatorData, ClientDataJSON, Signature}` is a common **unsigned** field; the WebAuthn `challenge` is base64url of **all signed data** (`STTx.cpp:449-499`); raw ECDSA over SHA-256 of the signed data is also accepted (SHA-256 + DER, **no low-S rule**); a passkey has **full authority** (`Transactor.cpp` ~1141-1160). On XRPLF `KeyType` values are `Dilithium = 2`, `P256 = 3` (reversed on Transia): never hard-code the enum. The WebAuthn path is taken only when the key is P-256 **and** `PasskeySignature` is present; otherwise raw P-256 `verify()`. No upstream test signs a transaction by WebAuthn.
 
-**P5 (suspected defect, UNVERIFIED by a test)**: in `STTx.cpp` ~478-480 the challenge check compares `base64urlDecode(...)` (a `std::string`) to `uint8_t` signing data with `std::equal`; where `char` is signed (x86-64, macOS arm64) any byte ≥ `0x80` makes the comparison fail, and every challenge contains `0xF6` (the `SigningPubKey` prefix). So WebAuthn assertions may always fail on those platforms. **Plan (N1)**: write the regression test first (challenge containing a byte ≥ `0x80`) on our own node; if it fails before any change, fix by comparing two `Slice`s in a **separate `fix:` commit**; if it passes, record that in DEVLOG. Either way P5 goes in the presentation (D7). K2 on the public AlphaNet may fail depending on the validators' platform; that does not prove passkeys do not work.
+**P5 (defect, confirmed by the N1 test and fixed on our node)**: in `STTx.cpp` (the old comparison, kept without the fix, is now at `rippled/src/libxrpl/protocol/STTx.cpp:495-497`, the fix at `:485-494`) the challenge check compares `base64urlDecode(...)` (a `std::string`) to `uint8_t` signing data with `std::equal`; where `char` is signed (x86-64, macOS arm64) any byte ≥ `0x80` makes the comparison fail, and every challenge contains `0xF6` (the `SigningPubKey` prefix). So WebAuthn assertions may always fail on those platforms. **Plan (N1)**: write the regression test first (challenge containing a byte ≥ `0x80`) on our own node; if it fails before any change, fix by comparing two `Slice`s in a **separate `fix:` commit**; if it passes, record that in DEVLOG. Either way P5 goes in the presentation (D7). K2 on the public AlphaNet may fail depending on the validators' platform; that does not prove passkeys do not work. **Result (N1):** the test failed on the unchanged tree, where `char` is signed (SIMULATED: a software WebAuthn authenticator, `docs/DEVLOG.md` "N1"); the fix compares two `Slice`s behind the amendment `fixPasskeyChallenge` (`Supported::Yes`, `DefaultNo`, #13), which the standalone node enables (§6.12). The public AlphaNet does not have it.
 
 **P6 (defect, VERIFIED on the public AlphaNet, 10-24): a passkey list can be neither replaced nor removed.** `SetPasskeyList::doApply` always creates a new `ltPASSKEY_LIST` entry and inserts it, with no check for an existing one in `preclaim`, and no transaction deletes the list. A second `PasskeyListSet` on the same account fails with `tefEXCEPTION` (first `8AC8B117A6553BDB7D33BC86150A5A1FAC8BFB190B81DD9FB7CCB81ADB45484A` `tesSUCCESS`, second `A3E31459618DB5BB463F3708B26D660087599847D15F168192C79862E4C12D3A` `tefEXCEPTION`; the list keeps the first key only). Consequences: no rotation of a passkey (its P-256 public key is on the ledger from registration, so rotation is the only way to limit quantum exposure), **no revocation of a lost or stolen device**, which keeps **full authority** on the account; every passkey of an account must be in its first and only `PasskeyListSet` (see L6). A `Batch` does not help: each inner `PasskeyListSet` hits the same insert. Fix, if the team decides to carry it (D7 says presentation only): in `doApply`, replace the `Passkeys` array of an existing entry instead of inserting, and allow removal (an empty list, or a delete transaction, updating the owner count); in a separate `fix:` commit with its test, like P5. **Decision needed (Sofiane)**: carry the fix in our node for W2, or keep it for the presentation only.
 
@@ -621,7 +622,7 @@ Edge cases are tests, not prose: pseudo-accounts, tickets, a regular key shared 
 
 **A sessions template for `create-xrp`** (scaffold-xrp generates a Next.js or Nuxt app with `xrpl-connect`; it is a generator, not a repository to fork): a Session page next to the payment form. Contribution path: `packages/create-xrp` of `XRPL-Commons/scaffold-xrp`. The front of carbs itself starts from the generated Nuxt template ([ADR 0007](docs/adr/0007-front-from-create-xrp.md)); WebAuthn, WebHID and WebCrypto are client-only (`ssr: false`).
 
-**Reserved, not planned (D6): an agent that pays x402 invoices with a mode-C session key**, with the budget approved on the Ledger. It maps directly to Ledger's agentic theme but is not an opt-in. It needs a direct XRP payment: if x402 on XRPL forces an issued currency, a capped issued-currency session would be a protocol extension and is out of scope.
+**No agent scene (D16).** D6 reserved an agent that pays invoices with a mode-C session key; D16 drops it, and nothing in this specification depends on it.
 
 ---
 
@@ -660,7 +661,7 @@ Two tracks; **who does what is not decided (D5)**. Durations are not estimated h
 | N6 | Invariant `ValidSigningSession` | one test per rule on a mutated view (21) | ✓ |
 | N7 | `SigningSessionDelete`: owner, session key (cap exempt, fee ceiling kept), third party after expiry | cases 18, 19 | ✓ |
 | N8 | Cross-cutting: key types (Ed25519, secp256k1; ML-DSA-44 is in N4, D14), TxQ, Firewall (explicit), RPC | cases 16, 20, 22, 24 | stretch |
-| N9 | Standalone config + ledger closer; `[features]` | node starts; `feature` lists the five; `server_definitions` exposes the types | ✓ |
+| N9 | Standalone config + ledger closer; `[features]` | node starts; `feature` lists the six of §6.12; `server_definitions` exposes the types | ✓ |
 | N10 | Final XLS from the implementation (`docs/XLS-Sessions.md`) | consistent with the code | stretch |
 
 ### 10.2 Ledger track (`ledger-app/`)
@@ -740,7 +741,7 @@ Rehearse three times on a real passkey and the real Stax. Figures in the pitch a
 | XRPLF does not build, or the head moved | build fails; codes changed (K5) | Transia `alphanet` @ `0a4cfdb61e` (same field codes, regenerated result codes, no Firewall / Beneficiary, `PasskeyListSet` = 118) |
 | Device refuses to load the app | L0 fails | try the three routes (§5.2); then Speculos `stax`, said to be simulated |
 | Device specifics: attestation, developer mode | genuine check refused in Ledger Live; load refused | loading routes do not depend on Ledger Live; Speculos as last resort, declared |
-| P5 breaks the passkey | K2 fails and N1 test fails | fix in a separate commit; meanwhile open the session by `RegularKey`; raw P-256 signature (no `PasskeySignature`) or the L6 key |
+| P5 breaks the passkey | K2 fails and N1 test fails | **happened and handled**: the N1 test failed and the fix landed behind `fixPasskeyChallenge` (#13, §6.14); on a node without it (the public AlphaNet), open the session by `RegularKey`, a raw P-256 signature (no `PasskeySignature`) or the L6 key |
 | Mode A too broad for the reviewers | feedback from reviewers | lead with mode C; mode A behind an explicit name |
 | Session path late | N4 (mode A) not green | focus on mode A and say so (C and P become future work in the XLS) |
 | C++ amendment does not pass | N2 / N3 not green at the gate | **plan B without protocol**: XLS-75 (`DelegateSet`, `PermissionDelegationV1_1`) with a throw-away delegate account on the public AlphaNet; closing = deleting the delegation; no cap or expiry enforced, said as such |
@@ -797,9 +798,26 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 
 1. **D3** to ask Denis (one object per session vs entries in the passkey list); **D4** and **D5** postponed; **D8** proposed (§2); D11 adopted.
 2. UNVERIFIED on this device: loading route on a Stax, the smaller-buffer build variant and its real RAM, `MLDSA_internal_keygen` linkage in an app-xrp build, the exact DMK 1.11 send-APDU API, a new P2 value for P-256 (L6), the rendering of 10 permission lines.
-3. Not yet shown by a test: the WebAuthn challenge comparison (P5, read in code, regression test pending), the exposure search cost (K7), the AlphaNet accepting the migration order (K3 extended), and whether the base builds.
+3. Not yet shown by a test: the exposure search cost (K7), the AlphaNet accepting the migration order (K3 extended), and whether the base builds. P5 is now tested and fixed (§6.14).
 4. XLS-Sessions final text from the implementation.
 5. **ADR 0010** (tickets and sessions, D15): adopt an option before N2 if it adds a field (option 3 adds UINT32 115), or its rule alone before N4 (it changes case 13).
+
+---
+
+## 16. Limits and roadmap
+
+"Quantum-safe by default" (D11, D16) means two things about the default profile, the Ledger account (D13). Once it is set up, its master key cannot sign: the AlphaNet answers `tefMASTER_DISABLED` to the old classical key (`docs/DEVLOG.md`, the post-quantum root entries). This holds as long as the account has no other authority that survives `asfDisableMaster`, such as a signer list, a delegate or a beneficiary key (§8.7, rule 3); D13 forbids only a passkey, and the client must check the rest. Its sessions use ML-DSA-44 keys by client policy: the entry stores only the AccountID of the session key (§6.2) and the Stax shows only its address (§7.3), so neither the ledger nor the device enforces the key type. The design does not remove the limits below. Each row says what bounds the limit today and what would lift it. `docs/ARCHITECTURE.md` repeats them.
+
+| # | Limit | Why | Bounded today by | Roadmap |
+|---|---|---|---|---|
+| 1 | **P-256 sessions on Mac accounts** | A Mac account's master key, passkey and session keys are classical (§6.14). A quantum computer could forge with any of them once its public key is on the ledger | The session rules (at most 600 s, the mode, the fee ceiling, the cap). A Mac account is called non-post-quantum everywhere (§12) | ML-DSA-44 session keys work on any account (D14), once they can be kept out of the page's reach (row 2). Whether WebAuthn offers a post-quantum passkey is **UNVERIFIED** |
+| 2 | **Extractible ML-DSA session keys on Ledger accounts** | WebCrypto has no ML-DSA. The session key is made by `@noble/post-quantum` and lives in page memory, where a script of the page can copy it | The ledger-side bounds, a fresh key per session and CSP `script-src 'self'` (§12) | A non-extractible ML-DSA key from the browser or the platform (**UNVERIFIED**) |
+| 3 | **Large transactions on Ledger accounts** | Every transaction carries a 1 312-byte `SigningPubKey` and a 2 420-byte signature, against 33 and about 72 bytes with secp256k1 | The base fee does not grow with size (`rippled/src/libxrpl/tx/Transactor.cpp:459-483`). The device signs at most 2 048 bytes of signing data, key included, and refuses more with `0x6700` (§7.7) | Measure the largest session and migration transactions against that limit (K4). Nothing is planned in the protocol |
+| 4 | **Passkey list not replaceable (P6)** | In this build a passkey list can be neither replaced nor removed (§6.14). A passkey has full authority (`rippled/src/libxrpl/tx/Transactor.cpp:1136-1160`), so an account that ever had one keeps a classical key with full authority | A Ledger account starts as a fresh account and never gets a passkey (§8.5, D13) | A protocol fix that replaces or removes the list (§6.14). No upstream pull request is planned (D7) |
+| 5 | **WebAuthn challenge defect (P5)** | Where `char` is signed, the unchanged node refuses every WebAuthn signature. Test N1 confirmed it (SIMULATED, a software authenticator) | `fixPasskeyChallenge` on our node, which the standalone configuration enables (§6.12, §6.14). The public AlphaNet has no fix, so its answer may depend on its validators' platforms (**UNVERIFIED**, K2) | Offer the fix upstream when D7 allows it |
+| 6 | **ML-DSA v1 on the device has no side-channel countermeasures** | Ledger's v1 ML-DSA has no side-channel or fault-injection countermeasures, by Ledger's own statement (§7.1, §7.7) | Nothing: the design makes no claim against these attacks and says so wherever it describes the root key. Physical attacks need the device in hand; whether a compromised host can learn anything from the time each signature takes is **UNVERIFIED** | Ledger's hardened ML-DSA, when it ships |
+| 7 | **Batch cannot migrate keys atomically** | An inner `Batch` transaction carries no `SigningPubKey` (`rippled/src/libxrpl/tx/transactors/system/Batch.cpp:279-285`). `asfDisableMaster` requires the transaction to be signed by the master key itself (`rippled/src/libxrpl/tx/transactors/account/AccountSet.cpp:246-256`, `:307-313`), so the inner `AccountSet` cannot pass. On the AlphaNet, the device track saw an all-or-nothing `Batch` return `tesSUCCESS` and apply neither inner transaction (`docs/DEVLOG.md`) | The migration is three transactions with the proof step between them (§8.7). Step 3 is refused until the proof is accepted | Nothing needed: the proof step shows that the new key works before the master key is disabled |
+| 8 | **36 KB of device RAM** | The Stax has 36 KB of SRAM, stack included (§5.1). The ML-DSA-44 working buffers share the transaction context's memory (`ledger-app/src/apdu/global.h:71-88`; `.bss` about 25 KB instead of 31 KB, as `docs/DEVLOG.md` records) | The 2 048-byte limit of row 3, and the smaller-buffer build of §7.7 | The measurements of K4. A smaller ML-DSA working set |
 
 ---
 

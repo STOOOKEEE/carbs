@@ -129,6 +129,23 @@ Anything shown on a device is shown on the Stax; anything simulated is said to b
 
 The quantum exposure check (`packages/core/src/quantum`) is tested with recorded node responses for a known-exposed and a known-safe account, plus the edge cases of FIANSO-SPEC.md section 8.7.
 
+## Limits and roadmap
+
+Quantum-safe by default (decisions D11 and D16) means that the default profile, the Ledger account, has its master key disabled and no passkey, and uses ML-DSA-44 session keys. It holds while the account has no other authority that survives `asfDisableMaster` (a signer list, a delegate, a beneficiary key), and the session key type is a client policy that neither the ledger nor the device enforces. Section 16 of the specification gives the reason and the code behind each limit below.
+
+| Limit                                                                                   | Bounded today by                                                        | Roadmap                                                            |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| P-256 sessions on Mac accounts: their keys are classical throughout                     | the session rules; Mac accounts are called non-post-quantum             | ML-DSA-44 session keys there too, once they can be non-extractible |
+| Extractible ML-DSA-44 session keys on Ledger accounts: WebCrypto has no ML-DSA          | the ledger-side bounds, a fresh key per session, CSP                    | a non-extractible ML-DSA key from the platform                     |
+| Large transactions on Ledger accounts: a 1 312-byte key and a 2 420-byte signature each | the base fee is unchanged; the device signs at most 2 048 bytes         | measure the largest transactions (K4)                              |
+| Passkey list not replaceable (P6)                                                       | a Ledger account starts fresh and never gets a passkey                  | a protocol fix upstream (not planned, D7)                          |
+| WebAuthn challenge defect (P5)                                                          | `fixPasskeyChallenge` on our node; the public AlphaNet does not have it | offer the fix upstream (D7)                                        |
+| ML-DSA v1 on the device without side-channel countermeasures                            | stated wherever the root key is described                               | Ledger's hardened ML-DSA                                           |
+| A `Batch` cannot migrate keys atomically                                                | three transactions with a proof step in between                         | none needed                                                        |
+| 36 KB of device RAM                                                                     | ML-DSA buffers share the transaction context; a smaller-buffer build    | the measurements of K4                                             |
+
+There is no agent scene (D16).
+
 ## Decisions
 
 See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004, now for Mac accounts), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008, superseded in part by 0011), the licence (0009), a proposal for how sessions use tickets, which serve multisig coordination (0010, not adopted), and two account profiles with ML-DSA-44 session keys on Ledger accounts (0011).
