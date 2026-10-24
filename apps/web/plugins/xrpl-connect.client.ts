@@ -1,17 +1,13 @@
-import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue'
-import {
-  GemWalletAdapter,
-  WalletConnectAdapter,
-  XamanAdapter,
-} from 'xrpl-connect'
-import { getInitialNetworkId } from '~/lib/networks'
+import { createXrplConnect } from "@xrpl-commons/xrpl-connect-vue";
+import { GemWalletAdapter, WalletConnectAdapter, XamanAdapter } from "xrpl-connect";
+import { getInitialNetworkId } from "~/lib/networks";
 
 export default defineNuxtPlugin((nuxtApp) => {
-  const runtimeConfig = useRuntimeConfig()
-  const publicConfig = runtimeConfig.public
-  const xamanApiKey = String(publicConfig.xamanApiKey || '').trim()
-  const walletConnectProjectId = String(publicConfig.walletConnectProjectId || '').trim()
-  const network = getInitialNetworkId(publicConfig.defaultNetwork)
+  const runtimeConfig = useRuntimeConfig();
+  const publicConfig = runtimeConfig.public;
+  const xamanApiKey = String(publicConfig.xamanApiKey || "").trim();
+  const walletConnectProjectId = String(publicConfig.walletConnectProjectId || "").trim();
+  const network = getInitialNetworkId(publicConfig.defaultNetwork);
 
   nuxtApp.vueApp.use(
     createXrplConnect({
@@ -24,7 +20,7 @@ export default defineNuxtPlugin((nuxtApp) => {
       ],
       network,
       autoConnect: true,
-      logger: { level: 'warn' },
+      logger: { level: "warn" },
     }),
-  )
-})
+  );
+});

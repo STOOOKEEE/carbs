@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { WalletConnector as XrplWalletConnector } from '@xrpl-commons/xrpl-connect-vue'
+import { WalletConnector as XrplWalletConnector } from "@xrpl-commons/xrpl-connect-vue";
 
-const { showStatus } = useWallet()
+const { showStatus } = useWallet();
 
 function handleConnecting(walletId: string) {
-  showStatus(`Connecting to ${walletId}…`, 'info')
+  showStatus(`Connecting to ${walletId}…`, "info");
 }
 
 function handleConnected() {
-  showStatus('Wallet connected', 'success')
+  showStatus("Wallet connected", "success");
 }
 
 function handleError(error: { message?: string }) {
-  showStatus(error.message || 'Wallet connection failed', 'error')
+  showStatus(error.message || "Wallet connection failed", "error");
 }
 </script>
 

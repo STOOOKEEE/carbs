@@ -6,17 +6,14 @@ Requires Node.js `^22.18.0 || >=24.11.0`.
 
 ## Quick start
 
-~~~bash
+```bash
 pnpm install
 pnpm dev
-~~~
+```
 
 Open [http://localhost:3000](http://localhost:3000).
 
 The starter includes wallet connection, account details, a Testnet/Devnet selector, and an XRP payment form. Enter the amount in XRP, with up to six decimal places; the form converts it to drops exactly. If the recipient requires a destination tag, enter it in the optional tag field.
-
-
-
 
 ## Scripts
 
@@ -27,7 +24,6 @@ The starter includes wallet connection, account details, a Testnet/Devnet select
 - `pnpm lint` - run the linter
 - `pnpm type-check` - check TypeScript and Vue types
 - `pnpm test` - run payment regression tests
-
 
 ## Wallets and environment
 
@@ -41,15 +37,15 @@ The generated examples use these files:
 
 Copy the example, then edit the runtime file:
 
-~~~bash
+```bash
 cp .env.example .env
-~~~
+```
 
-~~~dotenv
+```dotenv
 NUXT_PUBLIC_DEFAULT_NETWORK=testnet
 NUXT_PUBLIC_XAMAN_API_KEY=your_xaman_api_key_here
 NUXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id_here
-~~~
+```
 
 Testnet is the default; Devnet is also available. Fund your wallet using the [XRPL test faucets](https://xrpl.org/resources/dev-tools/xrp-faucets) and confirm the network before signing. These environment variables are public browser configuration. Never put API secrets or wallet seeds in them. Restart the development server after editing the environment file.
 

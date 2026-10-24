@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { useWallet as useBindingWallet } from '@xrpl-commons/xrpl-connect-vue'
+import { useWallet as useBindingWallet } from "@xrpl-commons/xrpl-connect-vue";
 
-const { statusMessage } = useWallet()
-const { error: walletError } = useBindingWallet()
+const { statusMessage } = useWallet();
+const { error: walletError } = useBindingWallet();
 
 const statusTone = computed(() => {
-  if (statusMessage.value?.type === 'error' || walletError.value) {
-    return 'text-destructive'
+  if (statusMessage.value?.type === "error" || walletError.value) {
+    return "text-destructive";
   }
-  if (statusMessage.value?.type === 'warning') {
-    return 'text-amber-700'
+  if (statusMessage.value?.type === "warning") {
+    return "text-amber-700";
   }
-  return 'text-muted-foreground'
-})
+  return "text-muted-foreground";
+});
 </script>
 
 <template>
@@ -31,7 +31,7 @@ const statusTone = computed(() => {
             width="28"
             height="24"
             class="object-contain brightness-0 invert"
-          >
+          />
         </span>
         <span class="text-lg font-semibold tracking-tight">Scaffold-XRP</span>
       </NuxtLink>
