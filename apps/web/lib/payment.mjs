@@ -23,7 +23,7 @@ export function parseXrpAmount(value) {
   if (!match) {
     throw new PaymentInputError(
       "INVALID_AMOUNT",
-      "Enter an XRP amount with up to six decimal places."
+      "Enter an XRP amount with up to six decimal places.",
     );
   }
 
@@ -54,7 +54,7 @@ export function parseDestinationTag(value) {
   if (tag > MAX_DESTINATION_TAG) {
     throw new PaymentInputError(
       "INVALID_TAG",
-      "Destination tag must be between 0 and 4,294,967,295."
+      "Destination tag must be between 0 and 4,294,967,295.",
     );
   }
 
@@ -88,14 +88,10 @@ export function buildPaymentTransaction({
     throw new PaymentInputError("MISSING_ACCOUNT", "Connect a wallet before sending XRP.");
   }
 
-  if (
-    selectedNetworkId &&
-    accountNetworkId &&
-    selectedNetworkId !== accountNetworkId
-  ) {
+  if (selectedNetworkId && accountNetworkId && selectedNetworkId !== accountNetworkId) {
     throw new PaymentInputError(
       "NETWORK_MISMATCH",
-      `Wallet is connected to ${accountNetworkId}; switch it to ${selectedNetworkId} before sending.`
+      `Wallet is connected to ${accountNetworkId}; switch it to ${selectedNetworkId} before sending.`,
     );
   }
 
@@ -145,10 +141,7 @@ function responseVariants(result) {
 function resultCodes(result) {
   const variants = responseVariants(result);
   const metaCodes = variants
-    .flatMap((variant) => [
-      variant?.meta?.TransactionResult,
-      variant?.TransactionResult,
-    ])
+    .flatMap((variant) => [variant?.meta?.TransactionResult, variant?.TransactionResult])
     .map(normalizedResultCode)
     .filter(Boolean);
   const engineCodes = variants
@@ -185,8 +178,7 @@ export function normalizeSubmittedPaymentResult(result) {
 
   const { metaCodes, codes } = resultCodes(result);
   const failureCode = codes.find(
-    (code) =>
-      code.toUpperCase() !== SUCCESS_RESULT && code.toUpperCase() !== QUEUED_RESULT,
+    (code) => code.toUpperCase() !== SUCCESS_RESULT && code.toUpperCase() !== QUEUED_RESULT,
   );
   if (failureCode) {
     const message = variants
@@ -201,9 +193,7 @@ export function normalizeSubmittedPaymentResult(result) {
     };
   }
 
-  const explicitError = variants
-    .map((variant) => variant.error)
-    .find(nonEmptyString);
+  const explicitError = variants.map((variant) => variant.error).find(nonEmptyString);
   if (explicitError) {
     return {
       status: "error",

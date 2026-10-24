@@ -1,28 +1,28 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  compatibilityDate: '2024-11-01',
+  compatibilityDate: "2024-11-01",
   devtools: { enabled: false },
 
-  modules: ['@nuxt/eslint', '@nuxtjs/tailwindcss'],
+  modules: ["@nuxt/eslint", "@nuxtjs/tailwindcss"],
 
-  css: ['~/assets/css/main.css'],
+  css: ["~/assets/css/main.css"],
 
   app: {
     head: {
-      title: 'Scaffold-XRP',
+      title: "Scaffold-XRP",
       meta: [
-        { charset: 'utf-8' },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'A starter kit for building XRP Ledger dApps' },
+        { charset: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        { name: "description", content: "A starter kit for building XRP Ledger dApps" },
       ],
     },
   },
 
   runtimeConfig: {
     public: {
-      defaultNetwork: 'testnet',
-      xamanApiKey: '',
-      walletConnectProjectId: '',
+      defaultNetwork: "testnet",
+      xamanApiKey: "",
+      walletConnectProjectId: "",
     },
   },
 
@@ -30,20 +30,20 @@ export default defineNuxtConfig({
   vite: {
     resolve: {
       alias: {
-        buffer: 'buffer/',
-        events: 'events/',
-        stream: 'stream-browserify',
+        buffer: "buffer/",
+        events: "events/",
+        stream: "stream-browserify",
       },
     },
     define: {
-      'process.env': {},
-      global: 'globalThis',
+      "process.env": {},
+      global: "globalThis",
     },
     optimizeDeps: {
-      include: ['buffer', 'events', 'process'],
+      include: ["buffer", "events", "process"],
       esbuildOptions: {
         define: {
-          global: 'globalThis',
+          global: "globalThis",
         },
       },
     },
@@ -60,4 +60,4 @@ export default defineNuxtConfig({
   typescript: {
     strict: true,
   },
-})
+});

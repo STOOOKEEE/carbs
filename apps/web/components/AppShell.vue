@@ -1,12 +1,12 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    subtitle?: string
+    subtitle?: string;
   }>(),
   {
-    subtitle: 'A starter kit for building dApps on the XRP Ledger.',
+    subtitle: "A starter kit for building dApps on the XRP Ledger.",
   },
-)
+);
 </script>
 
 <template>
