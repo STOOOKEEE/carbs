@@ -38,6 +38,14 @@ isSessionExcluded(TxType type) noexcept;
 isSessionEligibleType(TxType type, Rules const& rules);
 
 /**
+ * The keylet of the session that would authorize `tx`, from its shape alone:
+ * the conditions of signingSessionOf except that the session exists. The
+ * invariant uses it to find a session the transaction itself deleted.
+ */
+[[nodiscard]] std::optional<Keylet>
+sessionKeyletOf(Rules const& rules, STTx const& tx);
+
+/**
  * The session that authorizes `tx`, if `tx` is session-signed.
  *
  * A transaction is session-signed when the SigningSessions amendment is
@@ -64,6 +72,16 @@ isSessionSigned(ReadView const& view, STTx const& tx);
  */
 [[nodiscard]] bool
 isSessionOwnClose(STTx const& tx);
+
+/**
+ * Whether `tx` has a shape a session in mode C may sign: a Payment of XRP
+ * whose only flag is tfFullyCanonicalSig and whose only fields besides the
+ * common ones are Destination, DestinationTag and Amount. A closed whitelist:
+ * SendMax, Paths, DeliverMin, partial payments and the sponsored creation of
+ * an account move value the cap does not see.
+ */
+[[nodiscard]] bool
+isSessionCapPayment(STTx const& tx);
 
 /**
  * Whether `session` has expired: the parent close time has reached its

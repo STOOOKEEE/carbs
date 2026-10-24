@@ -158,6 +158,12 @@ protected:
     AccountID const accountID_;
     XRPAmount preFeeBalance_{};  // Balance before fees.
 
+    // The session that signed this transaction, read at the top of
+    // operator() because an own close erases it, and whether the
+    // transaction is that own close.
+    std::optional<Keylet> sessionKeylet_;
+    bool sessionOwnClose_ = false;
+
 public:
     ~Transactor() override = default;
     Transactor(Transactor const&) = delete;
@@ -594,6 +600,17 @@ private:
 
     std::pair<TER, XRPAmount>
     reset(XRPAmount fee);
+
+    /**
+     * Counts what a mode-C session-signed transaction took from the account
+     * in its session's SessionSpent: the fee claimed, plus the Amount on
+     * tesSUCCESS (FIANSO-SPEC 6.6). Called exactly twice in operator():
+     * before the first invariant pass, and after the fee-claim reset, which
+     * erases the first count. The own close is exempt, and a session that no
+     * longer exists is skipped.
+     */
+    void
+    chargeSession(TER result, XRPAmount fee);
 
     TER
     consumeSeqProxy(SLE::pointer const& sleAccount);
