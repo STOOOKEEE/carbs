@@ -7,8 +7,10 @@ coverage/
 *.tsbuildinfo
 
 # rippled build trees (the daemon is built out of tree)
-build/
-build-*/
+/build/
+/build-*/
+rippled/build/
+rippled/build-*/
 .conan2/
 
 # Ledger app build output

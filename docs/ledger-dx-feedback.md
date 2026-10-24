@@ -1,6 +1,6 @@
 # Feedback on the Ledger documentation and SDKs
 
-Ledger judges developer-experience feedback "as much as the code". This log is kept as we work (see section 7.6 of `FIANSO-SPEC.md`). One line when it happens, cleaned up later. `Minutes lost` is honest: `n/a` when we found something while reading and lost no time.
+Ledger weighs developer-experience feedback "as much as the code". This log is kept as we work (see section 7.6 of `FIANSO-SPEC.md`). One line when it happens, cleaned up later. `Minutes lost` is honest: `n/a` when we found something while reading and lost no time.
 
 ## Time-savers for the next integrator (top of the document, filled at the end)
 
@@ -8,7 +8,7 @@ Ledger judges developer-experience feedback "as much as the code". This log is k
 
 ## Log
 
-Template: `date/time ET · area · page or path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR`
+Template: `date · area · page or path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR`
 
 | When  | Area                                 | Where                                      | What happened or was missing                                                                                                                                                                                                                                                                                                                                       | Minutes lost                             | Suggested fix                                                                                            |
 | ----- | ------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |

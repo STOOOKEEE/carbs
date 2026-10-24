@@ -3,57 +3,72 @@
 | | |
 |---|---|
 | **Author** | Sofiane ("fianso", [@STOOOKEEE](https://github.com/STOOOKEEE)). This is **my** specification, hence its name. The decisions in §2 are mine and apply to the whole team. |
-| **Written** | 2026-10-24, 10:54 to 11:34 ET, in the first hours after the XRPL Commons NYC kickoff (24 Oct 10:00 ET), **before any implementation code**. It consolidates and translates the preparation dossier `docs/carbs/` of `STOOOKEEE/TTT`, first committed at 08:32 ET, before the kickoff, and amended until noon. |
-| **Nature** | Documentation and design only. It contains **no implementation code** and no code from any earlier prototype. All code in this repository is written during the hackathon (24-25 Oct 2026) after this file, apart from the unmodified upstream imports in `rippled/` and `ledger-app/` (§4). |
-| **Source** | Consolidates the preparation dossier `docs/carbs/` on branch `fianso` of [STOOOKEEE/TTT](https://github.com/STOOOKEEE/TTT) (SPEC, XLS-Sessions, BUILD-PLAN, TERRAIN, PITFALLS, REVIEW), re-checked against upstream code on 2026-10-24. |
-| **Not this** | An earlier "v2" design and prototype (`feat/signing-sessions` in `STOOOKEEE/TTT`: witness co-signer, `ForceQuantum`, XRP-only payments) is a different design, is declared in the README, and is **not reused**. |
-| **Status** | Decisions D0-D8 are in [§2](#2-decisions). Items marked **UNVERIFIED** were not confirmed in code or on a device on 2026-10-24 and must be checked on first use. |
+| **Date** | 2026-10-24 |
+| **Nature** | Documentation and design. It contains **no implementation code** and no code from any earlier prototype. Upstream code is imported unmodified in `rippled/` and `ledger-app/` (§4). |
+| **Source** | Consolidates the preparation dossier `docs/carbs/` on branch `fianso` of [STOOOKEEE/TTT](https://github.com/STOOOKEEE/TTT), re-checked against upstream code. |
+| **Prior work** | An earlier "v2" design and prototype (`feat/signing-sessions` in `STOOOKEEE/TTT`: witness co-signer, `ForceQuantum`, XRP-only payments) is a different design and is **not reused**: nothing was copied, patched or retyped from it. |
+| **Status** | Decisions are in [§2](#2-decisions). Items marked **UNVERIFIED** were not confirmed in code or on a device and must be checked on first use. |
 
 ---
 
 ## TL;DR
 
-**carbs adds ledger-enforced signing sessions to the XRP Ledger.** An account opens a *session*: a short-lived (≤ 10 minutes) ephemeral key that signs without prompting, and that the **ledger itself** confines in time, in transaction types (or in XRP spent), and in fee burn. It can never change who controls the account.
+**carbs makes XRPL quantum-safe and delegable at the same time, with the rules enforced by the ledger and read on a Ledger device.**
 
-- **Protocol**: a rippled amendment `SigningSessions` (new ledger entry `SigningSession`, transactions `SigningSessionSet` / `SigningSessionDelete`), built on the XLS-75 permission engine, in `rippled/` (base: `XRPLF/rippled:alphanet`).
-- **Three exclusive modes**: **A** all delegable types minus an exclusion list, **P** a list of XLS-75 permissions, **C** direct XRP `Payment` only with a total cap (fees included).
-- **Opened** by a passkey (P-256, Face ID / Touch ID) **or** by a **Ledger Stax** that clear-signs the rules on its screen ("Valid for 10 minutes · All transactions · Cannot change keys").
-- **Ledger app**: `LedgerHQ/app-xrp` extended with clear signing for the two new transactions (L1). Stretch: ML-DSA-44 signing on the device (post-quantum root), a P-256 key on the device usable as a passkey, `Batch` clear signing.
-- **Documentation feedback for Ledger** is a first-class deliverable, judged "as much as the code" (Ledger bounty judging, announced at the Ledger workshop): a running log kept from the first minute, screenshots, and pull requests to the docs ([§7.6](#76-documentation-and-developer-experience-feedback)).
-- **Client**: TypeScript (`packages/core`, `apps/web`), WebCrypto non-extractible P-256 session keys, Ledger over WebHID with the Device Management Kit and custom APDUs.
+- **Protocol**: a rippled amendment `SigningSessions`. An account opens a *session*: a short-lived (at most 10 minutes) ephemeral key that signs without prompting, and that the **ledger itself** confines in time, in transaction types (or in XRP spent), and in fee burn. It can never change who controls the account. Built on the XLS-75 permission engine, in `rippled/` (base: `XRPLF/rippled:alphanet`).
+- **Three exclusive modes**: **A** all delegable types minus an exclusion list, **P** a list of XLS-75 permissions, **C** direct XRP `Payment` only, with a total cap (fees included).
+- **A post-quantum root in hardware** (the headline): a **Ledger Stax** generates and holds an **ML-DSA-44** key, and **clear-signs** XRPL transactions with it: to our knowledge the first hardware-wallet post-quantum signatures on XRPL, readable on the device screen. The same device opens sessions with the rules displayed ("Valid for 10 minutes · All transactions · Cannot change keys"). A passkey (P-256, Face ID / Touch ID) opens sessions too.
+- **A quantum exposure check and a guided migration** for any XRPL account: is its public key already on the ledger, do its other authorities or signer lists expose keys, and what does the move to a post-quantum key look like (`SetRegularKey` to the ML-DSA key, a proof transaction signed by it, then `asfDisableMaster`, which only the master key can set). See [§8.7](#87-quantum-exposure-check-and-migration).
+- **Community tooling**: a Device Management Kit Ledger adapter for `xrpl-connect` (their current adapter uses the legacy ledgerjs stack), the client library `@carbs/sessions`, and a sessions template for `create-xrp` ([§8.8](#88-ecosystem-contributions)).
+- **Documentation feedback for Ledger** is a first-class deliverable, judged "as much as the code": a running log kept from the start, screenshots, and pull requests to the docs ([§7.6](#76-documentation-and-developer-experience-feedback)).
+- **Client**: TypeScript (`packages/core`, `apps/web`), WebCrypto non-extractible P-256 session keys (or ML-DSA ones), Ledger over WebHID with the Device Management Kit and custom APDUs.
 - **Single public repository** `carbs`; upstream bases imported unmodified in their own commits; PRs and commits in the XRPLF style.
+
+### Why this, and why now
+
+| Evidence | Source |
+|---|---|
+| About 5.6 million XRPL accounts holding 76.82 billion XRP have a public key already visible on the ledger (an audit by the validator Vet, April 2026: 7,810,364 accounts scanned); 242 multi-signature wallets holding 36.6% of the supply have a quorum of signer keys visible | `x.com/Vet_X0/status/2049610164135686547`, reported by Bitcoinist. Secondary source; the method is public (an account is exposed once it has signed a transaction) |
+| Ripple's post-quantum roadmap: test post-quantum schemes next to current signatures on developer networks in the second half of 2026, a native amendment by 2028. It does not cover hardware wallets or passkeys | Ripple, "Post-Quantum Readiness on the XRP Ledger" (2026-04-20) |
+| Ledger added ML-DSA (44, 65, 87) and ML-KEM to its SDK in June 2026 and notes that the pre-hash variant does not fit clear signing; we found no Ledger app that signs ML-DSA XRPL transactions | `ledger.com/blog-post-quantum-cryptography-ledger-sdk`; `ledger-secure-sdk` PR #1617 |
+| A quantum-resistant XRPL account using Batch and hashes was shown publicly on 9 Oct (hash-based, built with Batch) | `x.com/angell_denis/status/2108681010288156819` |
+| XLS-75 delegation is live; two open discussions ask for what sessions add: an expiry (#657) and an amount cap (#572, "what does this provide that XLS-40/70/75 do not?") | XRPL-Standards discussions #657, #572 |
 
 ---
 
 ## 1. Contents
 
-2. [Decisions](#2-decisions) · 3. [Ground rules](#3-ground-rules) · 4. [Repository](#4-repository-layout-and-imports) · 5. [Environment](#5-environment-and-toolchain) · 6. [Protocol](#6-protocol) · 7. [Ledger app](#7-ledger-application) · 8. [Client](#8-client) · 9. [Spikes](#9-spikes-k1-k6) · 10. [Work breakdown](#10-work-breakdown) · 11. [Demo and presentation](#11-demo-and-presentation) · 12. [Security](#12-security-model) · 13. [Risks and plan B](#13-risks-and-plan-b) · 14. [Git workflow](#14-git-workflow-commits-and-pull-requests) · 15. [Open items](#15-open-items) · [A. Constants](#appendix-a-constants) · [B. References](#appendix-b-references) · [C. Kickoff checklist](#appendix-c-kickoff-checklist)
+2. [Decisions](#2-decisions) · 3. [Ground rules](#3-ground-rules) · 4. [Repository](#4-repository-layout-and-imports) · 5. [Environment](#5-environment-and-toolchain) · 6. [Protocol](#6-protocol) · 7. [Ledger app](#7-ledger-application) · 8. [Client](#8-client) · 9. [Spikes](#9-spikes-k1-k8) · 10. [Work breakdown](#10-work-breakdown) · 11. [Demo and presentation](#11-demo-and-presentation) · 12. [Security](#12-security-model) · 13. [Risks and plan B](#13-risks-and-plan-b) · 14. [Git workflow](#14-git-workflow-commits-and-pull-requests) · 15. [Open items](#15-open-items) · [A. Constants](#appendix-a-constants) · [B. References](#appendix-b-references) · [C. Setup checklist](#appendix-c-setup-checklist)
 
 ---
 
 ## 2. Decisions
 
-Taken by Sofiane on 2026-10-24, **for the whole team**.
+Taken by Sofiane, **for the whole team**.
 
 | ID | Question | Decision |
 |---|---|---|
-| **D0** | Restart from scratch or declare the earlier prototype as an existing product and add features | **Restart from scratch.** Every line submitted is written during the hackathon in the new repository. The earlier prototype is declared and not reused. |
-| **D1** | Protocol base | **The latest XRPL base**: `XRPLF/rippled` branch `alphanet`, head at kickoff. On 2026-10-24 the head is `68bd02b647` (composed 2026-10-16, "alphanet from XRPLF/rippled@3.4.1", 14 branches, option `force_supported: ON`). Re-read the head at 10:00 and re-verify the protocol codes on the SHA actually imported. Fallback if it does not build: `Transia-RnD/rippled:alphanet` @ `0a4cfdb61e`. |
+| **D0** | Restart from scratch or build on the earlier prototype | **Restart from scratch.** Every line of this repository's code is written here. The earlier prototype is declared and not reused. |
+| **D1** | Protocol base | **The latest XRPL base**: `XRPLF/rippled` branch `alphanet`, head at the time of the import. The imported head is `68bd02b647` (composed 2026-10-16, "alphanet from XRPLF/rippled@3.4.1", 14 branches, option `force_supported: ON`). Re-verify the protocol codes on the SHA actually imported. Fallback if it does not build: `Transia-RnD/rippled:alphanet` @ `0a4cfdb61e`. |
 | **D2** | Session duration | **10 minutes**: `kMaxSessionDuration = 600 s` in the protocol **and** in the app. |
-| **D3** | One ledger object per session, or entries in the passkey list | Default kept: **one object per session** (the XLS-83 question raised by Mayukha). **To ask Denis** at office hours (Sat 16:00-17:00 ET). |
+| **D3** | One ledger object per session, or entries in the passkey list | Default kept: **one object per session** (the XLS-83 question raised by Mayukha). **To ask Denis** at the next occasion. |
 | **D4** | Exact exclusion list for mode A | **Postponed.** Default kept: `PasskeyListSet`, `SubscriptionSet`, `SponsorshipSet` plus everything non-delegable; an enumeration test forces an explicit decision for every delegable type ([§6.8](#68-exclusion-list-and-enumeration-test)). In plain terms: *which transaction types an "all transactions" session must never be able to sign.* |
 | **D5** | Who does what | **No split for now.** This spec describes two work tracks (protocol; Ledger and client), not people. |
-| **D6** | Prize opt-ins | **Protocol Innovation track + Ledger Protocol Innovation.** Nothing else (no Ledger Agentic). |
+| **D6** | Prize opt-ins | **Protocol Innovation track + Ledger Protocol Innovation.** Nothing else. The agent scene (§8.8) is **reserved**: it is not part of the plan and not an opt-in. |
 | **D7** | Passkey defects found in the base | **Presentation only.** No upstream PR and no message to Denis for now. The one exception inside the build is P5: it is *tested* on our node first, and fixed in a separate commit only if our passkey path fails because of it ([§6.14](#614-passkey-path-and-key-formats)). |
-| **D8** | After L1, which Ledger stretch first: ML-DSA on device (L2) or a P-256 passkey key on device (L6) | **Postponed.** Spikes K4 (memory) and an L6 probe produce the facts. |
+| **D8** | After L1, which Ledger item first: ML-DSA on device (L2) or a P-256 passkey key on device (L6) | **Proposed: L2 first.** The headline is the post-quantum root (§7.7); L6 follows. Spike K4 (memory) decides whether L2 is hardware or falls back to software signing, said as such. |
+| **D9** | Adopt the ecosystem scope (adapter, library, template) | **Adopted**, without the agent scene (reserved, D6). |
+| **D10** | Front base | **The `create-xrp` Nuxt template**, generated and recorded in `UPSTREAM.md` (ADR 0007). |
+| **D11** | Headline | **Adopted: quantum-safe by default**: post-quantum root on the Stax, quantum exposure check and migration, sessions on top (§7.7, §8.7). |
+| **D12** | Licence | **Apache-2.0** for the code written here (the `ledger-app/` base is Apache-2.0); changes meant for `rippled/` follow its ISC licence. See `LICENSE` and the README. |
 
 ---
 
 ## 3. Ground rules
 
-1. **Everything submitted is written during the hackathon**, in this repository. Upstream code (`rippled/`, `ledger-app/`) is imported **unmodified, in its own first commit per directory**, with SHA, URL and licence recorded in `UPSTREAM.md`. `git diff <import-commit>..HEAD -- rippled/` must show our work alone.
+1. **All code here is written in this repository**, in reviewable commits. Upstream code (`rippled/`, `ledger-app/`) is imported **unmodified, in its own first commit per directory**, with SHA, URL and licence recorded in `UPSTREAM.md`. `git diff <import-commit>..HEAD -- rippled/` must show our work alone.
 2. **No fork, no submodule.** A submodule renders as a link and clones empty without `--recursive`; a private or deleted fork breaks the review.
-3. **README states "Before the kickoff / During the hackathon"** with dates, times and commit ranges. `docs/DEVLOG.md` is dated and records what was done, removed, ignored or simulated.
+3. **README states what existed before this repository** (prior work, not reused) **and what is built here**. `docs/DEVLOG.md` is dated and records what was done, removed, ignored or simulated.
 4. **One base defect per commit**, never mixed with the amendment.
 5. **No security claim without a test that proves it.** No upstream test removed or edited to go green (a changed delegable-type counter is re-pinned with a written justification in the commit).
 6. **No secret in the repository** (standalone genesis seed from an environment variable). No third-party script in the web app (CSP `script-src 'self'`).
@@ -67,19 +82,19 @@ Taken by Sofiane on 2026-10-24, **for the whole team**.
 
 ```text
 carbs/
-  FIANSO-SPEC.md              this file (Sofiane's spec, consolidating the pre-kickoff dossier)
-  README.md                  what it is, "Before the kickoff / During the hackathon", demo instructions
+  FIANSO-SPEC.md              this file (Sofiane's spec)
+  README.md                  what it is, prior work, demo instructions
   UPSTREAM.md                SHA, URL, licence of each import (rippled: ISC; app-xrp: Apache-2.0)
-  rippled/                   XRPLF/rippled:alphanet @ <head at kickoff>, imported unmodified, then the amendment
+  rippled/                   XRPLF/rippled:alphanet @ <head at the time of the import>, imported unmodified, then the amendment
   ledger-app/                LedgerHQ/app-xrp master @ 7b5185ff (v2.8.2), imported unmodified, then clear signing
   packages/core/             definitions, encoding, signatures, constants, node client
-  packages/ledger/           DMK library (stretch)
-  apps/web/                  Vite + Vue 3 + TypeScript strict
+  packages/ledger/           DMK library: signing preview, custom commands for the post-quantum root
+  apps/web/                  Nuxt (Vue 3) + TypeScript strict, generated from the create-xrp template
   infra/                     standalone.cfg, ledger closer, Dockerfile of the node
   docs/                      DEVLOG.md, XLS-Sessions.md (final), ledger-dx-feedback.md
 ```
 
-**Import procedure** (first 20 minutes after kickoff):
+**Import procedure** (the first step of the repository):
 
 1. `git clone --depth 1` the upstream at the chosen SHA outside the repo; record `git rev-parse HEAD`.
 2. Copy the tree **without `.git`** into `rippled/` (resp. `ledger-app/`), keep upstream `LICENSE` files.
@@ -87,7 +102,7 @@ carbs/
 4. Add `UPSTREAM.md` in a separate `docs:` commit.
 5. Sizes measured on the pinned SHAs: rippled ≈ 2 300 files / 27 MB, app-xrp ≈ 27 MB (mostly test snapshots), ≈ 55 MB in total.
 
-**Why `XRPLF` and not `Transia`**: upstream, the Foundation's public AlphaNet, 3.4.1 with role-based signature prefixes, October ML-DSA fixes, same `conanfile.py` as the 3.4.1 already cached on the team machines (only `dilithium.cmake` is added), and no port after the event. Transia remains the fallback: same field codes, regenerated result-code values, no Firewall or Beneficiary, `PasskeyListSet` = 118.
+**Why `XRPLF` and not `Transia`**: upstream, the Foundation's public AlphaNet, 3.4.1 with role-based signature prefixes, October ML-DSA fixes, same `conanfile.py` as the 3.4.1 already cached on the team machines (only `dilithium.cmake` is added), and no port later. Transia remains the fallback: same field codes, regenerated result-code values, no Firewall or Beneficiary, `PasskeyListSet` = 118.
 
 ---
 
@@ -97,7 +112,7 @@ carbs/
 
 | Component | Value |
 |---|---|
-| Node base | `XRPLF/rippled:alphanet`, head at kickoff (`68bd02b647` on 24 Oct), rippled 3.4.1 + passkeys + ML-DSA |
+| Node base | `XRPLF/rippled:alphanet`, head at the time of the import (`68bd02b647`), rippled 3.4.1 + passkeys + ML-DSA |
 | Ledger base | `LedgerHQ/app-xrp` `master` @ `7b5185ff` (v2.8.2; supports `nanox`, `nanos+`, `stax`, `flex`, `apex_p`; UI is NBGL only) |
 | Ledger SDK | `ledger-app-builder` image, SDK v27.1.3 (`API_LEVEL` 27) |
 | Device | **Ledger Stax** (2023, model 2103), **firmware 1.11** = `API_LEVEL` 27 (tag `stax_1.11.0` of `ledger-secure-sdk`, `Makefile.defines`); SRAM 36 KB; touchscreen; sideload allowed |
@@ -109,8 +124,8 @@ carbs/
 
 ### 5.2 Machine and tooling checklist
 
-- Disk: rippled build tree plus the Conan cache (≈ 21 GB for `~/.conan2`) plus the app-builder image. Free the space before kickoff.
-- `conan` must be on `PATH` (it was missing on 24 Oct); CMake, Ninja or Make, a C++20 compiler as required by rippled 3.4.1.
+- Disk: rippled build tree plus the Conan cache (≈ 21 GB for `~/.conan2`) plus the app-builder image. Free the space before the first build.
+- `conan` must be on `PATH` (it may be missing from the shell `PATH`); CMake, Ninja or Make, a C++20 compiler as required by rippled 3.4.1.
 - Docker: **compiles** the Ledger app (`ledger-app-builder`). It does **not** load it: Docker Desktop on macOS does not pass USB to a container.
 - **Loading the app on the Stax from the Mac**: three routes to decide in L0, in this order of try: (1) `ledgerctl` (`pip install ledgerwallet`; its README lists Nano S, X and S+ only and asks for a custom CA installed in Recovery mode: **UNVERIFIED on Stax**); (2) `python -m ledgerblue.loadApp ...` (`pip install ledgerblue`, the command `make load` runs); (3) the VS Code extension "Ledger Dev Tools". Record the route that works in `docs/DEVLOG.md`.
 - Chrome with WebHID for the web app; a Mac with Touch ID (passkey) and optionally an iPhone (Face ID, needs HTTPS origin and a `wss://` node, see [§8.5](#85-appsweb)).
@@ -124,9 +139,9 @@ carbs/
 | Generated code | `cmake -S cmake/codegen -B build/codegen && cmake --build build/codegen --target setup_code_gen && cmake --build build/codegen --target code_gen` (regenerate **only our types**) |
 | Protocol tests | `./xrpld --unittest=SigningSessions`, then upstream suites `Delegate`, `PasskeyListSet`, `AccountDelete`, `PassKey` (green before and after) |
 | Ledger app build | in the builder image: `make BOLOS_SDK=$STAX_SDK` |
-| Ledger unit tests | `make -C unit-tests ...` (cmocka) |
+| Ledger unit tests | `cmake -S ledger-app/unit-tests -B build/ledger-unit && cmake --build build/ledger-unit` then `ctest` (cmocka) |
 | Ledger Ragger tests | `pytest tests/standalone --device stax` |
-| Web / core | `pnpm -r test`, `pnpm --filter web dev`, `pnpm demo` (node + closer + app) |
+| Web / core | `pnpm -r test`, `pnpm --filter web dev` (a single `pnpm demo` command for node, closer and app is planned, not present yet) |
 
 ---
 
@@ -379,7 +394,7 @@ Upstream suites `Delegate`, `PasskeyListSet`, `AccountDelete`, `PassKey` green b
 
 ## 7. Ledger application
 
-### 7.1 Facts about the base and the device (24 Oct)
+### 7.1 Facts about the base and the device
 
 - `app-xrp` @ `7b5185ff` (v2.8.2): `ledger_app.toml` `devices = ["nanox", "nanos+", "stax", "flex", "apex_p"]`; UI is **NBGL only** (`src/ui/*/..._nbgl.c`, `nbgl_useCaseReview`, a `getPair` callback fed from `parseResult_t`, 8 display buffers); `ENABLE_SWAP`, `HAVE_IO_U2F`, `ENABLE_BLUETOOTH`; `CURVE_APP_LOAD_PARAMS = secp256k1 ed25519`; `PATH_APP_LOAD_PARAMS = "44'/144'"`; no `PATH_SLIP21_APP_LOAD_PARAMS`.
 - Limits (`src/limitations.h`): `MAX_BIP32_PATH 10`, `MAX_ARRAY_LEN 8`, `MAX_PATH_COUNT 6`, `MAX_STEP_COUNT 8`, `MAX_FIELD_COUNT 60`, `MAX_RAW_TX 10000`, `MAX_FIELD_LEN 1024` (128 on Nano S only).
@@ -412,7 +427,7 @@ Every place below needs an entry, otherwise the app falls back to blind signing,
 
 Rules: `SigningPubKey` is already hidden unconditionally upstream; `Fee` stays **visible** (add a `Fee` line to the frozen screen) and `TxnSignature` must be absent; **everything displayed comes from the same parse as what is signed**; the permission-name table is **generated** from `Permissions.cpp` / `server_definitions` (value = type + 1, or ≥ 65 537 for a granular permission); arrays and objects are hidden, only `PermissionValue` needs a name.
 
-**Screen lines to freeze (Sat 14:00)** — a list of lines, labels and formatters, not a mockup:
+**Screen lines to freeze (before the first device test)** — a list of lines, labels and formatters, not a mockup:
 
 ```text
 Transaction type   Open session           (name of type 130)
@@ -429,12 +444,11 @@ Note               Cannot change keys, signers or the account   (synthetic line;
 **Tests**: cmocka with ≥ 10 vectors (one per mode, 10 permissions, unknown permission → blind required, unknown flag, truncated, duplicate), distinct values per field (not the same account everywhere), fuzzing without crash; Ragger snapshots generated for **all devices the CI lists**; **one session opened on the node and signed on the Stax** (acceptance).
 **Multisign / Batch**: a `Batch` signed in multisign mode (`SMT\0`) gives an invalid signature; test with a real Batch vector when L3 is attempted.
 
-### 7.4 Stretch items
+### 7.4 Other device items
 
-**L2: ML-DSA-44 on the device.** `MLDSA_sign` (pure, empty context) over `STX\0 ‖ signed fields`, fully buffered; key derived deterministically from an app-scoped **SLIP-21** seed through `MLDSA_internal_keygen` (internal API: validated in spike K4) — **never** reuse a BIP32 secp256k1 private key as ML-DSA seed. New INS or P2 value (the P2 byte accepts only `0x40` / `0x80` today); public key 1 312 B in ~6 APDUs, signature 2 420 B in ~10 responses; signature buffer **outside `tmp_ctx`** (zeroed on each command); remove the `LEDGER_ASSERT` that would crash the app if signing fails. Makefile: add `PATH_SLIP21_APP_LOAD_PARAMS` (syntax: `PATH_SLIP21_APP_LOAD_PARAMS = "<label>"`, a single path; see `Makefile.app_params` of the SDK), the `lib_cxng` ML-DSA sources, `HAVE_MLDSA_OPTIMIZATION`, `INCLUDES_PATH` to `lib_cxng/src` (model: `ledger-app-zond`'s Makefile, which signs a 32-byte hash with an 8-byte context, unlike us). If the key cannot be derived from the seed, **say so**: it would be stored in NVRAM and not recoverable with the 24 words. Acceptance: a device signature accepted by `xrpld` **and** verified by `@noble/post-quantum`.
-**Memory** (Stax 36 KB, stack included): statics ≈ 21 KB; ML-DSA-44 signing ≈ 7.2 KB working set with `HAVE_MLDSA_OPTIMIZATION` (11.7 KB without), plus secret key 2 560 B and signature 2 420 B ≈ 12 KB peak. K4 must run **inside an app-xrp build**, not a throwaway app. Levers if it overflows (to measure): drop `ENABLE_SWAP`, `HAVE_IO_U2F` and the BLE stack in a test build, reduce `MAX_FIELD_LEN` / `MAX_RAW_TX`, overlay `sk` and the signature on the display-string buffers.
+**L2: ML-DSA-44 on the device** is the headline and is specified in [§7.7](#77-post-quantum-root-on-the-device-l2).
 
-**L6: a P-256 key on the device usable as a passkey** (idea to validate on the device). Add `secp256r1` to `CURVE_APP_LOAD_PARAMS` and a new P2 value (proposed `0x20`; **UNVERIFIED**); sign `SHA-256(signed data)`, return DER, **normalize to low-S**; public key `0xF6 ‖ X ‖ Y`. The node already accepts a raw P-256 signature (no `PasskeySignature`) then looks the key up in the `PasskeyList`, so no node change is needed. The device key and the Face ID key must be in the **same first** `PasskeyListSet` of the account (a second `PasskeyListSet` on the same account is not supported by this build). Alternative with no Ledger code: the **Ledger Security Key** FIDO2 app as a WebAuthn authenticator (Stax and Flex), which is **blind** (shows the domain only) and depends on P5. Acceptance: a transaction signed on the device by a key listed in the `PasskeyList` is accepted.
+**L6: a P-256 key on the device usable as a passkey** (idea to validate on the device). Add `secp256r1` to `CURVE_APP_LOAD_PARAMS` and a new P2 value (proposed `0x20`; **UNVERIFIED**); sign `SHA-256(signed data)`, return DER, **normalize to low-S**; public key `0xF6 ‖ X ‖ Y`. The node already accepts a raw P-256 signature (no `PasskeySignature`) then looks the key up in the `PasskeyList`, so no node change is needed. The device key and the Face ID key must be in the **same first** `PasskeyListSet` of the account (one `PasskeyListSet` per account). Alternative with no Ledger code: the **Ledger Security Key** FIDO2 app as a WebAuthn authenticator (Stax and Flex), which is **blind** (shows the domain only) and depends on P5. Acceptance: a transaction signed on the device by a key listed in the `PasskeyList` is accepted.
 
 **L3: `Batch` clear signing.** `master` forces blind on a nested type and follows one array level; 8 inner transactions of ~10 fields exceed `MAX_FIELD_COUNT` (60). **L4**: documentation feedback is **MVP** and specified in [§7.6](#76-documentation-and-developer-experience-feedback); a `packages/ledger` library on the DMK (`previewSession`, clear / blind / refuse prediction) is stretch. **L5**: `BatchSigner` co-signature (`BCH\0`).
 
@@ -444,7 +458,7 @@ Loading route on this Stax; whether the device shows an "unsafe app" prompt or n
 
 ### 7.6 Documentation and developer-experience feedback
 
-The Ledger bounty judging slide (shown at the Ledger workshop on 24 Oct) is explicit: **"We judge the Developer Experience feedback as much as the code. Help us improve our docs."** It asks for three things, and lists three bonus items. We treat all of it as a deliverable with the same standing as L1, not as an afterthought written on Sunday morning.
+Ledger's bounty judging criteria are explicit: **"We judge the Developer Experience feedback as much as the code. Help us improve our docs."** It asks for three things, and lists three bonus items. We treat all of it as a deliverable with the same standing as L1, not as an afterthought written at the end.
 
 | Asked ("What to include") | What we deliver |
 |---|---|
@@ -456,10 +470,10 @@ The Ledger bounty judging slide (shown at the Ledger workshop on 24 Oct) is expl
 |---|---|
 | Better tutorial or code sample ideas | A written tutorial outline "clear-sign a new XRPL transaction type on a Ledger app" built from what L1 actually required (the checklist of §7.3 is already that tutorial in embryo), and a minimal sample for sending a custom transaction through the DMK |
 | Navigation or search improvements for the portal | Record, as we search for things, what we typed, what we expected to find, and where it was (or was not) |
-| "Time-saver" suggestions for future integrators | A short list at the top of the document: "if we had known this at hour 0, we would have saved N minutes" (loading an app on a Stax from a Mac, the `STX\0` prefix added by the app, `MAX_ARRAY_LEN`, `has_unknown_flags`, deterministic ML-DSA keygen, SLIP-21 install parameter) |
+| "Time-saver" suggestions for future integrators | A short list at the top of the document: "if we had known this at the start, we would have saved N minutes" (loading an app on a Stax from a Mac, the `STX\0` prefix added by the app, `MAX_ARRAY_LEN`, `has_unknown_flags`, deterministic ML-DSA keygen, SLIP-21 install parameter) |
 
 **Method.**
-1. **Start the log at kickoff**, in `docs/ledger-dx-feedback.md`, and append during the work, not afterwards: a finding forgotten at 03:00 is lost. One line is enough at the time; it is cleaned up later.
+1. **Start the log at the start of the work**, in `docs/ledger-dx-feedback.md`, and append during the work, not afterwards: a finding that is not written down when it happens is lost. One line is enough at the time; it is cleaned up later.
 2. Entry template: `date/time · area · doc page or repo path · what we tried · what happened or was missing · minutes lost · suggested fix · screenshot / PR link`.
 3. Keep `minutes lost` honest: it is the evidence that makes feedback useful, and it must not be inflated.
 4. Capture screenshots as we hit the problem (the Stax screen showing "cannot be clear-signed", the build error, the page that did not help).
@@ -468,6 +482,24 @@ The Ledger bounty judging slide (shown at the Ledger workshop on 24 Oct) is expl
 7. The README links to the document, and the pitch has a slide with the three best findings and the PR links (§11).
 
 **Things we already know are likely to appear** (to confirm while doing them, not to pre-write): loading a custom app on a Stax from macOS when the builder image cannot reach USB; the README of `ledgerctl` not listing the Stax; which of the three loading routes works; clear signing for a transaction type the app does not know (the L1 checklist spans parser, fields, flags and display limits, and a miss falls back to blind signing without an error); `MAX_ARRAY_LEN`; the app adding the signing prefix itself; ML-DSA deterministic key generation existing only behind an internal header; the SLIP-21 install parameter; the DMK send-APDU API for custom commands.
+
+### 7.7 Post-quantum root on the device (L2)
+
+**Goal.** The Stax generates and holds an **ML-DSA-44** key, shows the transaction in clear, and signs it. Concretely, on a public network that accepts ML-DSA keys (the AlphaNet today), with an account whose master key is the Stax's classical key: (1) `SetRegularKey` to the device's ML-DSA key, signed by the master key and clear-signed; (2) a proof transaction signed by the ML-DSA key on the device, which is the first post-quantum device signature; (3) `AccountSet asfDisableMaster`, **signed by the master key** (the node answers `tecNEED_MASTER_KEY` if the regular key signs it); then (4) a session opened by the ML-DSA key with the rules on the screen. Afterwards no classical key can sign for the account. Ledger states that the pre-hash ML-DSA variant does not fit clear signing; this design uses **pure ML-DSA over the fully buffered message**, which is what clear signing needs (the app parses and displays the same bytes it signs).
+
+**Signing.** `MLDSA_sign` (pure, empty context) over `STX\0 ‖ signed fields`, as `crypto_sign_verify` expects on the node (`M' = 0x00 ‖ 0x00 ‖ M`). The app prepends the prefix itself. Signing is randomized and may retry internally.
+
+**Key derivation.** A key derived deterministically from an app-scoped **SLIP-21** seed through `MLDSA_internal_keygen` (the internal API of `lib_cxng/src/cx_mldsa_internal.h`; validated in spike K4), so the key is recoverable from the 24 words. **Never** reuse a BIP32 secp256k1 private key as ML-DSA seed. If the key cannot be derived from the seed, say so: it would live in the app's NVRAM and not be recoverable with the 24 words.
+
+**Protocol with the host.** A new P2 value or INS (the P2 byte accepts only `0x40` / `0x80` today): public key 1 312 B in about 6 APDUs, signature 2 420 B in about 10 responses. The signature buffer lives **outside `tmp_ctx`** (zeroed on each command). Remove the `LEDGER_ASSERT` that would crash the app if signing fails. Sent as custom commands through the Device Management Kit.
+
+**Build.** Makefile: `PATH_SLIP21_APP_LOAD_PARAMS = "<label>"` (a single path; see `Makefile.app_params` of the SDK), the `lib_cxng` ML-DSA sources, `HAVE_MLDSA_OPTIMIZATION`, `INCLUDES_PATH` to `lib_cxng/src` (model: `ledger-app-zond`, which signs a 32-byte hash with an 8-byte context, unlike us).
+
+**Memory (Stax SRAM 36 KB, stack included; Ledger's design target is at most 16 KB of peak stack).** The statics of app-xrp are about 21 KB (`raw_tx` 10 000 B, eight 1 024 B field strings, the parse result), which with 16 KB of stack exceeds the SRAM. So the post-quantum signing path uses a **build variant with smaller buffers** (candidates: `MAX_RAW_TX` to about 3 000 B, `MAX_FIELD_LEN` to 256 B, no `ENABLE_SWAP`, no `HAVE_IO_U2F`, no BLE stack), which is enough for key management and session transactions (small, few fields). Estimates, to be measured in K4 inside an app-xrp build, not a throwaway app: ML-DSA-44 signing about 7.2 KB of working set with the low-RAM variant (11.7 KB without), plus the secret key 2 560 B and the signature 2 420 B.
+
+**Security notes.** Ledger's v1 ML-DSA has **no side-channel or fault-injection countermeasures** (their own statement): we say so wherever we describe the root key. The device screen proves the rules, not who holds the session key.
+
+**Acceptance.** A signature made on the device is accepted by `xrpld` **and** verified by `@noble/post-quantum`; the four transactions above are on the AlphaNet with explorer links; the screen lines for `SetRegularKey` and `AccountSet` are in the DEVLOG with photos. **Fallback** (K4 fails): software ML-DSA signing in the client, said as such, with everything else unchanged.
 
 ---
 
@@ -517,7 +549,7 @@ A single command runs the whole flow against a real node (acceptance of W1).
 | **Actions** | 5-6 ready actions of different types (payment, `OfferCreate`, `TrustSet`, `TicketCreate`, mint, …) signed by the session key, with the node's result code |
 | **Attack** | replays with the session key: `SetRegularKey`, `PasskeyListSet`, `AccountSet`, `SigningSessionSet`, cap overflow, after expiry; each refusal is **the node's code**, never a client-side message |
 
-Principles: account state comes from the node, not local state; errors show the code and one sentence; public (non-admin) WebSocket; CSP `script-src 'self'`. Face ID needs an HTTPS origin and `wss://`; Touch ID on the Mac works on `localhost`. Decide which one the demo uses before Saturday; the script says "passkey" and chooses at the last moment.
+Principles: account state comes from the node, not local state; errors show the code and one sentence; public (non-admin) WebSocket; CSP `script-src 'self'`. Face ID needs an HTTPS origin and `wss://`; Touch ID on the Mac works on `localhost`. Decide which one the demo uses before the demo; the script says "passkey" and chooses at the last moment.
 
 **PQ-account note**: a passkey list cannot be updated or deleted in this alphanet build, so an account that ever had a passkey cannot become post-quantum. The PQ demo account is a **fresh account**.
 
@@ -525,26 +557,63 @@ Principles: account state comes from the node, not local state; errors show the 
 
 Vitest unit tests for `core` (encoding vectors, low-S/DER, session builders, constants), an end-to-end `tsx` test against a real standalone node (stretch W8), and a test that every session transaction carries a `LastLedgerSequence`.
 
+### 8.7 Quantum exposure check and migration
+
+A public key is only visible on the ledger once something has signed with it. From that moment a future quantum computer could forge signatures for it. XRPL can rotate keys without changing the address, so exposure is fixable per account. This module tells a user where they stand and prepares the move. The method follows the public audit cited in the TL;DR, which is context only: the tool reports **per-account results** and never republishes totals.
+
+**`checkExposure(address, node)`** (in `packages/core/src/quantum/exposure.ts`) returns a status (`exposed`, `no-exposure-found`, `unknown`), the reasons, and the transaction that first revealed each key:
+1. **Master key.** Exposed if a validated transaction with `Account` = the address has a `SigningPubKey` whose AccountID equals the address. A non-empty `SigningPubKey` alone proves nothing: it may be the regular key, a passkey or the beneficiary key, so compare `calcAccountID(SigningPubKey)` with the address and attribute the exposure to the right key.
+2. **Regular key.** Exposed if it has signed a transaction for this account. A key revealed only while signing for *other* accounts does not appear in this account's history (signers are not affected nodes), so say so.
+3. **Authorities that survive `asfDisableMaster`**, reported separately because disabling the master does not remove them: the passkey list (public keys are stored on the ledger, so exposed by construction; a passkey has full authority), the beneficiary key, XLS-75 delegates (they sign with their own keys), and signer lists.
+4. **Signer list.** Exposed when the signers whose public keys have appeared on the ledger carry a total weight of at least the quorum; below the quorum it is not. A signer is an account that signs with **its own master or regular key**; its own signer list plays no part.
+5. **Other places a key appears**, such as `PaymentChannelCreate.PublicKey`, are listed when found.
+6. **`unknown` is a result.** `no-exposure-found` is only claimed when the node's history covers the account (check the `ledger_index_min` the node returns; most nodes keep partial history) and the search was not cut short (bound it and report "not found within N pages").
+
+Edge cases are tests, not prose: pseudo-accounts, tickets, a regular key shared by several accounts, a passkey that signed, a signer that is itself a multi-signed account.
+
+**`buildPqMigration(account, mlDsaKey)`** returns the ordered, unsigned transactions, and the order is not negotiable:
+1. `SetRegularKey` with the AccountID of the ML-DSA key, **signed by the master key** (the ML-DSA key cannot sign before it is the regular key: the node answers `tefBAD_AUTH`).
+2. A proof transaction (a harmless `AccountSet` with no change, or a `TicketCreate`) **signed by the ML-DSA key**. If it is not accepted, stop.
+3. `AccountSet` with `asfDisableMaster`, **signed by the master key** (only the master key can set it: `tecNEED_MASTER_KEY` otherwise).
+
+**Safety rules.** Step 3 is refused unless (a) step 2 was accepted, (b) the ML-DSA key is proven recoverable (derived twice from the seed on the device, including after reinstalling the app) or a post-quantum backup exists (for example a signer list), because losing the key after step 3 locks the account for good, and (c) the other authorities of rule 3 above were reviewed. The migration runs only on a network whose build accepts ML-DSA keys, checked **by trying on a throwaway account (spike K3), not by an amendment name** (`featureQuantum` is referenced nowhere in the code); elsewhere it reports readiness and stops. Tests use fresh accounts only.
+
+**Screen "Quantum"** (`apps/web`): paste an address, see the report with the first-exposure transaction of each key, then **Migrate with the Ledger** (three clear-signed steps on the Stax) on the AlphaNet. Mainnet is read-only.
+
+**UNVERIFIED.** How many `account_tx` pages a busy account needs (K7); the exact shape of the proof transaction that the node accepts from an ML-DSA regular key; whether a passkey list can coexist with this migration (it keeps full authority).
+
+### 8.8 Ecosystem contributions
+
+**A Device Management Kit adapter for `xrpl-connect`** (XRPL Commons). Their Ledger adapter (`packages/adapters/ledger`) uses the legacy ledgerjs stack (`@ledgerhq/hw-app-xrp`, `hw-transport-webhid` and `webusb`), plain `signTransaction`, no preview. A new package `packages/adapters/ledger-dmk` implements `WalletAdapter` on `@ledgerhq/device-management-kit`, `device-signer-kit-xrp` and `device-transport-kit-web-hid`; keeps the legacy adapter untouched; adds `previewSignature(tx)` (`clear`, `blind` or `refused`, from the app version and a table of clear-signed types) and session opening when the node advertises `SigningSessions`. Process (their CONTRIBUTING and `docs/guide/adapter-integration.md`): open an issue first, **fork** the repository, Node 20.19+/22.18+/24.11+, pnpm 10.18.3, Vite+ (`pnpm exec vp install`, `vp run test`, `vp check`), scoped conventional commits (`feat(adapter-ledger-dmk): ...`). **UNVERIFIED**: the exact `WalletAdapter` interface and event contract (read `packages/core` and the Xaman reference adapter first), and whether the maintainers prefer a replacement or a sibling package.
+
+**`@carbs/sessions`** (`packages/core`): the library of §8.2, installable, with typed errors including the three `tefSESSION_*` codes.
+
+**A sessions template for `create-xrp`** (scaffold-xrp generates a Next.js or Nuxt app with `xrpl-connect`; it is a generator, not a repository to fork): a Session page next to the payment form. Contribution path: `packages/create-xrp` of `XRPL-Commons/scaffold-xrp`. The front of carbs itself starts from the generated Nuxt template ([ADR 0007](docs/adr/0007-front-from-create-xrp.md)); WebAuthn, WebHID and WebCrypto are client-only (`ssr: false`).
+
+**Reserved, not planned (D6): an agent that pays x402 invoices with a mode-C session key**, with the budget approved on the Ledger. It maps directly to Ledger's agentic theme but is not an opt-in. It needs a direct XRP payment: if x402 on XRPL forces an issued currency, a capped issued-currency session would be a protocol extension and is out of scope.
+
 ---
 
-## 9. Spikes (K1-K6)
+## 9. Spikes (K1-K8)
 
-Run against the public AlphaNet (`Passkey` and `Quantum` enabled) **with a new account per attempt**. Never send a second `PasskeyListSet` to the same account. Always sign on the client (never through the node's `sign` RPC with a P-256 key).
+Run against the public AlphaNet (`Passkey` and `Quantum` enabled) **with a new account per attempt**. Use a fresh account for every attempt. Always sign on the client (never through the node's `sign` RPC with a P-256 key).
 
 | Spike | Question | Outcome |
 |---|---|---|
 | **K1** | Does a WebCrypto P-256 key set as `RegularKey` sign a `Payment` (raw, low-S, strict DER)? | `tesSUCCESS` → P-256 session key; otherwise Ed25519 WebCrypto |
 | **K2** | Is a passkey assertion (Touch ID on the Mac, Face ID on the iPhone) accepted? | Likely **not** (P5) on validators with signed `char`; note the result without concluding more |
-| **K3** | Is a `Payment` signed with ML-DSA-44 (`@noble/post-quantum`, 1 312-byte key, ML-DSA `RegularKey`) accepted? | Format understood, or exact error recorded |
-| **K4** | The Ledger **inside an app-xrp build**: `MLDSA_internal_keygen` level 44 from a SLIP-21 seed, then `MLDSA_sign` over 4 KB; RAM, stack, time (Stax 36 KB) | **Go / no-go for L2** |
+| **K3** | Is a `Payment` signed with ML-DSA-44 (`@noble/post-quantum`, 1 312-byte key, ML-DSA `RegularKey`) accepted? Then, on a fresh account, the migration order of §8.7: `SetRegularKey` signed by the master, a proof transaction signed by the ML-DSA key, `asfDisableMaster` signed by the master | Format understood, or exact error recorded; the order holds or is corrected |
+| **K4** | The Ledger **inside an app-xrp build** (with the smaller-buffer variant of §7.7): `MLDSA_internal_keygen` level 44 from a SLIP-21 seed, then `MLDSA_sign` over a 2 KB message; RAM, stack, time (Stax 36 KB) | **Hardware or software ML-DSA for L2**; if hardware, whether the key is recoverable from the 24 words |
 | **K5** | `server_definitions` of the pinned XRPLF branch: `XrplDefinitions` + encode round-trip; codes still free | the codes of §6.1 hold on the imported SHA |
-| **K6** | Chrome: `device-signer-kit-xrp` + WebHID sign a testnet `Payment` on the **unmodified** app | the host path works (the kit sets P2 per curve, secp256k1 or ed25519), or we know what to write |
+| **K6** | Chrome: `device-signer-kit-xrp` + WebHID sign a testnet `Payment` on the **unmodified** app, then the DMK send-APDU API for a custom command | the host path works (the kit sets P2 per curve, secp256k1 or ed25519), or we know what to write |
+| **K7** | `account_tx` on a public node: find the first self-signed transaction of one known-exposed account and confirm a known-safe account (never sent) returns none; how many pages for a busy account | the bounded search of §8.7 and its error message |
+| **K8** | Generate the `create-xrp` Nuxt template; run it with `ssr: false` and a WebHID call from the page | ADR 0007 confirmed or revised |
 
 ---
 
 ## 10. Work breakdown
 
-Two tracks; **who does what is not decided (D5)**. Durations are not estimated here: the team judges order and pace on site. Gates are the only fixed points.
+Two tracks; **who does what is not decided (D5)**. Durations are not estimated here: the team judges order and pace as the work goes. Gates are the only fixed points.
 
 ### 10.1 Protocol track (`rippled/`)
 
@@ -565,7 +634,7 @@ Two tracks; **who does what is not decided (D5)**. Durations are not estimated h
 
 ### 10.2 Ledger track (`ledger-app/`)
 
-L0 (MVP), L1 (MVP), L4 documentation feedback (MVP, [§7.6](#76-documentation-and-developer-experience-feedback), log kept from the first minute), then stretch L2, L3, L4 library, L5, L6 as in §7. Gate: L1 on the device with a session opened on the node.
+L0 (MVP), L1 (MVP), **L2 (headline, [§7.7](#77-post-quantum-root-on-the-device-l2))**, L4 documentation feedback (MVP, [§7.6](#76-documentation-and-developer-experience-feedback), log kept from the first day); stretch: L3, L4 library, L5, L6 as in §7. Checkpoint: L1 on the device with a session opened on the node.
 
 ### 10.3 Client track
 
@@ -577,39 +646,39 @@ L0 (MVP), L1 (MVP), L4 documentation feedback (MVP, [§7.6](#76-documentation-an
 | W4 | Account, Session, Actions screens | 5 transaction types signed by the session key with no prompt | ✓ |
 | W5 | Attack screen | each refusal is the node's code | ✓ |
 | W6 | Mode C in the app: spent / cap bar | 6th payment refused `tefSESSION_LIMIT` | ✓ |
-| W7 | PQ account end to end | `SetRegularKey` ML-DSA then `asfDisableMaster`, signed **by the master** in that order, then a session opened by an ML-DSA signature of the device | stretch |
+| W7 | **Post-quantum account end to end** (headline) | on a fresh account, on the AlphaNet with explorer links: `SetRegularKey` to the device's ML-DSA key (master-signed), a proof transaction signed by the ML-DSA key on the Stax, `asfDisableMaster` (master-signed), then a session opened by an ML-DSA signature of the device | ✓ (headline) |
 | W8 | End-to-end `tsx` test and local CI | everything passes in one command | stretch |
+| Q1 | `checkExposure` (§8.7) with fixtures | the cases of §8.7 as tests; a known-exposed and a known-safe account behave as expected | ✓ |
+| Q2 | `buildPqMigration` and the "Quantum" screen | dry run on a fresh account, then the real run on the AlphaNet; mainnet read-only | ✓ |
+| E1 | DMK adapter for `xrpl-connect` (§8.8): issue first, fork, adapter, tests, docs, pull request | PR open and green; the adapter signs a `Payment` and a `SigningSessionSet` on the Stax | stretch |
+| E2 | `@carbs/sessions` ready to install and a sessions template for `create-xrp` | an app generated from the template opens a session | stretch |
 
-### 10.4 Delivery (everyone)
+### 10.4 Delivery
 
-The documentation feedback document (`docs/ledger-dx-feedback.md`, §7.6) and its pull requests. Working demo that can be run ("a working demo we can run, not a slide deck": Ledger page), demo video **and** pitch video, PDF deck, public repository, honest README, `pnpm demo`. Pitches at 14:15 on Sunday in parallel with sponsor pitches; exact format to confirm on site, prepare 3 minutes.
+The documentation feedback document (`docs/ledger-dx-feedback.md`, §7.6) and its pull requests. Working demo that can be run ("a working demo we can run, not a slide deck": Ledger page), demo video **and** pitch video, PDF deck, public repository, honest README, `pnpm demo`. Prepare a 3-minute pitch.
 
-### 10.5 Schedule anchors (New York time)
+### 10.5 Checkpoints
 
-| When | What |
+| Checkpoint | Meaning |
 |---|---|
-| Sat 24 Oct 10:00 | Kickoff: first 20 minutes = repository, imports, `UPSTREAM.md` (§4); K5; N0; L0 |
-| Sat 12:30-14:00 | Team formation, lunch; **14:00 gate: format frozen internally** (fields, codes, screen lines) |
-| Sat 16:00-17:00 | Office hours: show the design to Denis; ask D3; bring D4 |
-| Sat 22:00 | Checkpoint: status of mode C (N5) and of L1 on the device; whatever is not green is said so in the README |
-| Sat 22:30 - Sun 08:30 | Overnight coding; sleep in shifts, agreed in advance |
-| Sun 08:00 | **Feature freeze** (no new feature after) |
-| Sun 10:00-11:00 | Office hours |
-| Sun 12:00 | Target submission (limit 13:00; window "Final Project Submission" 12:30-13:00) |
-| Sun 14:15 | Pitches |
+| Format frozen | fields, codes, result codes and screen lines are final before the first device test; changing them later means regenerating definitions and vectors |
+| Mode C and L1 status | N5 green and a session opened from the Stax, or the README says what is missing |
+| Post-quantum path | K4 decided (hardware or software ML-DSA), K3 extended green, W7 on the AlphaNet |
+| Feature freeze | no new feature after it; only fixes, documentation and the demo |
 
 ---
 
 ## 11. Demo and presentation
 
+Three minutes, four acts. Everything shown on a device is shown on the Stax; anything simulated is said to be simulated.
+
 | Time | Content |
 |---|---|
-| 0:00-0:20 | The problem: on XRPL a key has all the authority or none |
-| 0:20-1:30 | **Live, session opened from the Ledger**: the Stax shows the rules; 5 actions of different types with no prompt (mode A, 60 s so expiry can be shown); the "stolen" key tries `SetRegularKey` and `PasskeyListSet` → node refusals; after 60 s `tefSESSION_EXPIRED` |
-| 1:30-2:10 | **Mode C, the agent**: a 20 XRP cap, payments sized so that, fees included, exactly the 6th exceeds it (for example 3.9 XRP each), the 6th refused by the ledger; then the **Face** account with a passkey; then the **PQ** account: session opened by an ML-DSA-44 signature made on the device (if delivered) |
-| 2:10-2:30 | Honesty slide: before the kickoff a spec dossier and **a full prototype that is not reused**; during the hackathon all submitted code, commit ranges; **passkey defects found (P1, P3, P5)** (D7) |
-| 2:30-2:45 | **Ledger developer-experience feedback**: the three best findings, the time they cost, the PR links (§7.6) |
-| 2:45-3:00 | Potential: embedded wallets, agents, games and micro-payments, custody; the Foundation's pipeline (XLS, implementation, signing devices) |
+| 0:00-0:25 | **The problem.** On XRPL a key has all the authority or none, and an exposed public key is a future forgery target. Show the exposure report of a real account: "the public key of this account has been on the ledger since this transaction" |
+| 0:25-1:15 | **Quantum-safe root.** On the AlphaNet, with a fresh account: the Stax clear-signs `SetRegularKey` to its ML-DSA key (signed by the account's classical key), then signs a proof transaction **with ML-DSA**, then clear-signs `AccountSet asfDisableMaster`. The account no longer has any classical key able to sign; show the explorer links (to our knowledge the first hardware-wallet post-quantum signatures on XRPL) |
+| 1:15-2:15 | **Sessions.** The Stax shows the rules ("Valid for 10 minutes · All transactions · Cannot change keys") and opens a session; five actions of different types with no prompt; the "stolen" key tries `SetRegularKey` and `PasskeyListSet` and the node refuses with its own codes; mode C with a 20 XRP cap, payments sized so that, fees included, exactly the 6th exceeds it, refused by the ledger; after 60 s `tefSESSION_EXPIRED` |
+| 2:15-2:40 | **For everyone else.** The DMK adapter and the template: a generated app that opens a session on a Ledger in a few lines; the pull request link |
+| 2:40-3:00 | **Honesty and feedback.** What is simulated or not delivered, the passkey defects found (P1, P3, P5; D7), the three best Ledger documentation findings with the minutes they cost and the PR links (§7.6) |
 
 Rehearse three times on a real passkey and the real Stax. Figures in the pitch are the README's figures (tests, durations, types); nothing rounded in our favour. Demo script mentions that modes A and P do not bound what signed transactions leave behind.
 
@@ -640,15 +709,17 @@ Rehearse three times on a real passkey and the real Stax. Figures in the pitch a
 | Device refuses to load the app | L0 fails | try the three routes (§5.2); then Speculos `stax`, said to be simulated |
 | Device specifics: attestation, developer mode | genuine check refused in Ledger Live; load refused | loading routes do not depend on Ledger Live; Speculos as last resort, declared |
 | P5 breaks the passkey | K2 fails and N1 test fails | fix in a separate commit; meanwhile open the session by `RegularKey`; raw P-256 signature (no `PasskeySignature`) or the L6 key |
-| Mode A too broad for the reviewers | feedback at office hours | lead with mode C; mode A behind an explicit name |
+| Mode A too broad for the reviewers | feedback from reviewers | lead with mode C; mode A behind an explicit name |
 | Session path late | N4 (mode A) not green | focus on mode A and say so (C and P become future work in the XLS) |
 | C++ amendment does not pass | N2 / N3 not green at the gate | **plan B without protocol**: XLS-75 (`DelegateSet`, `PermissionDelegationV1_1`) with a throw-away delegate account on the public AlphaNet; closing = deleting the delegation; no cap or expiry enforced, said as such |
 | Ledger late | L1 not on the device at the gate | video of clear signing on Speculos, **said as such**; L0 keeps the "real device" rule |
-| ML-DSA does not fit in RAM | K4 fails | software ML-DSA signing, said as such |
-| Eligibility reading by organizers | a reply contrary to ours | the submitted code is new; adjust the README wording |
-| Fatigue | chained errors | staggered sleep; feature freeze Sun 08:00 |
+| ML-DSA does not fit in RAM, or the key cannot be derived from the seed | K4 fails | software ML-DSA signing in the client, said as such; the exposure check, migration and sessions are unchanged, and the explorer link then shows a software-signed transaction, said so |
+| The exposure search is too slow for busy accounts | K7: too many pages | bounded search with a clear "not found within N pages" result; recorded fixtures for the demo |
+| `SetRegularKey` to an ML-DSA AccountID, a proof transaction by that key, or `asfDisableMaster` fails on the AlphaNet | K3 fails | exact error recorded; migration stays a dry-run plan, said so |
+| The ML-DSA key cannot be proven recoverable from the 24 words | K4: no seed-based derivation | no `asfDisableMaster`; keep the classical master and say so; the root key is shown as a software or app-held key |
+| Fatigue | chained errors | rest in shifts; feature freeze before the final pass |
 
-Order of the stretch items: decided on site (D8 for L2 vs L6); nothing is excluded. Always done: N1's test, L0, L1, the protocol tests, the honest README. If a track is behind, the README says so instead of simulating (for example software ML-DSA signing, a Speculos video, mode P as future work in the XLS).
+Order of the remaining items: decided as the work goes (L2 first, D8); nothing is excluded. Always done: N1's test, L0, L1, the protocol tests, the honest README. If a track is behind, the README says so instead of simulating (for example software ML-DSA signing, a Speculos video, mode P as future work in the XLS).
 
 ---
 
@@ -664,7 +735,7 @@ The reviewers know the XRPLF conventions; we follow them so that a reader of thi
 - No scope parentheses (rippled does not use them); the area is in the subject: `feat: Add SigningSessionSet transactor`, `test: Cover the fee ceiling in every session mode`.
 - Blank line, then a body wrapped at 72 columns explaining **what and why** (not how), referencing the XLS section or test case numbers ("Case 13 of the test plan").
 - Atomic: **one base defect per commit**, never mixed with the amendment; tests in the same commit as the code they cover or in the commit right before it (TDD); no formatting noise; generated `protocol_autogen` limited to our types.
-- Commits are **signed** (rippled requires it), and at least one commit of a merged PR carries the PR number, e.g. `feat: Add SigningSessionSet transactor (#12)`.
+- rippled requires **signed commits**; we sign them wherever a signing key is available, and at least one commit of a merged PR carries the PR number, e.g. `feat: Add SigningSessionSet transactor (#12)`.
 - Pair work: `Co-authored-by: Name <email>` trailer.
 
 **Order of history in `rippled/`**: import (`build:`) → base fixes (`fix:`, e.g. P5 if needed) → amendment definitions (`feat:`) → each transactor with its tests in the same commit or the commit right before it (`test:` then `feat:`, TDD) → invariant with its tests → docs. Same idea in `ledger-app/`.
@@ -680,21 +751,21 @@ The reviewers know the XRPLF conventions; we follow them so that a reader of thi
 ## Future Tasks
 ```
 
-Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **squash-and-merge** and forbids merge commits and "Rebase and merge"; a PR that must land as several commits (the two imports, the base fixes) is the documented exception: request a fast-forward-only merge (`--ff-only`) and justify it in the description. CI (`pnpm -r test`, the protocol suites) must pass; no "fix CI" noise on `main`.
+Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **squash-and-merge** and forbids merge commits and "Rebase and merge"; a PR that must land as several commits (the two imports, the base fixes) is the documented exception: request a fast-forward-only merge (`--ff-only`) and justify it in the description. CI (format check, typecheck and tests of the TypeScript packages; the protocol suites and the Ledger tests are run by hand and recorded in the DEVLOG) must pass; no "fix CI" noise on `main`.
 
 **Review culture to anticipate** (observed in XRPL standards and rippled reviews): gating on the amendment everywhere; **a test for every line** (or an explicit `LCOV_EXCL` with a reason); correct code prefix (`tem` stateless / `tef` / `tec`); `NounVerb` naming; performance and DoS (our cap check is O(1) per transaction); and the question "what new functionality does this provide that existing features do not?" (answered in the XLS: XLS-75 delegates to an *account*, needs a second funded account, has no expiry and no amount cap).
 
-**`docs/DEVLOG.md`**: dated entries — what was done, removed, ignored or simulated; it is the source of the README's "before / during" table and of the honesty slide.
+**`docs/DEVLOG.md`**: dated entries — what was done, removed, ignored or simulated; it is the source of the README's prior-work note and of the final presentation.
 
-**README "Before the kickoff / During the hackathon"**: before (up to 24 Oct 10:00 ET) = the idea, the preparation dossier, and the earlier prototype of 21-23 Oct (not reused); during = this repository from its first commit (11:24 ET): this specification (documentation, a consolidation of the dossier), the upstream imports, and everything built after, with the commit ranges.
+**README, prior work**: states plainly that an earlier design and prototype exist in `STOOOKEEE/TTT`, that nothing was reused from it, and that everything in this repository was written here, with the upstream imports in their own commits.
 
 ---
 
 ## 15. Open items
 
-1. **D3** to ask Denis (one object per session vs entries in the passkey list); **D4**, **D5**, **D8** postponed.
-2. UNVERIFIED on this device: loading route on a Stax, SLIP-21 install-parameter syntax, a new P2 value for P-256, the rendering of 10 permission lines, `MLDSA_internal_keygen` linkage in an app-xrp build, the exact DMK 1.11 send-APDU API.
-3. Not yet shown by a test: the WebAuthn challenge comparison (P5, read in code, regression test pending) and whether the base builds.
+1. **D3** to ask Denis (one object per session vs entries in the passkey list); **D4** and **D5** postponed; **D8** proposed (§2); D11 adopted.
+2. UNVERIFIED on this device: loading route on a Stax, the smaller-buffer build variant and its real RAM, `MLDSA_internal_keygen` linkage in an app-xrp build, the exact DMK 1.11 send-APDU API, a new P2 value for P-256 (L6), the rendering of 10 permission lines.
+3. Not yet shown by a test: the WebAuthn challenge comparison (P5, read in code, regression test pending), the exposure search cost (K7), the AlphaNet accepting the migration order (K3 extended), and whether the base builds.
 4. XLS-Sessions final text from the implementation.
 
 ---
@@ -722,11 +793,11 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 
 ## Appendix B: references
 
-- Upstream: [XRPLF/rippled `alphanet`](https://github.com/XRPLF/rippled/tree/alphanet) · [LedgerHQ/app-xrp](https://github.com/LedgerHQ/app-xrp) · [ledger-secure-sdk PR #1617 (ML-DSA)](https://github.com/LedgerHQ/ledger-secure-sdk/pull/1617) · [ledger-app-zond](https://github.com/cyyber/ledger-app-zond) · [ledger-app-builder](https://github.com/LedgerHQ/ledger-app-builder) · [DMK XRPL workshop](https://github.com/LedgerHQ/device-management-kit-ts-workshop/tree/main/xrpl-hackathon).
+- Upstream: [XRPLF/rippled `alphanet`](https://github.com/XRPLF/rippled/tree/alphanet) · [LedgerHQ/app-xrp](https://github.com/LedgerHQ/app-xrp) · [ledger-secure-sdk PR #1617 (ML-DSA)](https://github.com/LedgerHQ/ledger-secure-sdk/pull/1617) · [ledger-app-zond](https://github.com/cyyber/ledger-app-zond) · [ledger-app-builder](https://github.com/LedgerHQ/ledger-app-builder) · [DMK XRPL example](https://github.com/LedgerHQ/device-management-kit-ts-workshop/tree/main/xrpl-hackathon).
 - Standards and discussions: [XLS-75 permission delegation / #657 expiry](https://github.com/XRPLF/XRPL-Standards/discussions/657) · [#572 agent identity (amount cap)](https://github.com/XRPLF/XRPL-Standards/discussions/572) · [XLS-83 passkeys, one object vs list](https://github.com/XRPLF/XRPL-Standards/discussions/236) · [XLS-86 Firewall](https://github.com/XRPLF/XRPL-Standards/discussions/255) · [XLS-103 on-chain co-signer](https://github.com/XRPLF/XRPL-Standards/discussions/589) · [session keys sketch by Denis, Transia #29](https://github.com/Transia-RnD/rippled/pull/29#issuecomment-4243346546) · [role-based signature prefixes, rippled #8162](https://github.com/XRPLF/rippled/pull/8162).
-- Event: Ledger page https://developers.ledger.com/xrplnyc (Protocol Innovation, "there is still no XRPL transaction Clear Signing"; real device required; documentation feedback judged "as much as the code": what to include = overall experience with the Ledger docs and SDKs, gaps / confusing flows / missing context, specific improvements with screenshots or PRs; bonus = better tutorial or code sample ideas, portal navigation or search improvements, time-saver suggestions).
+- Ledger bounty page: https://developers.ledger.com/xrplnyc (Protocol Innovation, "there is still no XRPL transaction Clear Signing"; real device required; documentation feedback judged "as much as the code": what to include = overall experience with the Ledger docs and SDKs, gaps / confusing flows / missing context, specific improvements with screenshots or PRs; bonus = better tutorial or code sample ideas, portal navigation or search improvements, time-saver suggestions).
 
-## Appendix C: kickoff checklist
+## Appendix C: setup checklist
 
 - [ ] `docs/ledger-dx-feedback.md` created with its entry template; log started (§7.6).
 - [ ] Disk space freed, `conan` on `PATH`, builder image pulled, `STAX_SDK` set.
@@ -736,4 +807,4 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 - [ ] K5 run on the imported SHA; codes of §6.1 confirmed or renumbered everywhere.
 - [ ] All `.macro` edits batched before the first full rebuild.
 - [ ] Spikes K1-K3, K6 on the public AlphaNet with a **new account each**.
-- [ ] Decisions D3 (Denis), D4, D5, D8 revisited at the 14:00 gate and at office hours.
+- [ ] Decisions D3, D4, D5 and D8 revisited before the format is frozen.

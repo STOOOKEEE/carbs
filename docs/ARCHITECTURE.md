@@ -21,7 +21,7 @@ graph TB
     subgraph Browser
         W["apps/web<br/>Account, Session, Actions, Attack"]
         C["packages/core (@carbs/sessions)<br/>definitions, encoding, session keys, node client"]
-        L["packages/ledger (@carbs/ledger, stretch)<br/>DMK preview, custom APDUs"]
+        L["packages/ledger (@carbs/ledger)<br/>DMK preview, custom APDUs for ML-DSA"]
         K["WebCrypto P-256 session key<br/>non-extractible"]
         P["Passkey (WebAuthn)"]
     end
@@ -38,15 +38,15 @@ graph TB
     I -->|"ledger_accept (admin port)"| N
 ```
 
-| Directory         | Responsibility                                                                                                    | Language                 | Depends on                                                  |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------- |
-| `rippled/`        | The amendment `SigningSessions`: ledger entry, two transactions, authorization hook, accounting, invariant, tests | C++                      | upstream `XRPLF/rippled:alphanet` (imported)                |
-| `ledger-app/`     | Clear signing of `SigningSessionSet` and `SigningSessionDelete` on the Stax; stretch: ML-DSA-44 and P-256 signing | C                        | upstream `LedgerHQ/app-xrp` (imported), `ledger-secure-sdk` |
-| `packages/core`   | Everything a client needs that is not UI: no DOM state, no framework                                              | TypeScript               | `xrpl`, `ripple-binary-codec`, `@noble/*`                   |
-| `packages/ledger` | Optional library over the Device Management Kit (preview, custom commands)                                        | TypeScript               | `@ledgerhq/device-management-kit`, `device-signer-kit-xrp`  |
-| `apps/web`        | The demo screens                                                                                                  | TypeScript, Vue 3 / Nuxt | `packages/core`, `packages/ledger`                          |
-| `infra/`          | Run the daemon and the demo locally                                                                               | config, TypeScript       | `rippled/`                                                  |
-| `docs/`           | Architecture, decisions, DEVLOG, Ledger feedback                                                                  | Markdown                 |                                                             |
+| Directory         | Responsibility                                                                                                                                                  | Language                 | Depends on                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------- |
+| `rippled/`        | The amendment `SigningSessions`: ledger entry, two transactions, authorization hook, accounting, invariant, tests                                               | C++                      | upstream `XRPLF/rippled:alphanet` (imported)                |
+| `ledger-app/`     | Clear signing of `SigningSessionSet` and `SigningSessionDelete` on the Stax; ML-DSA-44 signing of XRPL transactions (post-quantum root); stretch: P-256 signing | C                        | upstream `LedgerHQ/app-xrp` (imported), `ledger-secure-sdk` |
+| `packages/core`   | Everything a client needs that is not UI: sessions, signing, the quantum exposure check and migration; no DOM state, no framework                               | TypeScript               | `xrpl`, `ripple-binary-codec`, `@noble/*`                   |
+| `packages/ledger` | Optional library over the Device Management Kit (preview, custom commands)                                                                                      | TypeScript               | `@ledgerhq/device-management-kit`, `device-signer-kit-xrp`  |
+| `apps/web`        | The demo screens                                                                                                                                                | TypeScript, Vue 3 / Nuxt | `packages/core`, `packages/ledger`                          |
+| `infra/`          | Run the daemon and the demo locally                                                                                                                             | config, TypeScript       | `rippled/`                                                  |
+| `docs/`           | Architecture, decisions, DEVLOG, Ledger feedback                                                                                                                | Markdown                 |                                                             |
 
 **Dependency rules.** `apps/web` may import `packages/*`; `packages/core` imports no other workspace package and never touches the DOM; `packages/ledger` imports only `packages/core` types; nothing imports from `rippled/` or `ledger-app/` (they talk through the wire formats below). Protocol codes are never copied into TypeScript: they come from `server_definitions` at run time.
 
@@ -120,6 +120,8 @@ Section 6.10 of the specification has the full table and the registration checkl
 
 Anything shown on a device is shown on the Stax; anything simulated is said to be simulated.
 
+The quantum exposure check (`packages/core/src/quantum`) is tested with recorded node responses for a known-exposed and a known-safe account, plus the edge cases of FIANSO-SPEC.md section 8.7.
+
 ## Decisions
 
-See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006).
+See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008), and the licence (0009).

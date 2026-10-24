@@ -1,5 +1,5 @@
 # @carbs/ledger (`packages/ledger`)
 
-Optional library on top of the Ledger Device Management Kit: a signing preview (`clear`, `blind` or `refused`) for an XRPL transaction, session opening on the device, and the custom commands for the stretch items (ML-DSA, P-256).
+Library on top of the Ledger Device Management Kit: the custom commands for the post-quantum root (ML-DSA public key and signature, FIANSO-SPEC.md section 7.7), a signing preview (`clear`, `blind` or `refused`) for an XRPL transaction, and session opening on the device. P-256 commands are a later item.
 
-Status: skeleton, stretch item (L4 in `FIANSO-SPEC.md`). Device Management Kit only, never the legacy ledgerjs packages.
+Status: skeleton (L2 and L4 in `FIANSO-SPEC.md`). Device Management Kit only, never the legacy ledgerjs packages.
