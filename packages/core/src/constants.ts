@@ -89,3 +89,7 @@ export const kExposureSubCheckPageLimit = 5;
 
 /** Interval between two polls for the validation of a submitted transaction. */
 export const kValidationPollIntervalMs = 1000;
+
+/** Retries of a JSON-RPC call answered `tooBusy` or `slowDown`, and the back-off without a hint. */
+export const kRpcBusyRetries = 5;
+export const kRpcBusyBackoffMs = 2000;
