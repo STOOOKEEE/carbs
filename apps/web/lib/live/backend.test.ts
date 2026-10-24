@@ -216,3 +216,16 @@ describe("the demo store on the live backend (real encoding and signing, test do
     ).rejects.toBeInstanceOf(DeviceRejectedError);
   });
 });
+
+describe("counterparties on a real ledger", () => {
+  it("funds the payee before the first action, since a real payment below the reserve cannot create it", async () => {
+    const fake = new FakeAlphaNet({ sessions: true });
+    const rig = await live(fake);
+    const demo = createDemo(rig.backend);
+    await demo.createAccount("demo");
+    await demo.openSession({ mode: "A", durationSec: 600, permissions: [], capDrops: 0 });
+    expect(fake.accounts.has(rig.backend.counterparties.sink)).toBe(false);
+    await demo.runAction("payment");
+    expect(fake.accounts.has(rig.backend.counterparties.sink)).toBe(true);
+  });
+});
