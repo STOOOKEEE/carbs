@@ -17,7 +17,7 @@ On XRPL a key has all the authority of an account or none, and a public key that
 
 3. **A quantum exposure check and a guided migration** for any XRPL account, plus community tooling: a Device Management Kit Ledger adapter for `xrpl-connect`, the `@carbs/sessions` library and a `create-xrp` template.
 
-> **Status: architecture only.** The repository contains the two upstream bases (imported unmodified), the workspace skeleton, CI, the architecture and the specification. There is no amendment, no Ledger clear signing and no client code yet. This README says what exists and changes as it does.
+> **Status.** The two upstream bases are imported unmodified and the specification is [`FIANSO-SPEC.md`](FIANSO-SPEC.md). Built and tested so far, on `develop`: the client library `@carbs/sessions` (definitions from `server_definitions`, encoding, signatures, session builders, the quantum exposure check and migration, the passkey wallet) and `@carbs/ledger` (the device contract and a software double of the device); the web app (`apps/web`) with its five screens. **The screens run on a SIMULATED node and a SIMULATED Stax** (a striped badge marks every result that comes from them) **except the Quantum screen**, which reads the real AlphaNet and mainnet (read-only) and migrates a fresh AlphaNet account on the real node, with the device still simulated. The `SigningSessions` amendment, the Ledger clear signing and the ML-DSA root are in review or in progress in their own pull requests; until the amendment node exists, the Session, Actions and Attack screens cannot run against it. What is simulated, what was not run and what failed is dated in [`docs/DEVLOG.md`](docs/DEVLOG.md).
 
 ## Where to read
 
@@ -37,7 +37,7 @@ rippled/          XRPLF/rippled:alphanet, imported unmodified, then the amendmen
 ledger-app/       LedgerHQ/app-xrp, imported unmodified, then clear signing and ML-DSA
 packages/core/    @carbs/sessions: client library (sessions, signing, quantum exposure check)
 packages/ledger/  @carbs/ledger: Device Management Kit library (stretch)
-apps/web/         the demo application
+apps/web/         the web app: five screens, wallet entry, static build (docs/DEPLOY.md)
 infra/            standalone node configuration and the ledger closer
 docs/             architecture, decisions, DEVLOG, Ledger feedback
 ```
