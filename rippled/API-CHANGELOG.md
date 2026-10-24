@@ -22,6 +22,12 @@ API version 2 is available in `xrpld` version 2.0.0 and later. See [API-VERSION-
 
 This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-RPC requests, it is currently the default API version used when no `api_version` is specified.
 
+## Unreleased
+
+### Bugfixes
+
+- `submit`: With `fixPasskeyChallenge` enabled, a transaction signed by a passkey through WebAuthn (`PasskeySignature`) is no longer refused with `invalidTransaction` ("fails local checks: Invalid signature.") on servers where `char` is signed (x86-64, macOS on arm64). The WebAuthn challenge is now compared with the signing data as bytes; before, any signing data byte at or above `0x80`, such as the `0xF6` prefix of a P-256 `SigningPubKey`, made a valid assertion fail.
+
 ## XRP Ledger server version 3.4.0
 
 Version 3.4.0 is not yet released. These changes are available in the 3.4.0 beta releases.

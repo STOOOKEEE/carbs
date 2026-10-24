@@ -10,6 +10,9 @@
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/KeyType.h>
 
+#include <algorithm>
+#include <type_traits>
+
 namespace xrpl {
 
 /**
@@ -67,12 +70,76 @@ class PasskeyWebAuthn_test : public beast::unit_test::Suite
         BEAST_EXPECT(env.balance(bob) == XRP(1000));
     }
 
+    // A valid assertion: its challenge is the signing data, which holds the
+    // 0xF6 prefix of the P-256 SigningPubKey (a byte at or above 0x80).
+    void
+    testValidAssertion(FeatureBitset features)
+    {
+        testcase("valid assertion, with fixPasskeyChallenge");
+
+        using namespace test::jtx;
+
+        Env env{*this, envconfig(), features};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const passkey{"passkey", KeyType::P256};
+        env.fund(XRP(1000), alice, bob);
+        env.close();
+        env(passkeyListSet(alice, passkey, kPasskeyId));
+        env.close();
+
+        auto const signed100 = env.jt(pay(alice, bob, XRP(100)), WebAuthnSig(passkey, kPasskeyId));
+        auto const data = signingData(signed100.jv);
+        BEAST_EXPECT(std::any_of(data.begin(), data.end(), [](auto b) { return b >= 0x80; }));
+
+        env(pay(alice, bob, XRP(100)), WebAuthnSig(passkey, kPasskeyId));
+        env.close();
+        BEAST_EXPECT(env.balance(bob) == XRP(1100));
+    }
+
+    // Without the fix, the same valid assertion is refused where `char` is
+    // signed (x86-64, macOS on arm64) and accepted where it is unsigned.
+    void
+    testWithoutFix(FeatureBitset features)
+    {
+        testcase("valid assertion, without fixPasskeyChallenge");
+
+        using namespace test::jtx;
+
+        Env env{*this, envconfig(), features - fixPasskeyChallenge};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const passkey{"passkey", KeyType::P256};
+        env.fund(XRP(1000), alice, bob);
+        env.close();
+        env(passkeyListSet(alice, passkey, kPasskeyId));
+        env.close();
+
+        if constexpr (std::is_signed_v<char>)
+        {
+            env(pay(alice, bob, XRP(100)),
+                WebAuthnSig(passkey, kPasskeyId),
+                Rpc("invalidTransaction", "fails local checks: Invalid signature."));
+            env.close();
+            BEAST_EXPECT(env.balance(bob) == XRP(1000));
+        }
+        else
+        {
+            env(pay(alice, bob, XRP(100)), WebAuthnSig(passkey, kPasskeyId));
+            env.close();
+            BEAST_EXPECT(env.balance(bob) == XRP(1100));
+        }
+    }
+
 public:
     void
     run() override
     {
         using namespace test::jtx;
-        testBadAssertions(testableAmendments());
+        auto const all = testableAmendments();
+        testBadAssertions(all);
+        testValidAssertion(all);
+        testWithoutFix(all);
     }
 };
 
