@@ -6,7 +6,7 @@ The carbs web app: five screens (Account, Session, Actions, Attack, Quantum) ove
 
 ```sh
 pnpm install
-pnpm --filter web dev            # http://localhost:3000
+pnpm --filter web dev            # http://localhost:3000 (Chrome: the Ledger path needs WebHID)
 pnpm --filter web typecheck
 pnpm --filter web test           # node tests and component tests (vitest, happy-dom)
 pnpm --filter web generate       # static site in apps/web/.output/public (see docs/DEPLOY.md)
@@ -55,6 +55,7 @@ lib/ports.ts             Node, Device, Wallet, Exposure interfaces
 lib/sim/                 the simulated implementations and their tests
 lib/demo.ts, migration.ts  the stores behind the screens (state is read back from the node)
 layouts/, pages/         Nuxt routing: /, /account, /session, /actions, /attack, /quantum
+lib/networks.ts, csp.ts  AlphaNet, Local node, Mainnet (read-only); the CSP is built from them
 server/                  Nitro: moves the inline config script into a file (CSP script-src 'self')
 ```
 

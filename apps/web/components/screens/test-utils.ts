@@ -1,11 +1,21 @@
 import { flushPromises, mount, RouterLinkStub } from "@vue/test-utils";
 import type { Component } from "vue";
 import { createAppContext, type AppContext } from "~/lib/app-context";
-import { BACKEND_KEY, DEMO_KEY, DEVICE_PROMPT_KEY, MIGRATION_KEY } from "~/lib/context";
+import type { NetworkStoreOptions } from "~/lib/network-store";
+import {
+  BACKEND_KEY,
+  DEMO_KEY,
+  DEVICE_PROMPT_KEY,
+  MIGRATION_KEY,
+  NETWORK_KEY,
+} from "~/lib/context";
 
 /** Mount a screen on a fresh SIMULATED backend whose device approves every review. */
-export function mountScreen(component: Component, options: { autoApprove?: boolean } = {}) {
-  const ctx: AppContext = createAppContext();
+export function mountScreen(
+  component: Component,
+  options: { autoApprove?: boolean; network?: NetworkStoreOptions } = {},
+) {
+  const ctx: AppContext = createAppContext(options.network);
   if (options.autoApprove !== false) ctx.backend.simDevice.setApprover(async () => true);
   const wrapper = mount(component, {
     global: {
@@ -16,6 +26,7 @@ export function mountScreen(component: Component, options: { autoApprove?: boole
           app.provide(DEMO_KEY, ctx.demo);
           app.provide(MIGRATION_KEY, ctx.migration);
           app.provide(DEVICE_PROMPT_KEY, ctx.prompt);
+          app.provide(NETWORK_KEY, ctx.network);
         },
       ],
     },
