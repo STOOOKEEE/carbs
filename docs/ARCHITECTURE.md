@@ -21,7 +21,7 @@ graph TB
     subgraph Browser
         W["apps/web<br/>Account, Session, Actions, Attack"]
         C["packages/core (@carbs/sessions)<br/>definitions, encoding, session keys, node client"]
-        L["packages/ledger (@carbs/ledger, stretch)<br/>DMK preview, custom APDUs"]
+        L["packages/ledger (@carbs/ledger)<br/>DMK preview, custom APDUs for ML-DSA"]
         K["WebCrypto P-256 session key<br/>non-extractible"]
         P["Passkey (WebAuthn)"]
     end
@@ -124,4 +124,4 @@ The quantum exposure check (`packages/core/src/quantum`) is tested with recorded
 
 ## Decisions
 
-See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008), and the licence (0009).
+See [`docs/adr/`](adr/): single repository with unmodified imports (0001), the front from the `create-xrp` template (0007), the session predicate replaces `checkSign` (0002), Device Management Kit only (0003), non-extractible P-256 session keys (0004), opening is one ordinary signature (0005), relative duration in the transaction and absolute expiry in the entry (0006), a post-quantum root on the device with P-256 or ML-DSA session keys (0008), and the licence (0009).
