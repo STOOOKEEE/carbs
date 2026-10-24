@@ -10,7 +10,8 @@
     "serve": "node server/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "session-demo": "node scripts/session-demo.ts"
+    "session-demo": "node scripts/session-demo.ts",
+    "agent": "node scripts/agent/agent.ts"
   },
   "dependencies": {
     "ripple-binary-codec": "2.11.0",
