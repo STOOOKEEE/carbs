@@ -5,18 +5,23 @@
 #include <test/jtx/amount.h>
 #include <test/jtx/batch.h>
 #include <test/jtx/delegate.h>
+#include <test/jtx/delivermin.h>
 #include <test/jtx/fee.h>
 #include <test/jtx/flags.h>
+#include <test/jtx/invoice_id.h>
 #include <test/jtx/last_ledger_sequence.h>
+#include <test/jtx/memo.h>
 #include <test/jtx/multisign.h>
 #include <test/jtx/offer.h>
 #include <test/jtx/owners.h>
 #include <test/jtx/pay.h>
 #include <test/jtx/regkey.h>
+#include <test/jtx/sendmax.h>
 #include <test/jtx/session.h>
 #include <test/jtx/sig.h>
 #include <test/jtx/sponsor.h>
 #include <test/jtx/subscription.h>
+#include <test/jtx/tag.h>
 #include <test/jtx/ter.h>
 #include <test/jtx/ticket.h>
 #include <test/jtx/trust.h>
@@ -36,6 +41,7 @@
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/Serializer.h>
+#include <xrpl/protocol/SystemParameters.h>
 #include <xrpl/protocol/TxFlags.h>
 #include <xrpl/protocol/TxFormats.h>
 #include <xrpl/protocol/jss.h>
@@ -323,6 +329,34 @@ class SigningSessions_test : public beast::unit_test::Suite
         jt.stx->add(s);
         auto const jr = env.rpc("submit", strHex(s.slice()));
         BEAST_EXPECT(jr[jss::result][jss::error] == "invalidTransaction");
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+    }
+
+    // A session opened, and closed, by ticket: the owner count gains the
+    // session and loses the ticket, which the invariant allows.
+    void
+    testByTicket(FeatureBitset features)
+    {
+        testcase("open and close by ticket");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, key{"key"};
+        env.fund(XRP(10000), alice);
+        env.close();
+        env(ticket::create(alice, 2));
+        env.close();
+        auto const first = env.seq(alice) - 2;
+        env.require(Owners(alice, 2));
+
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions), ticket::Use(first));
+        env.close();
+        env.require(Owners(alice, 2));
+        BEAST_EXPECT(sessionEntry(env, alice, key));
+
+        env(session::del(alice, key), ticket::Use(first + 1));
+        env.close();
+        env.require(Owners(alice, 0));
         BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
@@ -925,27 +959,238 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
-    // Mode C signs nothing until its whitelist and its accounting land (N5).
-    void
-    testModeCNotYet(FeatureBitset features)
+    static XRPAmount
+    sessionSpent(jtx::Env& env, jtx::Account const& account, jtx::Account const& key)
     {
-        testcase("mode C before its accounting");
+        auto const sle = env.le(keylet::signingSession(account.id(), key.id()));
+        return sle ? (*sle)[sfSessionSpent].xrp() : XRPAmount{-1};
+    }
+
+    // Case 11 and 13 (remaining cap): Fee + Amount fits the remaining cap,
+    // one drop more is refused with no fee; SessionSpent counts the fee and
+    // the amount. Case 18 in mode C: the own close is exempt from the cap,
+    // not from the fee ceiling.
+    void
+    testModeC(FeatureBitset features)
+    {
+        testcase("mode C");
         using namespace jtx;
 
         Env env{*this, features};
         Account const alice{"alice"}, bob{"bob"}, key{"key"};
         env.fund(XRP(10000), alice, bob);
         env.close();
-        env(session::set(alice, key, 600), session::Cap(XRP(100)));
+        env(session::set(alice, key, 600), session::Cap(XRP(10)));
         env.close();
-        env(pay(alice, bob, XRP(1)),
+        auto const fee = env.current()->fees().base;
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        // One drop above the remaining cap.
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(10) - fee + drops(1)), Sig(key), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(0));
+
+        // A payment with a destination tag and a memo, then exactly the rest.
+        env(pay(alice, bob, XRP(4)), Dtag(7), Memo("note", "text/plain", ""), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(4) + fee);
+        env(pay(alice, bob, XRP(6) - fee * 2), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(10));
+        BEAST_EXPECT(env.balance(alice) == balance - XRP(10));
+
+        // Nothing is left, not even a fee: refused with no fee.
+        env(pay(alice, bob, drops(1)), Sig(key), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance - XRP(10));
+
+        // The own close: exempt from the cap, not from the fee ceiling.
+        auto const ceiling = fee + fee * kSessionFeeMultiple;
+        env(session::del(alice, key),
             Sig(key),
-            LastLedgerSeq(env.current()->seq() + 10),
-            Ter(tefSESSION_TX_NOT_ALLOWED));
-        // The own close is eligible in every mode.
-        env(session::del(alice, key), Sig(key), LastLedgerSeq(env.current()->seq() + 10));
+            Fee(ceiling + drops(1)),
+            lls(),
+            Ter(tefSESSION_LIMIT));
+        env(session::del(alice, key), Sig(key), lls());
         env.close();
         BEAST_EXPECT(!sessionEntry(env, alice, key));
+        env.require(Owners(alice, 0));
+    }
+
+    // Case 12: mode C signs a direct XRP Payment and nothing else.
+    void
+    testModeCShapes(FeatureBitset features)
+    {
+        testcase("mode C shapes");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const gw{"gw"}, alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), gw, alice, bob);
+        env.close();
+        auto const usd = gw["USD"];
+        env(trust(alice, usd(1000)));
+        env(trust(bob, usd(1000)));
+        env(pay(gw, alice, usd(100)));
+        env(session::set(alice, key, 600), session::Cap(XRP(1000)));
+        env.close();
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        auto const balance = env.balance(alice);
+
+        // An IOU amount.
+        env(pay(alice, bob, usd(1)), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        // SendMax, alone, with partial payment, with DeliverMin, with Paths
+        // (an XRP amount paid with an IOU, which Payment's preflight accepts).
+        env(pay(alice, bob, XRP(1)),
+            Sendmax(usd(1)),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(pay(alice, bob, XRP(1)),
+            Sendmax(usd(1)),
+            Txflags(tfPartialPayment),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(pay(alice, bob, XRP(1)),
+            Sendmax(usd(1)),
+            Txflags(tfPartialPayment),
+            DeliverMin(XRP(0.5)),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        {
+            auto jv = pay(alice, bob, XRP(1));
+            jv[sfSendMax.jsonName] = usd(1).value().getJson(JsonOptions::Values::None);
+            json::Value step;
+            step[jss::currency] = "USD";
+            step[jss::issuer] = gw.human();
+            jv[sfPaths.jsonName][0u][0u] = step;
+            env(jv, Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        }
+        // Flags other than tfFullyCanonicalSig (Payment's preflight already
+        // refuses tfNoRippleDirect and tfLimitQuality on an XRP payment).
+        env(pay(alice, bob, XRP(1)),
+            Txflags(tfSponsorCreatedAccount),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        // Any other field of Payment.
+        env(pay(alice, bob, XRP(1)),
+            InvoiceId(uint256{1}),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        // Any other type.
+        env(ticket::create(alice, 1), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(trust(alice, usd(10)), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(0));
+
+        // The whitelisted shape, with tfFullyCanonicalSig.
+        env(pay(alice, bob, XRP(1)), Txflags(tfFullyCanonicalSig), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(1) + env.current()->fees().base);
+    }
+
+    // The anti-drain loop of N5 (spec 10.1): a leaked mode-C key that only
+    // sends payments failing with a fee-claiming tec burns fees until the
+    // cap stops it; the account loses no more than the cap.
+    void
+    testModeCAntiDrain(FeatureBitset features)
+    {
+        testcase("mode C anti-drain loop");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, carol{"carol"}, key{"key"};
+        env.fund(XRP(10000), alice);
+        env.close();
+        auto const fee = env.current()->fees().base;
+        auto const cap = fee * 10 + drops(1);
+        env(session::set(alice, key, 600), session::Cap(cap));
+        env.close();
+        auto const balance = env.balance(alice);
+
+        int burnt = 0;
+        while (true)
+        {
+            // One drop to an account that does not exist: tecNO_DST_INSUF_XRP.
+            auto const remaining = cap - sessionSpent(env, alice, key);
+            bool const fits = fee + drops(1) <= remaining;
+            env(pay(alice, carol, drops(1)),
+                Sig(key),
+                LastLedgerSeq(env.current()->seq() + 10),
+                Ter(fits ? TER{tecNO_DST_INSUF_XRP} : TER{tefSESSION_LIMIT}));
+            env.close();
+            if (!fits)
+                break;
+            ++burnt;
+            BEAST_EXPECT(burnt <= 10);
+        }
+        BEAST_EXPECT(burnt == 10);
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 10);
+        BEAST_EXPECT(balance - env.balance(alice) == fee * 10);
+        BEAST_EXPECT(balance - env.balance(alice) <= cap);
+    }
+
+    // Case 23 and 13: every path that claims a fee counts it, the amount only
+    // on success; a payment by ticket applies.
+    void
+    testModeCAccounting(FeatureBitset features)
+    {
+        testcase("mode C accounting");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, carol{"carol"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), session::Cap(XRP(100000)));
+        env.close();
+        auto const fee = env.current()->fees().base;
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        // A tec from preclaim: a new account below the reserve.
+        env(pay(alice, carol, XRP(1)), Sig(key), lls(), Ter(tecNO_DST_INSUF_XRP));
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee);
+
+        // A tec from doApply: more than alice can spend.
+        env(pay(alice, bob, XRP(20000)), Sig(key), lls(), Ter(tecUNFUNDED_PAYMENT));
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 2);
+
+        // A payment by ticket applies and consumes the ticket.
+        env(ticket::create(alice, 1));
+        env.close();
+        auto const ticketSeq = env.seq(alice) - 1;
+        env.require(Owners(alice, 2));
+        env(pay(alice, bob, XRP(1)), ticket::Use(ticketSeq), Sig(key), lls());
+        env.close();
+        env.require(Owners(alice, 1));
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 3 + XRP(1));
+
+        // The fee-claim reset: the destination holds more XRP than exists, so
+        // the first invariant pass fails; after the reset only the fee
+        // remains, and it is counted again. The state is written into the
+        // open ledger, so no ledger closes before the checks.
+        env.app().getOpenLedger().modify([&](OpenView& view, beast::Journal) {
+            auto const sle = view.read(keylet::account(bob.id()));
+            if (!sle)
+                return false;
+            auto replacement = std::make_shared<SLE>(*sle);
+            (*replacement)[sfBalance] = STAmount{kInitialXrp + drops(1)};
+            view.rawReplace(replacement);
+            return true;
+        });
+        auto const before = env.balance(alice);
+        env(pay(alice, bob, XRP(1)), Sig(key), lls(), Ter(tecINVARIANT_FAILED));
+        BEAST_EXPECT(env.balance(alice) == before - fee);
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 4 + XRP(1));
     }
 
     // Case 17: a session key later made the RegularKey stays bounded until its
@@ -1352,6 +1597,7 @@ public:
         testReserve(all);
         testDelete(all);
         testMptCap(all);
+        testByTicket(all);
         testAccountDelete(all);
         testRpc(all);
         testSponsorship(all);
@@ -1369,7 +1615,10 @@ public:
         testNotSessionShapes(all);
         testNotSessionShapesMore(all);
         testSetWithDelegate(all);
-        testModeCNotYet(all);
+        testModeC(all);
+        testModeCShapes(all);
+        testModeCAccounting(all);
+        testModeCAntiDrain(all);
         testRegularKeyAndLastLedger(all);
         testModeP(all);
         testKeyTypes(all);

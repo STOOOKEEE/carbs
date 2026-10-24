@@ -1105,10 +1105,9 @@ Transactor::checkSession(
                     return tefSESSION_TX_NOT_ALLOWED;
             }
         }
-        else
+        else if (!isSessionCapPayment(ctx.tx))
         {
-            // Mode C signs nothing until its whitelist and its accounting
-            // land (N5).
+            // Mode C: a direct XRP payment, nothing else.
             return tefSESSION_TX_NOT_ALLOWED;
         }
     }
@@ -1125,10 +1124,39 @@ Transactor::checkSession(
 
     // 4. Fee ceiling, the own close included: what the type requires, plus a
     // bounded margin.
-    if (ctx.tx[sfFee].xrp() > baseFee() + ctx.view.fees().base * kSessionFeeMultiple)
+    auto const fee = ctx.tx[sfFee].xrp();
+    if (fee > baseFee() + ctx.view.fees().base * kSessionFeeMultiple)
         return tefSESSION_LIMIT;
 
+    // 5. The cap, in mode C, except for the own close: what the transaction
+    // can take from the account must fit what is left of the cap.
+    if (auto const cap = (*session)[~sfSessionCap]; cap && !ownClose)
+    {
+        auto const remaining = cap->xrp() - (*session)[sfSessionSpent].xrp();
+        if (fee + ctx.tx[sfAmount].xrp() > remaining)
+            return tefSESSION_LIMIT;
+    }
+
     return tesSUCCESS;
+}
+
+void
+Transactor::chargeSession(TER result, XRPAmount fee)
+{
+    if (!sessionKeylet_ || sessionOwnClose_)
+        return;
+
+    // Only a session with a cap counts; it may have been deleted.
+    auto const sle = view().peek(*sessionKeylet_);
+    if (!sle || !sle->isFieldPresent(sfSessionCap))
+        return;
+
+    auto charge = fee;
+    if (isTesSuccess(result) && ctx_.tx.getTxnType() == ttPAYMENT)
+        charge += ctx_.tx[sfAmount].xrp();
+
+    sle->setFieldAmount(sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
+    view().update(sle);
 }
 
 NotTEC
@@ -1803,6 +1831,10 @@ Transactor::operator()()
         trapTransaction(*trap);
     }
 
+    // Before apply(): an own close erases the session.
+    sessionKeylet_ = signingSessionOf(view(), ctx_.tx);
+    sessionOwnClose_ = sessionKeylet_ && isSessionOwnClose(ctx_.tx);
+
     auto result = ctx_.preclaimResult;
     if (isTesSuccess(result))
         result = apply();
@@ -1850,6 +1882,8 @@ Transactor::operator()()
     if (!canApply)
         return logger(result, canApply);
 
+    chargeSession(result, fee);
+
     // First invariant pass: both protocol and transaction-specific
     // checks run against the transaction's tentative outcome. If it
     // does not return tecINVARIANT_FAILED, we can proceed to apply the
@@ -1865,6 +1899,9 @@ Transactor::operator()()
             result = resetResult.first;
 
         fee = resetResult.second;
+
+        // The reset erased the first count: count the fee again.
+        chargeSession(result, fee);
 
         // Re-check invariants against the post-reset (fee-claim only)
         // state. The transaction's effects are gone, so the

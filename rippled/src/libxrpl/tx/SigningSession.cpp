@@ -10,6 +10,7 @@
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/Rules.h>
 #include <xrpl/protocol/SField.h>
+#include <xrpl/protocol/STAmount.h>
 #include <xrpl/protocol/STLedgerEntry.h>
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TxFlags.h>
@@ -17,6 +18,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <unordered_set>
 
 namespace xrpl {
 
@@ -52,10 +54,10 @@ isSessionEligibleType(TxType type, Rules const& rules)
 }
 
 std::optional<Keylet>
-signingSessionOf(ReadView const& view, STTx const& tx)
+sessionKeyletOf(Rules const& rules, STTx const& tx)
 {
     // No ledger read for any transaction before the amendment is enabled.
-    if (!view.rules().enabled(featureSigningSessions))
+    if (!rules.enabled(featureSigningSessions))
         return std::nullopt;
 
     // Shapes that follow the existing rules: delegated, sponsored and
@@ -69,8 +71,14 @@ signingSessionOf(ReadView const& view, STTx const& tx)
     if (!signer)
         return std::nullopt;
 
-    auto const keylet = keylet::signingSession(tx.getAccountID(sfAccount), *signer);
-    if (!view.exists(keylet))
+    return keylet::signingSession(tx.getAccountID(sfAccount), *signer);
+}
+
+std::optional<Keylet>
+signingSessionOf(ReadView const& view, STTx const& tx)
+{
+    auto const keylet = sessionKeyletOf(view.rules(), tx);
+    if (!keylet || !view.exists(*keylet))
         return std::nullopt;
 
     return keylet;
@@ -90,6 +98,41 @@ isSessionOwnClose(STTx const& tx)
 
     auto const signer = singleSigner(tx);
     return signer && *signer == tx.getAccountID(sfSessionKey);
+}
+
+bool
+isSessionCapPayment(STTx const& tx)
+{
+    if (tx.getTxnType() != ttPAYMENT)
+        return false;
+
+    if ((tx.getFlags() & ~tfFullyCanonicalSig) != 0)
+        return false;
+
+    if (!isXRP(tx[sfAmount]))
+        return false;
+
+    static std::unordered_set<SField const*> const kCommon = [] {
+        std::unordered_set<SField const*> common;
+        for (auto const& element : TxFormats::getCommonFields())
+            common.insert(&element.sField());
+        return common;
+    }();
+
+    for (auto const& field : tx)
+    {
+        if (field.getSType() == STI_NOTPRESENT)
+            continue;
+
+        auto const& name = field.getFName();
+        if (name == sfDestination || name == sfDestinationTag || name == sfAmount ||
+            kCommon.contains(&name))
+            continue;
+
+        return false;
+    }
+
+    return true;
 }
 
 bool
