@@ -10,6 +10,7 @@ import { inject, injectable } from "inversify";
 import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceActionTypes";
 import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
 import { type GetPqPublicKeyDAReturnType } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
+import { type GetSessionPolicyDAReturnType } from "@api/app-binder/GetSessionPolicyDeviceActionTypes";
 import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
 import { type SignTransactionPqDAReturnType } from "@api/app-binder/SignTransactionPqDeviceActionTypes";
 import { type Curve } from "@api/model/Curve";
@@ -19,6 +20,7 @@ import { externalTypes } from "@internal/externalTypes";
 import { GetAppConfigCommand } from "./command/GetAppConfigCommand";
 import { GetAddressDeviceActionFactory } from "./device-action/GetAddressDeviceActionFactory";
 import { GetPqPublicKeyDeviceActionFactory } from "./device-action/GetPqPublicKeyDeviceActionFactory";
+import { GetSessionPolicyDeviceActionFactory } from "./device-action/GetSessionPolicyDeviceActionFactory";
 import { SignTransactionDeviceActionFactory } from "./device-action/SignTransactionDeviceActionFactory";
 import { SignTransactionPqDeviceActionFactory } from "./device-action/SignTransactionPqDeviceActionFactory";
 
@@ -104,6 +106,19 @@ export class XrpAppBinder {
         ...args,
         loggerFactory: this.dmkLoggerFactory,
       }),
+    });
+  }
+
+  /**
+   * Reads the session policy set on the device through
+   * {@link GetSessionPolicyDeviceActionFactory}.
+   */
+  getSessionPolicy(args: {
+    skipOpenApp: boolean;
+  }): GetSessionPolicyDAReturnType {
+    return this.dmk.executeDeviceAction({
+      sessionId: this.sessionId,
+      deviceAction: GetSessionPolicyDeviceActionFactory(args),
     });
   }
 }

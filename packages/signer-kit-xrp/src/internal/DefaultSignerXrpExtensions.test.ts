@@ -2,10 +2,12 @@ import {
   CallTaskInAppDeviceAction,
   type DeviceManagementKit,
   type DeviceSessionId,
+  SendCommandInAppDeviceAction,
 } from "@ledgerhq/device-management-kit";
 import { from } from "rxjs";
 import { vi } from "vitest";
 
+import { GetSessionPolicyCommand } from "@internal/app-binder/command/GetSessionPolicyCommand";
 import { SignTransactionPqDeviceAction } from "@internal/app-binder/device-action/SignTransactionPq/SignTransactionPqDeviceAction";
 
 import { DefaultSignerXrp } from "./DefaultSignerXrp";
@@ -95,6 +97,32 @@ describe("DefaultSignerXrp extensions", () => {
       );
       expect(callArgs.deviceAction.input.transaction).toBe(signingData);
       expect(callArgs.deviceAction.input.skipOpenApp).toBe(true);
+    });
+  });
+
+  describe("getSessionPolicy", () => {
+    it("should delegate to the use case and return its result", () => {
+      // GIVEN
+      const { executeDeviceAction, expectedResult, signer } = setup();
+
+      // WHEN
+      const result = signer.getSessionPolicy();
+
+      // THEN
+      expect(result).toBe(expectedResult);
+      const callArgs = executeDeviceAction.mock.calls[0]![0] as {
+        sessionId: DeviceSessionId;
+        deviceAction: {
+          input: { command: unknown; skipOpenApp: boolean };
+        };
+      };
+      expect(callArgs.deviceAction).toBeInstanceOf(
+        SendCommandInAppDeviceAction,
+      );
+      expect(callArgs.deviceAction.input.command).toBeInstanceOf(
+        GetSessionPolicyCommand,
+      );
+      expect(callArgs.deviceAction.input.skipOpenApp).toBe(false);
     });
   });
 });

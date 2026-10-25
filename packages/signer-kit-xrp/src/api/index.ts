@@ -22,6 +22,13 @@ export {
   type GetPqPublicKeyDAOutput,
   type GetPqPublicKeyDAReturnType,
 } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
+export { GetSessionPolicyDeviceActionFactory } from "@api/app-binder/GetSessionPolicyDeviceActionFactory";
+export {
+  type GetSessionPolicyDAError,
+  type GetSessionPolicyDAIntermediateValue,
+  type GetSessionPolicyDAOutput,
+  type GetSessionPolicyDAReturnType,
+} from "@api/app-binder/GetSessionPolicyDeviceActionTypes";
 export { SignTransactionDeviceActionFactory } from "@api/app-binder/SignTransactionDeviceActionFactory";
 export {
   type SignTransactionDAError,
@@ -49,6 +56,14 @@ export { type PqPublicKey } from "@api/model/PqPublicKey";
 export { type PqPublicKeyOptions } from "@api/model/PqPublicKeyOptions";
 export { type PqSignature } from "@api/model/PqSignature";
 export { type PqTransactionOptions } from "@api/model/PqTransactionOptions";
+export {
+  SESSION_PROFILE_NAMES,
+  type SessionMode,
+  type SessionPolicy,
+  type SessionProfileName,
+  type SessionProfilePolicy,
+} from "@api/model/SessionPolicy";
+export { type SessionPolicyOptions } from "@api/model/SessionPolicyOptions";
 export { type Signature } from "@api/model/Signature";
 export { type TransactionOptions } from "@api/model/TransactionOptions";
 export { type SignerXrp } from "@api/SignerXrp";

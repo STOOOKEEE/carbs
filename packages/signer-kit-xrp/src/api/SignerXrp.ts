@@ -1,12 +1,14 @@
 import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceActionTypes";
 import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
 import { type GetPqPublicKeyDAReturnType } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
+import { type GetSessionPolicyDAReturnType } from "@api/app-binder/GetSessionPolicyDeviceActionTypes";
 import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
 import { type SignTransactionPqDAReturnType } from "@api/app-binder/SignTransactionPqDeviceActionTypes";
 import { type AddressOptions } from "@api/model/AddressOptions";
 import { type AppConfigOptions } from "@api/model/AppConfigOptions";
 import { type PqPublicKeyOptions } from "@api/model/PqPublicKeyOptions";
 import { type PqTransactionOptions } from "@api/model/PqTransactionOptions";
+import { type SessionPolicyOptions } from "@api/model/SessionPolicyOptions";
 import { type TransactionOptions } from "@api/model/TransactionOptions";
 
 export interface SignerXrp {
@@ -51,4 +53,17 @@ export interface SignerXrp {
     signingData: Uint8Array,
     options?: PqTransactionOptions,
   ) => SignTransactionPqDAReturnType;
+
+  /**
+   * Reads the session policy the user set on the device (`INS 0x08`): the
+   * default limits on the signing sessions the device agrees to open, and the
+   * limits of each session profile. The host can read it, never write it.
+   * Nothing is shown on the device.
+   *
+   * Requires an XRP app that supports signing sessions (the carbs fork of
+   * app-xrp); another app answers `6d00`.
+   */
+  getSessionPolicy: (
+    options?: SessionPolicyOptions,
+  ) => GetSessionPolicyDAReturnType;
 }

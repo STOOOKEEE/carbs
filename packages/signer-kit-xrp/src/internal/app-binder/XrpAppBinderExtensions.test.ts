@@ -3,11 +3,13 @@ import {
   type DeviceManagementKit,
   type DeviceSessionId,
   type LoggerPublisherService,
+  SendCommandInAppDeviceAction,
   UserInteractionRequired,
 } from "@ledgerhq/device-management-kit";
 import { from } from "rxjs";
 import { vi } from "vitest";
 
+import { GetSessionPolicyCommand } from "@internal/app-binder/command/GetSessionPolicyCommand";
 import { APP_NAME } from "@internal/app-binder/constants";
 import { SignTransactionPqDeviceAction } from "@internal/app-binder/device-action/SignTransactionPq/SignTransactionPqDeviceAction";
 import { XrpAppBinder } from "@internal/app-binder/XrpAppBinder";
@@ -106,6 +108,36 @@ describe("XrpAppBinder extensions", () => {
       expect(callArgs.deviceAction.input.transaction).toBe(signingData);
       expect(callArgs.deviceAction.input.skipOpenApp).toBe(false);
       expect(callArgs.deviceAction.input.loggerFactory).toBe(loggerFactory);
+    });
+  });
+
+  describe("getSessionPolicy", () => {
+    it("should execute a SendCommandInAppDeviceAction wrapping GetSessionPolicyCommand", () => {
+      // GIVEN
+      const { executeDeviceAction, expectedResult, binder } = setup();
+
+      // WHEN
+      const result = binder.getSessionPolicy({ skipOpenApp: true });
+
+      // THEN
+      expect(result).toBe(expectedResult);
+      const callArgs = executeDeviceAction.mock.calls[0]![0] as {
+        sessionId: DeviceSessionId;
+        deviceAction: SendCommandInAppDeviceAction<
+          unknown,
+          void,
+          unknown,
+          UserInteractionRequired.None
+        >;
+      };
+      expect(callArgs.sessionId).toBe("test-session-id");
+      expect(callArgs.deviceAction).toBeInstanceOf(
+        SendCommandInAppDeviceAction,
+      );
+      expect(callArgs.deviceAction.input.command).toBeInstanceOf(
+        GetSessionPolicyCommand,
+      );
+      expect(callArgs.deviceAction.input.skipOpenApp).toBe(true);
     });
   });
 });
