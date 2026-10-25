@@ -5,6 +5,8 @@
 import { generateSeed } from "ripple-keypairs";
 
 import { type Connection, requestFunding, signAndSubmitWithPasskey } from "./account.ts";
+import { batchInnerResults } from "./batch-results.ts";
+import { TF_ALL_OR_NOTHING, TF_INDEPENDENT, batchGroups, batchTx } from "./batch.ts";
 import { element, guarded } from "./dom.ts";
 import {
   type SubmittedTx,
@@ -16,7 +18,7 @@ import {
   submitAndWait,
 } from "./ledger.ts";
 import { signAndSubmitWithStax, staxAccount } from "./ledger-panel.ts";
-import { log, logError } from "./log.ts";
+import { log, logError, logInnerResults } from "./log.ts";
 import { RpcError, type RpcResult } from "./rpc.ts";
 import {
   type SessionMode,
@@ -73,6 +75,10 @@ const ui = {
   maxPerTx: element("session-max-per-tx", HTMLInputElement),
   witness: element("session-witness", HTMLInputElement),
   open: element("session-open", HTMLButtonElement),
+  batchDestination: element("session-batch-destination", HTMLInputElement),
+  batchAmount: element("session-batch-amount", HTMLInputElement),
+  openBatch: element("session-open-batch", HTMLButtonElement),
+  revokeAll: element("session-revoke-all", HTMLButtonElement),
   payForm: element("session-pay-form", HTMLFormElement),
   payDestination: element("session-pay-destination", HTMLInputElement),
   payAmount: element("session-pay-amount", HTMLInputElement),
@@ -80,6 +86,7 @@ const ui = {
   attackAccountSet: element("attack-account-set", HTMLButtonElement),
   attackPerTx: element("attack-per-tx", HTMLButtonElement),
   attackNoWitness: element("attack-no-witness", HTMLButtonElement),
+  attackBatch: element("attack-batch", HTMLButtonElement),
   close: element("session-close", HTMLButtonElement),
   attackAfterClose: element("attack-after-close", HTMLButtonElement),
 };
@@ -147,8 +154,8 @@ async function sessionEntry(
   }
 }
 
-function destination(): string {
-  const value = ui.payDestination.value.trim();
+function destination(input: HTMLInputElement = ui.payDestination): string {
+  const value = input.value.trim();
   if (value === "") throw new Error("fill in a destination first");
   return value;
 }
@@ -178,17 +185,37 @@ async function submitWithSessionKey(
   return submitAndWait(connection.node, connection.defs, final);
 }
 
-async function openSession(
-  connection: Connection,
-  wallet: StoredWallet | undefined,
-): Promise<void> {
-  const opener = ui.opener.value === "stax" ? "stax" : "passkey";
-  const owner = opener === "passkey" ? wallet?.address : staxAccount()?.address;
-  if (owner === undefined)
-    throw new Error(
-      opener === "passkey" ? "create the passkey account first" : "connect the Stax first",
-    );
+/** The account that opens or revokes sessions, as chosen in "Ouvrir avec", and how it signs. */
+interface OwnerSigner {
+  owner: string;
+  openedBy: OpenerLabel;
+  /** What the user must do to validate, for the journal. */
+  prompt: string;
+  signAndSubmit: (tx: TxJson) => Promise<SubmittedTx>;
+}
 
+function ownerSigner(connection: Connection, wallet: StoredWallet | undefined): OwnerSigner {
+  if (ui.opener.value !== "stax") {
+    if (wallet === undefined) throw new Error("create the passkey account first");
+    return {
+      owner: wallet.address,
+      openedBy: OPENER_LABELS.passkey,
+      prompt: "validez avec Touch ID",
+      signAndSubmit: (tx) => signAndSubmitWithPasskey(connection, wallet, tx),
+    };
+  }
+  const stax = staxAccount();
+  if (stax === undefined) throw new Error("connect the Stax first");
+  return {
+    owner: stax.address,
+    openedBy: stax.postQuantum ? OPENER_LABELS.staxPostQuantum : OPENER_LABELS.staxClassic,
+    prompt: "relisez sur la Stax",
+    signAndSubmit: (tx) => signAndSubmitWithStax(connection, tx, stax.postQuantum),
+  };
+}
+
+/** The rules set in the panel; a witness, when asked for, is created and funded here. */
+async function panelRules(): Promise<{ rules: SessionRules; witnessSeed: string | undefined }> {
   const durationSeconds = positiveNumber(ui.duration, "the duration");
   const mode = selectedMode();
   const rules: SessionRules =
@@ -204,38 +231,65 @@ async function openSession(
       : mode === "all"
         ? { mode, durationSeconds }
         : { mode, durationSeconds, permissions: selectedPermissions() };
-  let witnessSeed: string | undefined;
-  if (ui.witness.checked) {
-    witnessSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
-    const witnessAddress = addressOfSeed(witnessSeed);
-    await requestFunding(witnessAddress);
-    log(`Témoin créé et financé par le faucet : ${witnessAddress}`);
-    rules.witness = witnessAddress;
-  }
+  if (!ui.witness.checked) return { rules, witnessSeed: undefined };
+  const witnessSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
+  const witnessAddress = addressOfSeed(witnessSeed);
+  await requestFunding(witnessAddress);
+  log(`Témoin créé et financé par le faucet : ${witnessAddress}`);
+  rules.witness = witnessAddress;
+  return { rules, witnessSeed };
+}
 
+/** Reads what a validated Batch applied and journals each inner transaction. */
+async function logBatch(
+  connection: Connection,
+  label: string,
+  submitted: SubmittedTx,
+): Promise<Array<string | undefined>> {
+  log(`${label} (Batch externe) :`, submitted);
+  if (submitted.result !== "tesSUCCESS") return [];
+  const inner = await batchInnerResults(connection.node, submitted.hash);
+  logInnerResults(inner);
+  return inner.map((tx) => tx.applied?.result);
+}
+
+/**
+ * Opens a session with the panel's rules, signed by the owner. With a first payment, the opening
+ * and the payment travel in one all-or-nothing Batch: one validation for both.
+ */
+async function openSession(
+  connection: Connection,
+  wallet: StoredWallet | undefined,
+  firstPayment?: { destination: string; amountXrp: number },
+): Promise<void> {
+  const signer = ownerSigner(connection, wallet);
+  const { rules, witnessSeed } = await panelRules();
   const keySeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
   const keyAddress = addressOfSeed(keySeed);
-  const tx = openSessionTx(owner, keyAddress, rules);
-  const postQuantum = staxAccount()?.postQuantum ?? false;
-  const openedBy =
-    opener === "passkey"
-      ? OPENER_LABELS.passkey
-      : postQuantum
-        ? OPENER_LABELS.staxPostQuantum
-        : OPENER_LABELS.staxClassic;
-  log(
-    `Ouverture d'une session pour ${keyAddress} : ${opener === "passkey" ? "validez avec Touch ID" : "relisez les règles sur la Stax"}…`,
-  );
-  const submitted =
-    opener === "passkey" && wallet !== undefined
-      ? await signAndSubmitWithPasskey(connection, wallet, tx)
-      : await signAndSubmitWithStax(connection, tx, postQuantum);
-  log("SigningSessionSet :", submitted);
-  if (submitted.result !== "tesSUCCESS") return;
+  const tx = openSessionTx(signer.owner, keyAddress, rules);
+
+  let opened: boolean;
+  if (firstPayment === undefined) {
+    log(`Ouverture d'une session pour ${keyAddress} : ${signer.prompt}…`);
+    const submitted = await signer.signAndSubmit(tx);
+    log("SigningSessionSet :", submitted);
+    opened = submitted.result === "tesSUCCESS";
+  } else {
+    const payment = paymentTx(signer.owner, firstPayment.destination, firstPayment.amountXrp);
+    log(
+      `Ouverture d'une session pour ${keyAddress} et paiement de ${firstPayment.amountXrp} XRP en un seul Batch (tout ou rien) : ${signer.prompt}…`,
+    );
+    const submitted = await signer.signAndSubmit(
+      batchTx(signer.owner, [tx, payment], TF_ALL_OR_NOTHING),
+    );
+    const [openResult] = await logBatch(connection, "Ouvrir et payer", submitted);
+    opened = openResult === "tesSUCCESS";
+  }
+  if (!opened) return;
 
   active = {
-    owner,
-    openedBy,
+    owner: signer.owner,
+    openedBy: signer.openedBy,
     keySeed,
     keyAddress,
     rules,
@@ -244,9 +298,74 @@ async function openSession(
   };
 }
 
+/** SessionKey of every signing_session entry of `owner`, page after page. */
+async function sessionKeysOf(connection: Connection, owner: string): Promise<string[]> {
+  const keys: string[] = [];
+  let marker: unknown;
+  do {
+    const page = await connection.node.request("account_objects", {
+      account: owner,
+      type: "signing_session",
+      ledger_index: "current",
+      ...(marker === undefined ? {} : { marker }),
+    });
+    const objects = read(page, ["account_objects"]);
+    if (!Array.isArray(objects)) throw new Error("unexpected node answer: account_objects");
+    for (const object of objects) {
+      const key = read(object, ["SessionKey"]);
+      if (typeof key === "string") keys.push(key);
+    }
+    marker = read(page, ["marker"]);
+  } while (marker !== undefined);
+  return keys;
+}
+
+/**
+ * Deletes every session of the owner, signed by the owner: one SigningSessionDelete for a single
+ * session, otherwise independent Batches of up to 8 deletions, one validation each.
+ */
+async function revokeAllSessions(
+  connection: Connection,
+  wallet: StoredWallet | undefined,
+): Promise<void> {
+  const signer = ownerSigner(connection, wallet);
+  const keys = await sessionKeysOf(connection, signer.owner);
+  if (keys.length === 0) {
+    log(`Aucune session à révoquer pour ${signer.owner}.`);
+    return;
+  }
+  const groups = batchGroups(keys);
+  log(
+    `Révocation de ${keys.length} session(s) de ${signer.owner} en ${groups.length} validation(s) : ${signer.prompt}…`,
+  );
+  for (const group of groups) {
+    // The owner deletes its own sessions: Account is the owner, no Owner field.
+    const deletes = group.map((key) => closeSessionTx(signer.owner, key));
+    const [single] = deletes;
+    let results: Array<string | undefined>;
+    if (deletes.length === 1 && single !== undefined) {
+      const submitted = await signer.signAndSubmit(single);
+      log("SigningSessionDelete par le propriétaire :", submitted);
+      results = [submitted.result];
+    } else {
+      const submitted = await signer.signAndSubmit(batchTx(signer.owner, deletes, TF_INDEPENDENT));
+      results = await logBatch(connection, "Révoquer toutes les sessions", submitted);
+    }
+    const session = active;
+    if (session !== undefined && session.owner === signer.owner) {
+      const index = group.indexOf(session.keyAddress);
+      if (index !== -1 && results[index] === "tesSUCCESS") session.closed = true;
+    }
+  }
+}
+
 export async function refreshSessionPanel(connection: Connection | undefined): Promise<void> {
   const usable = connection !== undefined && active !== undefined && !active.closed;
   ui.open.disabled = connection === undefined;
+  ui.openBatch.disabled = connection === undefined;
+  ui.batchDestination.disabled = connection === undefined;
+  ui.batchAmount.disabled = connection === undefined;
+  ui.revokeAll.disabled = connection === undefined;
   for (const field of ui.payForm.elements) {
     if (field instanceof HTMLInputElement || field instanceof HTMLButtonElement)
       field.disabled = !usable;
@@ -256,6 +375,7 @@ export async function refreshSessionPanel(connection: Connection | undefined): P
   ui.attackPerTx.disabled =
     !usable || active === undefined || maxPerTxXrp(active.rules) === undefined;
   ui.attackNoWitness.disabled = !usable || active?.witnessSeed === undefined;
+  ui.attackBatch.disabled = !usable;
   ui.close.disabled = !usable;
   ui.attackAfterClose.disabled = connection === undefined || active?.closed !== true;
 
@@ -338,6 +458,26 @@ export function setupSessionPanel(
     }),
   );
 
+  ui.openBatch.addEventListener(
+    "click",
+    run(async () => {
+      const connection = getConnection();
+      if (connection === undefined) return;
+      await openSession(connection, getWallet(), {
+        destination: destination(ui.batchDestination),
+        amountXrp: positiveNumber(ui.batchAmount, "the amount"),
+      });
+    }),
+  );
+
+  ui.revokeAll.addEventListener(
+    "click",
+    run(async () => {
+      const connection = getConnection();
+      if (connection !== undefined) await revokeAllSessions(connection, getWallet());
+    }),
+  );
+
   ui.payForm.addEventListener("submit", (event) => {
     event.preventDefault();
     withSession(async (connection, session) => {
@@ -399,6 +539,22 @@ export function setupSessionPanel(
       log(
         "Attaque : paiement sans la co-signature du témoin :",
         await submitWithSessionKey(connection, session, tx, false),
+      );
+    }),
+  );
+
+  ui.attackBatch.addEventListener(
+    "click",
+    withSession(async (connection, session) => {
+      const to = destination();
+      const batch = batchTx(
+        session.owner,
+        [paymentTx(session.owner, to, 1), paymentTx(session.owner, to, 1)],
+        TF_ALL_OR_NOTHING,
+      );
+      log(
+        "Attaque : la clé de session tente de signer un Batch du compte (attendu tefSESSION_TX_NOT_ALLOWED) :",
+        await submitWithSessionKey(connection, session, batch),
       );
     }),
   );
