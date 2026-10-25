@@ -12,8 +12,8 @@
     "test": "vitest run --passWithNoTests",
     "session-demo": "node scripts/session-demo.ts",
     "rotation-demo": "node scripts/rotation-demo.ts",
-    "agent": "node scripts/agent/agent.ts",
-    "merchant": "node scripts/agent/merchant.ts"
+    "agent": "node --import tsx scripts/agent/agent.ts",
+    "merchant": "node --import tsx scripts/agent/merchant.ts"
   },
   "dependencies": {
     "@noble/post-quantum": "0.7.1",

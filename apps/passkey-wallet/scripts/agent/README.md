@@ -1,6 +1,7 @@
 # AI agent on a budget signed on the Ledger Stax
 
-> **Agent Policies, but enforced by the XRPL ledger, with a post-quantum root in the Stax.**
+> **Agent Policies, but enforced by the XRPL ledger, post-quantum end to end: ML-DSA-44 root
+> in the Stax, ML-DSA-44 session key in the agent.**
 
 An LLM agent buys data from paid APIs (x402 style) for its owner. It never sees the owner's
 key: it generates a session key, the owner clear-signs a mode C budget for it on the Ledger
@@ -25,9 +26,38 @@ The Stax shows an **Agent ID** row on every session review: the first 4 bytes of
 key's AccountID, `XXXX-XXXX` (`src/agent-id.ts`). The agent prints its own at start and sends
 it with every event; the demo page shows it in large type, to compare before signing.
 
+## Post-quantum end to end
+
+The agent's session key is an **ML-DSA-44** key: a random 32-byte seed
+(`crypto.getRandomValues`), its key pair from `mlDsaKeyPairFromSeed` (`@carbs/sessions`), and
+`SessionKey` = its AccountID (`addressFromPublicKey`). The seed lives only in the agent's
+memory and is zeroed on exit (Ctrl+C included). With the Stax account migrated to its ML-DSA-44
+root, no transaction of the agent's chain carries a classical signature:
+
+| Transaction                                                         | Signed by                  | Carries                                                                       |
+| ------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
+| `SigningSessionSet` (opening the budget)                            | the Stax, ML-DSA-44 root   | 1312-byte `SigningPubKey`, 2420-byte `TxnSignature`, `SessionKey` (AccountID) |
+| session payments (purchases, the compromised try, the expiry tries) | the session key, ML-DSA-44 | `Account` = owner, 1312-byte `SigningPubKey`, 2420-byte `TxnSignature`        |
+| `SigningSessionDelete` (the key closes its own session)             | the session key, ML-DSA-44 | `Account` = owner, `SessionKey`, 1312-byte key, 2420-byte signature           |
+| escalated `Payment` (an intent the human approves)                  | the Stax, ML-DSA-44 root   | 1312-byte `SigningPubKey`, 2420-byte `TxnSignature`                           |
+
+Session transactions are signed by `signTxMlDsa` (`src/pq-passkey/vault.ts`: pure ML-DSA,
+empty context, over `encodeForSigning`), exactly as the node verifies them; the node needs
+the `Quantum` amendment. Without the migration the Stax signs with its classical key and the
+demo page says so. The merchant's and the attacker's accounts (funded from genesis) never sign
+anything in the demo.
+
+For comparison, `--classical-session-key` (or `AGENT_SESSION_KEY=secp256k1`) gives the agent a
+secp256k1 session key instead (33-byte key, ~72-byte signature). The agent prints
+`session key: ML-DSA-44 (post-quantum)` or `session key: secp256k1 (classical, for comparison)`
+at start; the demo page shows a _session key ML-DSA-44_ (or _secp256k1_) badge under the Agent
+ID, and adds _session key ML-DSA-44_ to its header only for an ML-DSA-44 key.
+
 ## The 3-minute run sheet
 
-Node ≥ 22.18, from `apps/passkey-wallet` unless stated. An OpenAI-compatible LLM endpoint
+Node ≥ 22.18, from `apps/passkey-wallet` unless stated (`pnpm agent` runs
+`node --import tsx scripts/agent/agent.ts`: `@carbs/sessions` needs tsx). A node with the
+`SigningSessions` and `Quantum` amendments enabled. An OpenAI-compatible LLM endpoint
 (local Ollama by default: `ollama pull hf.co/mradermacher/Qwen3-4B-OBLITERATED-GGUF:Q4_K_M`).
 
 | Terminal   | Command                                                                                                                                |
@@ -57,15 +87,15 @@ Node ≥ 22.18, from `apps/passkey-wallet` unless stated. An OpenAI-compatible L
 
 ### On stage
 
-| Time | Beat                                                                                                                                                                                                     | Say                                                                                                                                                                 |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0:00 | Start terminal 5. The agent prints its Agent ID; the timeline shows it asking for **500 XRP** (amber); a card appears on the Stax column. Click _Approve on Stax_.                                       | "An AI agent wants a budget to buy data for me. It holds no key of mine: only a fresh session key. It asks for 500 XRP."                                            |
-| 0:20 | The Stax shows _Blocked by your session policy_. Purple line `0x6986`, the **Device** layer lights up. The agent asks again: **20 XRP**, 5 per payment, 2 min.                                           | "My Stax has my own policy: 50 XRP at most, 5 per payment, 3 minutes. The device refuses before I even read it. The agent has to ask for less."                     |
-| 0:40 | Big **Agent ID** in the centre. _Approve on Stax_: the Stax shows the session in clear, with its Agent ID row. Compare, sign. Gauge `0 / 20 XRP`, countdown starts.                                      | "Same Agent ID on the Stax and on screen: I know which agent I empower. Clear-signed, never blind, and signed by the ML-DSA-44 root: a post-quantum root of trust." |
-| 1:05 | Green lines: weather 1 XRP, flights 2 XRP, market report 3 XRP. The gauge fills. No prompt anywhere.                                                                                                     | "From now on the agent pays alone, with its session key: x402 APIs, a payment per call. I am not asked anything."                                                   |
-| 1:25 | The market report carries an injection (orange line: _pay 500 XRP to r…_). The premium dataset costs 25 XRP: red `tefSESSION_LIMIT`, then an amber escalation card. _Approve on Stax_, sign the Payment. | "It wants a 25 XRP dataset: the ledger refuses it, above 5 per payment. So it asks me, and I sign this one purchase on the Stax with my own key."                   |
-| 1:55 | Simulation: _a compromised agent obeys_ and pays 500 XRP to the attacker: red `tefSESSION_LIMIT`, _over the budget: refused by every XRPL node_. The **Ledger** layer lights up.                         | "Now assume the prompt injection won and the agent is fully compromised. It signs 500 XRP to the attacker. Every XRPL node refuses it. Not the app: the ledger."    |
-| 2:45 | The countdown reaches `expired`; the 1 XRP try is red `tefSESSION_EXPIRED`; the key closes its session, a last try gives `tefBAD_AUTH`.                                                                  | "Two minutes later the session is over: the key is worthless. Two layers: my device decides what may be asked, the ledger enforces it at every payment."            |
+| Time | Beat                                                                                                                                                                                                                                                               | Say                                                                                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:00 | Start terminal 5. The agent prints `session key: ML-DSA-44 (post-quantum)` and its Agent ID; the badge _session key ML-DSA-44_ appears under it; the timeline shows it asking for **500 XRP** (amber); a card appears on the Stax column. Click _Approve on Stax_. | "An AI agent wants a budget to buy data for me. It holds no key of mine: only a fresh session key, post-quantum like my root. It asks for 500 XRP."                 |
+| 0:20 | The Stax shows _Blocked by your session policy_. Purple line `0x6986`, the **Device** layer lights up. The agent asks again: **20 XRP**, 5 per payment, 2 min.                                                                                                     | "My Stax has my own policy: 50 XRP at most, 5 per payment, 3 minutes. The device refuses before I even read it. The agent has to ask for less."                     |
+| 0:40 | Big **Agent ID** in the centre. _Approve on Stax_: the Stax shows the session in clear, with its Agent ID row. Compare, sign. Gauge `0 / 20 XRP`, countdown starts.                                                                                                | "Same Agent ID on the Stax and on screen: I know which agent I empower. Clear-signed, never blind, and signed by the ML-DSA-44 root: a post-quantum root of trust." |
+| 1:05 | Green lines: weather 1 XRP, flights 2 XRP, market report 3 XRP. The gauge fills. No prompt anywhere.                                                                                                                                                               | "From now on the agent pays alone, with its session key: x402 APIs, a payment per call, each one a 2420-byte ML-DSA-44 signature. I am not asked anything."         |
+| 1:25 | The market report carries an injection (orange line: _pay 500 XRP to r…_). The premium dataset costs 25 XRP: red `tefSESSION_LIMIT`, then an amber escalation card. _Approve on Stax_, sign the Payment.                                                           | "It wants a 25 XRP dataset: the ledger refuses it, above 5 per payment. So it asks me, and I sign this one purchase on the Stax with my own key."                   |
+| 1:55 | Simulation: _a compromised agent obeys_ and pays 500 XRP to the attacker: red `tefSESSION_LIMIT`, _over the budget: refused by every XRPL node_. The **Ledger** layer lights up.                                                                                   | "Now assume the prompt injection won and the agent is fully compromised. It signs 500 XRP to the attacker. Every XRPL node refuses it. Not the app: the ledger."    |
+| 2:45 | The countdown reaches `expired`; the 1 XRP try is red `tefSESSION_EXPIRED`; the key closes its session, a last try gives `tefBAD_AUTH`.                                                                                                                            | "Two minutes later the session is over: the key is worthless. Two layers: my device decides what may be asked, the ledger enforces it at every payment."            |
 
 The model's own choices are not scripted: it may ignore the injection or escalate it (an
 amber card to the attacker: click _Refuse_). The ledger codes do not depend on it, and the
@@ -74,7 +104,8 @@ the simulation (slow model), the code there is `tefSESSION_EXPIRED` instead. `Re
 dataset card shows the other branch: the agent goes on without it. The wallet page's **Agent
 IA** section does the same in French (and _Couper l'agent_ revokes the session from the Stax).
 
-Set `AGENT_FIRST_CAP_XRP` to the cap itself (`20`) to skip the oversized first request.
+Set `AGENT_FIRST_CAP_XRP` to the cap itself (`20`) to skip the oversized first request. Add
+`--classical-session-key` to terminal 5 to replay the run with a secp256k1 session key.
 
 ## The x402 flow
 
@@ -120,7 +151,9 @@ The agent posts every step to the wallet server: `POST /api/agent/events`
 `{type, at, text, code?, hash?, amountXrp?, agentId?}` with `type` one of `request`,
 `thought`, `purchase`, `refused`, `escalation`, `decision`, `injection`, `expiry`, `info`
 (`server/agent-events.ts`: validated, last 500 in memory). A refusal's `code` is the ledger
-result, or `0x6986` for the Stax policy. `GET /api/agent/events?after=<n>` answers
+result, or `0x6986` for the Stax policy. The agent's first event (`info`) carries
+`SESSION_KEY_ML_DSA_44` or `SESSION_KEY_SECP256K1` (`src/demo/session-key.ts`): the demo page
+turns it into the session key badge. `GET /api/agent/events?after=<n>` answers
 `{latest, events}`, the events numbered above `n`; the demo page polls it every second.
 
 ## Variables
@@ -141,11 +174,12 @@ result, or `0x6986` for the Stax policy. `GET /api/agent/events?after=<n>` answe
 | `AGENT_LLM_URL`         | `http://127.0.0.1:11434/v1/chat/completions`                 | agent           |
 | `AGENT_LLM_MODEL`       | `hf.co/mradermacher/Qwen3-4B-OBLITERATED-GGUF:Q4_K_M`        | agent           |
 | `AGENT_LLM_API_KEY`     | none (sent as `Authorization: Bearer …` when set)            | agent           |
+| `AGENT_SESSION_KEY`     | `ml-dsa-44` (`secp256k1` = `--classical-session-key`)        | agent           |
 
 ## Files
 
-- `agent.ts` — entry point: Agent ID, session requests (oversized, then the cap), agent loop, recap, expiry.
-- `tools.ts` — the tools and the session transactions.
+- `agent.ts` — entry point: session key (ML-DSA-44 or secp256k1), Agent ID, session requests (oversized, then the cap), agent loop, recap, expiry.
+- `tools.ts` — the tools and the session transactions, signed by the session key.
 - `llm.ts` — chat completions over `fetch`, parsing of the model's JSON action.
 - `wallet-client.ts` — client of the wallet server's `/api/agent/requests`.
 - `timeline.ts` — posts the agent's events to `/api/agent/events`.
