@@ -11,7 +11,7 @@
  * node's own answers. The Mac account's passkey is the software authenticator (SIMULATED).
  */
 import { WebSocketClient } from "@carbs/sessions";
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createDemo } from "../lib/demo";
 import { NETWORKS } from "../lib/networks";
 import { ATTACKS } from "../lib/scenarios";
@@ -68,7 +68,9 @@ describe("live run against the standalone node (manual)", () => {
     ] as const) {
       const demo = createDemo(live);
       await demo.createAccount("mac");
-      say(`[${label}] open:`, (await demo.openSession(params))?.code);
+      const opened = await demo.openSession(params);
+      say(`[${label}] open:`, opened?.code);
+      expect(opened?.code).toBe("tesSUCCESS");
       for (const id of ACTIONS)
         say(`[${label}] action ${id}:`, (await demo.runAction(id))?.result.code);
       for (const attack of ATTACKS.filter((a) => !a.needsExpiry && a.needsMode !== "C")) {

@@ -6,7 +6,7 @@ The carbs web app: five screens (Account, Session, Actions, Attack, Quantum) ove
 
 ```sh
 pnpm install
-pnpm --filter web dev            # http://localhost:3000 (Chrome: the Ledger path needs WebHID)
+pnpm --filter web dev            # http://localhost:3000 (Chrome, for the future WebHID path; the Ledger device is SIMULATED today)
 pnpm --filter web typecheck
 pnpm --filter web test           # node tests and component tests (vitest, happy-dom)
 XRPLD_BIN=… GENESIS_SEED=… pnpm demo   # the standalone node, its closer, a dev faucet and this app on the live backend
