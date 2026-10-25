@@ -1,0 +1,15 @@
+Transaction Type; Open session
+Account;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
+Session key;   rHH1wGruhP1Z    SzJvvxYeimW     LmXGG8WULED   
+Agent ID; B2B2-8A01
+Profile; Game
+Network ID; 24100
+Valid for; 10 minutes
+Max transactions; 300
+Fee; XRP 0.000014
+Max spend; XRP 5
+Max per payment; XRP 0.1
+Memo Type [1]; carbs-profile
+Memo Data [1]; game
+Allows; XRP payments only, fees included
+Note; Cannot change keys or signers

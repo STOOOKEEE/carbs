@@ -2,32 +2,114 @@
  * Design tokens of the carbs web app: the one place that sets the look.
  * Change a value here and every screen follows; nothing else in the app holds a
  * colour, a size, a radius or a duration. The README section "Art direction" lists
- * the knobs. Fonts and assets are self-hosted (CSP: no third-party origin), so the
- * font stacks below only name system fonts; to ship a font, put the file in
- * public/fonts and add an @font-face here.
+ * the knobs. Fonts are self-hosted (CSP: no third-party origin) in public/fonts.
+ *
+ * Two looks, one shape:
+ *  - the default is the XRPL Commons look (light: cream paper, navy ink, violet and
+ *    blue accents, Clash Display and Plus Jakarta Sans, pill buttons), taken from
+ *    xrpl-commons.org;
+ *  - `data-theme="ledger"` on <html> turns the whole app into Ledger mode (dark,
+ *    violet) whenever a Ledger is involved. Only colours change: fonts, radii, spacing
+ *    and motion stay exactly the same, so buttons and layout do not move.
  */
+
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/ClashDisplay-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/ClashDisplay-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/ClashDisplay-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/PlusJakartaSans-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
-  /* ---- Colour: "ledger paper" (light) ---- */
-  --color-surface: #f4f1ea; /* page background */
-  --color-surface-raised: #fbf9f4; /* panels, cards */
-  --color-surface-sunken: #ebe6da; /* inputs, code, table stripes */
-  --color-ink: #15130f; /* primary text */
-  --color-ink-muted: #5e594e; /* secondary text */
-  --color-line: #d9d3c4; /* borders, dividers */
-  --color-line-strong: #b9b19c;
-  --color-accent: #0f6b62; /* primary action, links, focus */
-  --color-accent-ink: #fbf9f4; /* text on accent */
-  --color-ok: #1a7f37; /* tesSUCCESS */
-  --color-warn: #9a6700; /* held back, caution */
-  --color-danger: #b42318; /* a refusal by the node */
-  --color-sim: #b45309; /* SIMULATED badge and frame: never reuse for anything else */
-  --color-sim-wash: #fbe9d0;
-  --color-device: #1d1b19; /* the (simulated) Stax screen */
+  /* ---- Brand palette (xrpl-commons.org) ---- */
+  --brand-navy: #000637;
+  --brand-cream: #f5f4e7;
+  --brand-violet: #791aff;
+  --brand-blue: #1aa4ff;
+  --brand-yellow: #faff1a;
+  --brand-slate: #62668c;
+  --brand-lavender: #e2e5ff;
+
+  /* ---- Colour: XRPL Commons (light) ---- */
+  --color-surface: var(--brand-cream); /* page background */
+  --color-surface-raised: #fffef8; /* panels, cards */
+  --color-surface-sunken: #eceadb; /* inputs, code, table stripes */
+  --color-ink: var(--brand-navy); /* primary text */
+  --color-ink-muted: var(--brand-slate); /* secondary text */
+  --color-line: rgb(0 6 55 / 14%); /* dividers */
+  --color-line-strong: var(--brand-navy); /* card and input borders */
+  --color-accent: var(--brand-violet); /* primary action, links, focus */
+  --color-accent-ink: var(--brand-cream); /* text on accent */
+  --color-highlight: var(--brand-blue); /* secondary accent, the first stacked layer */
+  --color-tag: var(--brand-yellow); /* small tags */
+  --color-tag-ink: var(--brand-navy);
+  --color-ok: #0a8a47; /* tesSUCCESS */
+  --color-warn: #a35a00; /* held back, caution */
+  --color-danger: #d1106f; /* a refusal by the node */
+  --color-sim: #c2410c; /* SIMULATED badge and frame: never reuse for anything else */
+  --color-sim-wash: #ffe3d2;
+  --color-device: #12101d; /* the (simulated) Stax screen */
   --color-device-ink: #f2efe8;
 
+  /* Segmented navigation (the top bar) */
+  --color-seg-track: var(--brand-navy);
+  --color-seg-thumb: var(--brand-cream);
+  --color-seg-ink: var(--brand-cream);
+  --color-seg-ink-active: var(--brand-navy);
+
+  /* Stacked layers behind a hero card (the offset cards of the Wave of Innovation deck) */
+  --layer-1: var(--brand-blue);
+  --layer-2: var(--brand-violet);
+
+  /* The page background layer (Ledger mode paints silk here) */
+  --backdrop: none;
+  --panel-blur: 0px;
+
   /* ---- Type ---- */
-  --font-display: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Clash Display", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --text-xs: 0.75rem; /* 12 */
   --text-sm: 0.875rem; /* 14 */
@@ -35,10 +117,10 @@
   --text-lg: 1.125rem; /* 18 */
   --text-xl: 1.375rem; /* 22 */
   --text-2xl: 1.75rem; /* 28 */
-  --text-3xl: 2.25rem; /* 36 */
-  --leading-tight: 1.2;
+  --text-3xl: clamp(2.25rem, 4.5vw, 3.5rem); /* 36 to 56 */
+  --leading-tight: 1.1;
   --leading-body: 1.55;
-  --tracking-caps: 0.14em; /* small uppercase labels */
+  --tracking-caps: 0.12em; /* small uppercase labels */
   --weight-body: 400;
   --weight-strong: 600;
 
@@ -53,12 +135,15 @@
   --space-8: 4.5rem;
   --content-width: 72rem;
 
-  /* ---- Shape ---- */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.875rem;
-  --border-width: 1px;
-  --shadow-panel: 0 1px 0 rgb(21 19 15 / 6%), 0 8px 24px -16px rgb(21 19 15 / 28%);
+  /* ---- Shape (xrpl-commons.org: pills, 1rem to 1.25rem cards, 2px navy borders) ---- */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-pill: 100rem;
+  --border-width: 2px;
+  --border-width-fine: 1px;
+  --shadow-panel: none;
+  --layer-offset: 0.5rem;
 
   /* ---- Motion ---- */
   --motion-fast: 120ms;
@@ -67,45 +152,45 @@
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-/* Dark follows the system unless the page forces one with data-theme. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-surface: #14120f;
-    --color-surface-raised: #1c1a16;
-    --color-surface-sunken: #24211c;
-    --color-ink: #f2efe8;
-    --color-ink-muted: #a8a193;
-    --color-line: #38342c;
-    --color-line-strong: #565043;
-    --color-accent: #4fc3b6;
-    --color-accent-ink: #0d0c0a;
-    --color-ok: #4cc470;
-    --color-warn: #e3b341;
-    --color-danger: #ff7b72;
-    --color-sim: #f0a45b;
-    --color-sim-wash: #3a2a15;
-    --color-device: #0a0908;
-    --shadow-panel: 0 1px 0 rgb(0 0 0 / 40%), 0 8px 24px -16px rgb(0 0 0 / 70%);
-  }
-}
+/*
+ * Ledger mode: dark, violet. Only colours (and the page background layer) change.
+ * The violet is a token (`--ledger-violet`), one line to adjust. The web app sets it on
+ * <html>; the wallet stage pages (apps/passkey-wallet) also set it on the columns where
+ * the Ledger Stax is involved, hence the bare attribute selector.
+ */
+:root[data-theme="ledger"],
+[data-theme="ledger"] {
+  --ledger-violet: #bbb0ff;
+  --ledger-ink: #fbfaff;
+  --ledger-night: #0a0714;
 
-:root[data-theme="dark"] {
-  --color-surface: #14120f;
-  --color-surface-raised: #1c1a16;
-  --color-surface-sunken: #24211c;
-  --color-ink: #f2efe8;
-  --color-ink-muted: #a8a193;
-  --color-line: #38342c;
-  --color-line-strong: #565043;
-  --color-accent: #4fc3b6;
-  --color-accent-ink: #0d0c0a;
-  --color-ok: #4cc470;
-  --color-warn: #e3b341;
-  --color-danger: #ff7b72;
-  --color-sim: #f0a45b;
-  --color-sim-wash: #3a2a15;
-  --color-device: #0a0908;
-  --shadow-panel: 0 1px 0 rgb(0 0 0 / 40%), 0 8px 24px -16px rgb(0 0 0 / 70%);
+  --color-surface: var(--ledger-night);
+  --color-surface-raised: rgb(16 11 32 / 74%);
+  --color-surface-sunken: rgb(255 255 255 / 7%);
+  --color-ink: var(--ledger-ink);
+  --color-ink-muted: #bdb7da;
+  --color-line: rgb(187 176 255 / 20%);
+  --color-line-strong: rgb(187 176 255 / 55%);
+  --color-accent: var(--ledger-violet);
+  --color-accent-ink: var(--ledger-night);
+  --color-highlight: #8f7bff;
+  --color-tag: var(--ledger-violet);
+  --color-tag-ink: var(--ledger-night);
+  --color-ok: #5be49b;
+  --color-warn: #ffc857;
+  --color-danger: #ff7aa8;
+  --color-sim: #ffa56b;
+  --color-sim-wash: rgb(255 165 107 / 16%);
+  --color-device: #04030a;
+
+  --color-seg-track: rgb(255 255 255 / 9%);
+  --color-seg-thumb: var(--ledger-violet);
+  --color-seg-ink: var(--ledger-ink);
+  --color-seg-ink-active: var(--ledger-night);
+
+  --layer-1: rgb(143 123 255 / 55%);
+  --layer-2: rgb(187 176 255 / 28%);
+  --panel-blur: 14px;
 }
 
 @media (prefers-reduced-motion: reduce) {

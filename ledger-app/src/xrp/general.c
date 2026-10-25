@@ -178,6 +178,7 @@ static bool should_format_blob_as_string(field_t* field) {
         case XRP_VL_URI:
         case XRP_VL_SESSION_NOTE:
         case XRP_VL_SESSION_SCOPE:
+        case XRP_VL_SESSION_PROFILE:
             return is_purely_ascii(field->data.ptr, field->length, false);
         default:
             return false;

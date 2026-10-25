@@ -28,6 +28,7 @@
 #include "globals.h"
 #include "readers.h"
 #include "session_permissions.h"
+#include "session_profiles.h"
 #include "transaction_types.h"
 #include "xrp_helpers.h"
 
@@ -808,7 +809,8 @@ err_t post_process_field(parseContext_t* context, field_t* field) {
             // The session "Note" row is the app's own text; a signed field
             // claiming its id would let the sender write that row.
             if (field->id == XRP_VL_SESSION_NOTE ||
-                field->id == XRP_VL_SESSION_SCOPE) {
+                field->id == XRP_VL_SESSION_SCOPE ||
+                field->id == XRP_VL_SESSION_PROFILE) {
                 err.err = INVALID_STATE;
                 return err;
             }
@@ -886,6 +888,7 @@ static const struct {
     {STI_AMOUNT, XRP_UINT64_SESSION_CAP},
     {STI_AMOUNT, XRP_UINT64_SESSION_MAX_PER_TX},
     {STI_UINT32, XRP_UINT32_SESSION_DURATION},
+    {STI_UINT32, XRP_UINT32_SESSION_MAX_TX_COUNT},
 };
 #define SESSION_FIELDS_NB (sizeof(SESSION_FIELDS) / sizeof(SESSION_FIELDS[0]))
 
@@ -949,6 +952,22 @@ static err_t append_review_rows(parseContext_t* context,
             field->data.account = key;
             field->length = XRP_ACCOUNT_SIZE;
         }
+    }
+
+    // The session profile its carbs-profile memo names (session_profiles.h),
+    // right after the Agent ID, whether the session policy is on or not. Only
+    // the transaction itself carries memos: a Batch inner one never clear-signs.
+    session_profile_id_t profile;
+    if (transaction_type == TRANSACTION_SIGNING_SESSION_SET &&
+        group == BATCH_OUTER_GROUP &&
+        session_profile_read_memo(&context->result, &profile) ==
+            SESSION_PROFILE_MEMO_FOUND) {
+        const char* title = session_profile_title(profile);
+        CHECK(append_review_row(context, group, &field));
+        field->data_type = STI_VL;
+        field->id = XRP_VL_SESSION_PROFILE;
+        field->data.ptr = (uint8_t*)title;
+        field->length = (uint16_t)strlen(title);
     }
 
     // A session review ends with what the session key can never do

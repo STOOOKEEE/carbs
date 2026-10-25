@@ -1,0 +1,32 @@
+{
+  "TransactionType": "SigningSessionSet",
+  "Account": "rawnHFk1gPQeEBC88cXbetXLqw3hnqk4pE",
+  "Fee": "14",
+  "Sequence": 104,
+  "LastLedgerSequence": 5004,
+  "NetworkID": 24100,
+  "SigningPubKey": "02AB5520C32F549968E54A90A945AEBB2B49A900A279403E7C2D8EF787B5D7E8D8",
+  "SessionKey": "rHH1wGruhP1ZSzJvvxYeimWLmXGG8WULED",
+  "SessionDuration": 600,
+  "Permissions": [
+    {
+      "Permission": {
+        "PermissionValue": 8
+      }
+    },
+    {
+      "Permission": {
+        "PermissionValue": 9
+      }
+    }
+  ],
+  "SessionMaxTxCount": 200,
+  "Memos": [
+    {
+      "Memo": {
+        "MemoType": "63617262732D70726F66696C65",
+        "MemoData": "74726164696E67"
+      }
+    }
+  ]
+}
