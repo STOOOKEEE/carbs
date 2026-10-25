@@ -9,10 +9,10 @@ import {
   sessionProfileTitle,
   type SessionPolicy,
 } from "@carbs/ledger";
-import { bytesToHex } from "@carbs/sessions";
+import { bytesToHex, kMaxSessionDuration, kPermissionMaxSize } from "@carbs/sessions";
 import { standaloneDefinitions } from "@carbs/sessions/testing";
 import { describe, expect, it } from "vitest";
-import { DROPS_PER_XRP, MAX_SESSION_DURATION_SEC, PERMISSION_MAX_SIZE } from "./constants";
+import { DROPS_PER_XRP } from "./constants";
 import { buildCsp } from "./csp";
 import {
   AGENT_RUN_SHEET_POLICY,
@@ -102,7 +102,7 @@ describe("the live apps", () => {
       expect(entry.summary, entry.id).toMatch(/^[A-Z][^\n]+\.$/);
       expect(Number.isInteger(session.durationSec), entry.id).toBe(true);
       expect(session.durationSec, entry.id).toBeGreaterThan(0);
-      expect(session.durationSec, entry.id).toBeLessThanOrEqual(MAX_SESSION_DURATION_SEC);
+      expect(session.durationSec, entry.id).toBeLessThanOrEqual(kMaxSessionDuration);
       if (session.maxTxCount !== null) {
         expect(Number.isInteger(session.maxTxCount), entry.id).toBe(true);
         expect(session.maxTxCount, entry.id).toBeGreaterThan(0);
@@ -116,7 +116,7 @@ describe("the live apps", () => {
       } else {
         expect(session.capXrp, entry.id).toBeNull();
         expect(session.permissions.length, entry.id).toBeGreaterThan(0);
-        expect(session.permissions.length, entry.id).toBeLessThanOrEqual(PERMISSION_MAX_SIZE);
+        expect(session.permissions.length, entry.id).toBeLessThanOrEqual(kPermissionMaxSize);
       }
       expect(entry.refusals.length, entry.id).toBeGreaterThan(0);
       for (const refusal of entry.refusals) {

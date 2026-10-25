@@ -3,12 +3,8 @@
  * simulation follows the spec; they prove nothing about rippled (those are the jtx suites).
  */
 import { describe, expect, it } from "vitest";
-import {
-  ASF_DISABLE_MASTER,
-  MAX_SESSION_DURATION_SEC,
-  SIM_LEDGER_CLOSE_SEC,
-  TF_ALL_TRANSACTIONS,
-} from "../constants";
+import { kMaxSessionDuration } from "@carbs/sessions";
+import { ASF_DISABLE_MASTER, SIM_LEDGER_CLOSE_SEC, TF_ALL_TRANSACTIONS } from "../constants";
 import { fundedAccount, openSession, pay, rig, send } from "./test-helpers";
 import { accountIdOf } from "./keys";
 import { ALL_TYPES, DELEGABLE_TYPES, NON_DELEGABLE_TYPES, SESSION_EXCLUDED_TYPES } from "./types";
@@ -35,7 +31,7 @@ describe("session open (cases 1 to 7)", () => {
     expect(objects.sessions.map((s) => s.mode).sort()).toEqual(["A", "C", "P"]);
     const mode = objects.sessions.find((s) => s.mode === "C");
     expect(mode?.spentDrops).toBe(0);
-    expect(mode?.expiration).toBe(closeTime + MAX_SESSION_DURATION_SEC);
+    expect(mode?.expiration).toBe(closeTime + kMaxSessionDuration);
   });
 
   it("refuses none or two modes with temMALFORMED (case 2)", async () => {
@@ -93,12 +89,11 @@ describe("session open (cases 1 to 7)", () => {
       "temBAD_EXPIRATION",
     );
     expect(
-      (await openSession(r, { ...flags, SessionDuration: MAX_SESSION_DURATION_SEC + 1 })).result
-        .code,
+      (await openSession(r, { ...flags, SessionDuration: kMaxSessionDuration + 1 })).result.code,
     ).toBe("temBAD_EXPIRATION");
     expect((await openSession(r, { ...flags, SessionDuration: 1 })).result.code).toBe("tesSUCCESS");
     expect(
-      (await openSession(r, { ...flags, SessionDuration: MAX_SESSION_DURATION_SEC })).result.code,
+      (await openSession(r, { ...flags, SessionDuration: kMaxSessionDuration })).result.code,
     ).toBe("tesSUCCESS");
   });
 
