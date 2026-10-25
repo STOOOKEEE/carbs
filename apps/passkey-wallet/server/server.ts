@@ -44,6 +44,16 @@ const FAUCET_PATH = "/api/faucet";
 /** What a new account receives: enough for the reserve and a few payments. */
 const FAUCET_DROPS = String(1_000 * 1_000_000);
 const FAUCET_MAX_BODY_BYTES = 1_024;
+/**
+ * Web origins allowed to call the faucet from another site (the hosted web app), comma-separated:
+ * WEB_ORIGINS. The faucet is the only cross-origin endpoint; the wallet's own pages are same-origin.
+ */
+const FAUCET_ORIGINS = new Set(
+  (process.env["WEB_ORIGINS"] ?? "https://carbs-kappa.vercel.app")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin !== ""),
+);
 const AGENT_MAX_BODY_BYTES = 16 * 1_024;
 /** /api/agent/requests/:id and /api/agent/requests/:id/decision */
 const AGENT_RECORD_PATTERN = /^\/api\/agent\/requests\/([^/]+)(\/decision)?$/;
@@ -246,10 +256,25 @@ async function handleStatic(url: string, res: ServerResponse): Promise<void> {
   }
 }
 
-function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+/** CORS for the faucet: only the listed origins, POST with a JSON body, no credentials. */
+function allowFaucetOrigin(req: IncomingMessage, res: ServerResponse): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined || !FAUCET_ORIGINS.has(origin)) return false;
+  res.setHeader("access-control-allow-origin", origin);
+  res.setHeader("access-control-allow-methods", "POST");
+  res.setHeader("access-control-allow-headers", "content-type");
+  res.setHeader("vary", "Origin");
+  return true;
+}
+
+async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = req.url ?? "/";
   const path = url.split("?")[0] ?? "/";
-  if (req.method === "POST" && path === FAUCET_PATH) return handleFaucet(req, res);
+  if (path === FAUCET_PATH) {
+    const allowed = allowFaucetOrigin(req, res);
+    if (req.method === "OPTIONS") return reply(res, allowed ? 204 : 403, "");
+    if (req.method === "POST") return handleFaucet(req, res);
+  }
   if (
     path === AGENT_EVENTS_PATH ||
     path === AGENT_REQUESTS_PATH ||
