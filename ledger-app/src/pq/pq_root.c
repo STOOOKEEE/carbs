@@ -29,6 +29,7 @@
 #include "../apdu/global.h"
 #include "../apdu/messages/sign_transaction.h"
 #include "../globals.h"
+#include "../ui/other/blind_signing.h"
 #include "../ui/transaction/review_menu.h"
 #include "../xrp/xrp_parse.h"
 
@@ -51,6 +52,7 @@ cx_err_t MLDSA_internal_keygen(uint8_t *pk,
 #define SW_WRONG_P1P2    0x6B00
 #define SW_NO_SIGNATURE  0x6982
 #define SW_INTERNAL      0x6F00
+#define PQ_HASH_SIZE     32U
 
 /* SLIP-21 path: a leading 0x00 then the label (must match PATH_SLIP21_APP_LOAD_PARAMS). */
 static const char PQ_SLIP21_LABEL[] = "\0carbs ML-DSA-44";
@@ -103,11 +105,39 @@ int handle_pq_get_public_key(uint8_t chunk_index) {
     return send_chunk(PQ->public_key, sizeof(PQ->public_key), chunk_index);
 }
 
+static bool hash_message(uint8_t hash[PQ_HASH_SIZE]) {
+    cx_sha256_t context;
+    cx_sha256_init(&context);
+    return cx_hash_no_throw(&context.header,
+                            CX_LAST,
+                            PQ->message,
+                            PQ->message_length,
+                            hash,
+                            PQ_HASH_SIZE) == CX_OK;
+}
+
 /* Called by the review screen (which also shows the signed / rejected status). */
 static void on_review_result(unsigned int option) {
+    if (!PQ->reviewing) {
+        /* The host switched instruction during the review: entry.c reset the
+         * context and that request is gone. Sign nothing, answer nothing, as
+         * sign_transaction() does outside PENDING_REVIEW. */
+        PQ->message_length = 0;
+        return;
+    }
+    PQ->reviewing = false;
+    uint8_t hash[PQ_HASH_SIZE];
+    bool unchanged = hash_message(hash) && memcmp(hash, PQ->review_hash, PQ_HASH_SIZE) == 0;
+    explicit_bzero(PQ->review_hash, sizeof(PQ->review_hash));
     if (option != OPTION_SIGN) {
         PQ->message_length = 0;
         io_send_sw(SW_DENY);
+        return;
+    }
+    if (!unchanged) {
+        /* Not the bytes the user reviewed: refuse rather than sign them. */
+        PQ->message_length = 0;
+        io_send_sw(SW_WRONG_DATA);
         return;
     }
     size_t signature_length = 0;
@@ -149,19 +179,39 @@ static int review_signing_data(void) {
     parse_context.data = PQ->message + sizeof(PQ_SIGNING_PREFIX);
     parse_context.length = PQ->message_length - sizeof(PQ_SIGNING_PREFIX);
     int result = parse_tx(&parse_context);
+    if (result != 0 && result != BLIND_SIGN_REQUIRED) {
+        PQ->message_length = 0;
+        return io_send_sw(SW_WRONG_DATA);
+    }
+    if (result == BLIND_SIGN_REQUIRED && N_storage.allow_blind_sign == BlindSignDisabled) {
+        /* As review_transaction() (transaction.c): the error screen, whose
+         * reject_transaction() answers 0x6985 and resets the context. It
+         * answers only in PENDING_REVIEW, which this request now is. */
+        PQ->message_length = 0;
+        sign_state = PENDING_REVIEW;
+        return ui_error_blind_signing();
+    }
+    /* From here until on_review_result, the buffer is frozen: handle_pq_sign
+     * refuses every chunk, and the approval checks this hash. */
+    if (!hash_message(PQ->review_hash)) {
+        PQ->message_length = 0;
+        return io_send_sw(SW_INTERNAL);
+    }
+    PQ->reviewing = true;
     if (result == 0) {
         display_review_menu(&parse_context.result, on_review_result);
-        return 0;
-    }
-    if (result == BLIND_SIGN_REQUIRED) {
+    } else {
         display_blind_signed_review(&parse_context.result, on_review_result);
-        return 0;
     }
-    PQ->message_length = 0;
-    return io_send_sw(SW_WRONG_DATA);
+    return 0;
 }
 
 int handle_pq_sign(uint8_t p1, uint8_t p2, const uint8_t *data, size_t length) {
+    if (PQ->reviewing) {
+        /* A review is on screen: same answer as the classical path in
+         * PENDING_REVIEW (sign_transaction.c, handle_sign). */
+        return io_send_sw(SW_WRONG_DATA);
+    }
     if (p1 > 1 || p2 > 1) {
         return io_send_sw(SW_WRONG_P1P2);
     }

@@ -193,6 +193,29 @@
         </div>
       </section>
 
+      <section id="agent-section">
+        <h2>Agent IA</h2>
+        <p class="muted">
+          L'agent demande un budget (mode C : plafond, max par paiement, expiration courte) que vous
+          approuvez sur la Stax ; il paie ensuite seul avec sa clé de session, et le ledger refuse
+          tout dépassement. Un achat au-dessus de sa limite vous est soumis pour signature sur la
+          Stax.
+        </p>
+        <div id="agent-status" class="muted">Serveur du wallet : connexion…</div>
+        <p id="agent-stax-hint" class="muted">
+          Connectez la Stax dans la section Ledger pour approuver les demandes.
+        </p>
+        <h3>Session de l'agent</h3>
+        <div id="agent-session" class="muted">Aucune session d'agent approuvée.</div>
+        <div class="actions">
+          <button id="agent-revoke" type="button" class="secondary" disabled>Couper l'agent</button>
+        </div>
+        <h3>Demandes en attente</h3>
+        <div id="agent-pending">Aucune demande en attente.</div>
+        <h3>Historique</h3>
+        <ol id="agent-history"></ol>
+      </section>
+
       <section>
         <h2>Journal</h2>
         <ol id="log"></ol>

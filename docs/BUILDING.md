@@ -46,4 +46,12 @@ Built in the `ledger-app-builder` Docker image with `make BOLOS_SDK=$STAX_SDK`; 
 cmake -S ledger-app/unit-tests -B build/ledger-unit && cmake --build build/ledger-unit && ctest --test-dir build/ledger-unit
 ```
 
-Not yet run on this repository.
+They need cmocka and OpenSSL. Run natively on macOS (Apple clang 17, arm64) with cmocka 1.1.7 built from its release tarball into a scratch prefix and Homebrew's `openssl@3`. Two local workarounds, no change to the project: `CMakeLists.txt` links `-lgcov`, which Apple clang does not ship, so an empty `libgcov.a` in a scratch directory is put on the linker path; `test_tx` opens its vectors by the relative path `../../tests/standalone/testcases`, so it runs from `ledger-app/unit-tests/src` (or a build directory two levels under `ledger-app/`). `test_pq_root` finds its vectors by an absolute path set at configure time.
+
+```sh
+cmake -S ledger-app/unit-tests -B <build> -G Ninja \
+  -DCMAKE_C_FLAGS="-I<cmocka>/include -I$(brew --prefix openssl@3)/include" \
+  -DCMAKE_EXE_LINKER_FLAGS="-L<gcov-shim> -L<cmocka>/lib -L$(brew --prefix openssl@3)/lib -Wl,-rpath,<cmocka>/lib"
+cmake --build <build>
+(cd ledger-app/unit-tests/src && for t in test_printers test_swap test_tx test_pq_root; do <build>/$t; done)
+```
