@@ -7,7 +7,8 @@
  */
 
 import { bytesToHex, hexToBytes } from "@carbs/sessions";
-import { exchangeOk, kCla, kInsGetSessionPolicy, type ApduTransport } from "./apdu.js";
+import { kInsGetSessionPolicy } from "./apdu.js";
+import { kitFlows, kSkipOpenApp, runDeviceAction, type XrpTransport } from "./kit.js";
 
 /** `SESSION_POLICY_FORMAT_VERSION`. A version 1 answer (no profiles) is refused. */
 export const kSessionPolicyVersion = 2;
@@ -367,14 +368,35 @@ export function encodeSessionPolicy(policy: SessionPolicy): Uint8Array {
   return out;
 }
 
-/** `INS 0x08`, `P1 = P2 = 0x00`, no data: the session policy the user set on the device. */
-export async function getSessionPolicy(transport: ApduTransport): Promise<SessionPolicy> {
-  const data = await exchangeOk(transport, {
-    cla: kCla,
-    ins: kInsGetSessionPolicy,
-    p1: 0,
-    p2: 0,
-    data: new Uint8Array(),
-  });
-  return parseSessionPolicy(data);
+/**
+ * `INS 0x08`, `P1 = P2 = 0x00`, no data (the kit's `getSessionPolicy`): the session policy the
+ * user set on the device. The kit parses the answer with the same refusals as
+ * `parseSessionPolicy` (another version, a truncated record, trailing bytes); its model carries
+ * each profile's id, which this one gives by position.
+ */
+export async function getSessionPolicy(transport: XrpTransport): Promise<SessionPolicy> {
+  const policy = await runDeviceAction(
+    kitFlows(transport).getSessionPolicy({ skipOpenApp: kSkipOpenApp }),
+    kInsGetSessionPolicy,
+  );
+  return {
+    version: policy.version,
+    enabled: policy.enabled,
+    allowAll: policy.allowAll,
+    allowPermissions: policy.allowPermissions,
+    requireWitness: policy.requireWitness,
+    maxCapDrops: policy.maxCapDrops,
+    maxPerTxDrops: policy.maxPerTxDrops,
+    maxDurationSeconds: policy.maxDurationSeconds,
+    profiles: policy.profiles.map((profile) => ({
+      name: profile.name,
+      enabled: profile.enabled,
+      modes: [...profile.modes],
+      maxCapDrops: profile.maxCapDrops,
+      maxPerTxDrops: profile.maxPerTxDrops,
+      maxDurationSeconds: profile.maxDurationSeconds,
+      maxTxCount: profile.maxTxCount,
+      permissions: [...profile.permissions],
+    })),
+  };
 }

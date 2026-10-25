@@ -152,6 +152,9 @@ importers:
 
   packages/ledger:
     dependencies:
+      '@carbs/device-signer-kit-xrp':
+        specifier: workspace:*
+        version: link:../signer-kit-xrp
       '@carbs/sessions':
         specifier: workspace:*
         version: link:../core
@@ -164,6 +167,9 @@ importers:
       '@noble/hashes':
         specifier: 2.4.0
         version: 2.4.0
+      purify-ts:
+        specifier: 2.1.0
+        version: 2.1.0
       ripple-address-codec:
         specifier: 5.0.1
         version: 5.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)

@@ -9,11 +9,11 @@ import {
   connectLedger,
   describeLedgerError,
   reviewLines,
-  type ApduTransport,
+  type XrpTransport,
   type LedgerDevice,
 } from "@carbs/ledger";
 import type { Definitions } from "@carbs/sessions";
-import { reactive } from "vue";
+import { markRaw, reactive } from "vue";
 import type { DevicePort } from "../ports";
 import { deviceReview } from "./contract-device";
 import { closeLedgerDevice, createLedgerDevicePort, LEDGER_STAX_USB_MODEL } from "./ledger-device";
@@ -39,8 +39,11 @@ export interface DeviceSelection {
   disconnect(): Promise<void>;
   /** The connected Stax; throws when there is none. */
   ledger(): LedgerDevice;
-  /** APDUs to whichever Stax is connected when they are sent (it survives a reconnection). */
-  readonly transport: ApduTransport;
+  /**
+   * Whichever Stax is connected when a command runs (it survives a reconnection): its XRP signer
+   * kit, or its APDUs.
+   */
+  readonly transport: XrpTransport;
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
@@ -94,7 +97,13 @@ export function createDeviceSelection(
     },
     disconnect,
     ledger,
-    transport: { exchange: async (apdu) => ledger().exchange(apdu) },
+    // Raw: a reactive proxy would wrap the kit's signer (and its DI container) on each read.
+    transport: markRaw({
+      exchange: async (apdu) => ledger().exchange(apdu),
+      get signer() {
+        return device?.signer;
+      },
+    }),
   });
   return selection;
 }

@@ -48,6 +48,17 @@ describe("device selection", () => {
     expect(device.model).toMatch(/^SIMULATED/);
   });
 
+  it("forwards the connected Stax's XRP signer kit through its transport, and none once closed", async () => {
+    const { selection, staxes } = rig();
+    expect(selection.transport.signer).toBeUndefined();
+    await selection.connect();
+    const signer = { getAppConfig: () => ({}) };
+    Object.assign(staxes[0]!.device, { signer });
+    expect(selection.transport.signer).toBe(signer);
+    await selection.disconnect();
+    expect(selection.transport.signer).toBeUndefined();
+  });
+
   it("chosen but not connected, the Stax is never called SIMULATED and refuses to sign", async () => {
     const { selection, device } = rig();
     await selection.choose("usb");
