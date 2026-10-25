@@ -2388,6 +2388,143 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
+    // A WitnessSignature goes only on a session transaction that needs a
+    // witness. Anywhere else nothing checks whose it is, so anyone could add
+    // one to a valid transaction, or strip one from the own close, and change
+    // its ID: such a transaction is refused, with no fee.
+    void
+    testWitnessOnlyWhereNeeded(FeatureBitset features)
+    {
+        testcase("WitnessSignature only where a witness is needed");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"}, witness{"witness"},
+            mallory{"mallory"}, regular{"regular"};
+        env.fund(XRP(10000), alice, bob, witness, mallory);
+        env.memoize(regular);
+        env.close();
+
+        auto const modeA = Txflags(tfAllTransactions);
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        // Not session-signed: by the master key, then by the RegularKey.
+        env(regkey(alice, regular));
+        env.close();
+        auto balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)),
+            Sig(alice),
+            Sig(sfWitnessSignature, mallory),
+            Ter(tefBAD_SIGNATURE));
+        env(pay(alice, bob, XRP(1)),
+            Sig(regular),
+            Sig(sfWitnessSignature, mallory),
+            Ter(tefBAD_SIGNATURE));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        env(pay(alice, bob, XRP(1)), Sig(regular));
+        env.close();
+
+        // A session without a witness: neither its transactions nor its own
+        // close take one.
+        env(session::set(alice, key, 600), modeA);
+        env.close();
+        balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)),
+            Sig(key),
+            Sig(sfWitnessSignature, mallory),
+            lls(),
+            Ter(tefBAD_SIGNATURE));
+        env(session::del(alice, key),
+            Sig(key),
+            Sig(sfWitnessSignature, mallory),
+            lls(),
+            Ter(tefBAD_SIGNATURE));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(sessionEntry(env, alice, key));
+        env(pay(alice, bob, XRP(1)), Sig(key), lls());
+        env(session::del(alice, key), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+
+        // A session with a witness: the own close needs no co-signature and
+        // takes none, not even the witness's.
+        env(session::set(alice, key, 600), modeA, session::Witness(witness));
+        env.close();
+        balance = env.balance(alice);
+        env(session::del(alice, key),
+            Sig(key),
+            Sig(sfWitnessSignature, witness),
+            lls(),
+            Ter(tefBAD_SIGNATURE));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(sessionEntry(env, alice, key));
+        env(pay(alice, bob, XRP(1)), Sig(key), Sig(sfWitnessSignature, witness), lls());
+        env(session::del(alice, key), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+    }
+
+    // A witness key of a type whose amendment is not enabled never co-signs,
+    // as it never signs as a session key; and a witness left with no single
+    // key (a SignerList only) can co-sign nothing, so its session signs only
+    // its own close.
+    void
+    testWitnessKeys(FeatureBitset features)
+    {
+        testcase("SessionWitness keys");
+        using namespace jtx;
+
+        for (auto const& [type, feature] :
+             {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::Dilithium, featureQuantum}})
+        {
+            for (bool const enabled : {false, true})
+            {
+                Env env{*this, enabled ? features : features - feature};
+                Account const alice{"alice"}, bob{"bob"}, key{"key"};
+                Account const witness{"witness", type};
+                env.fund(XRP(10000), alice, bob, witness);
+                env.close();
+                env(session::set(alice, key, 600),
+                    Txflags(tfAllTransactions),
+                    session::Witness(witness));
+                env.close();
+                auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+                env(pay(alice, bob, XRP(1)),
+                    Sig(key),
+                    Sig(sfWitnessSignature, witness),
+                    lls(),
+                    enabled ? Ter(tesSUCCESS) : Ter(tefSESSION_NO_WITNESS));
+                env(session::del(alice, key), Sig(key), lls());
+                env.close();
+                BEAST_EXPECT(!sessionEntry(env, alice, key));
+            }
+        }
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"}, witness{"witness"}, carol{"carol"};
+        env.fund(XRP(10000), alice, bob, witness, carol);
+        env.close();
+        env(signers(witness, 1, {{carol, 1}}));
+        env(fset(witness, asfDisableMaster), Sig(witness));
+        env.close();
+
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions), session::Witness(witness));
+        env.close();
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        env(pay(alice, bob, XRP(1)),
+            Sig(key),
+            Sig(sfWitnessSignature, witness),
+            lls(),
+            Ter(tefSESSION_NO_WITNESS));
+        env(session::del(alice, key), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+    }
+
     // SessionMaxTxCount: in any mode, 1..kMaxSessionTxCount; SessionTxCount
     // counts each session-signed transaction applied, tes or tec, the own
     // close excepted; at the bound the next one is refused with no fee, and
@@ -2538,6 +2675,8 @@ public:
         testMlDsaLedgerAccount(all);
         testMaxPerTx(all);
         testWitness(all);
+        testWitnessOnlyWhereNeeded(all);
+        testWitnessKeys(all);
         testMaxTxCount(all);
     }
 };
