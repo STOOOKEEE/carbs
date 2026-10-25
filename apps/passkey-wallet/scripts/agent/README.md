@@ -92,12 +92,12 @@ invoice and each payment serve once.
 first 4 bytes of the 32-byte `invoiceId`. An escalated intent carries the same tag, so the
 Payment signed on the Stax pays that very invoice.
 
-| Endpoint                                   | Price  |
-| ------------------------------------------ | ------ |
-| `/api/weather?city=`                       | 1 XRP  |
-| `/api/flights?from=&to=`                   | 2 XRP  |
-| `/api/report?topic=` (`market`: injection) | 3 XRP  |
-| `/api/dataset`                             | 25 XRP |
+| Endpoint                                           | Price  |
+| -------------------------------------------------- | ------ |
+| `/api/weather?city=`                               | 1 XRP  |
+| `/api/flights?from=&to=`                           | 2 XRP  |
+| `/api/report?topic=` (a `market` topic: injection) | 3 XRP  |
+| `/api/dataset`                                     | 25 XRP |
 
 ## Agent tools
 
