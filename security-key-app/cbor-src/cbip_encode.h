@@ -41,5 +41,8 @@ int cbip_add_string(cbipEncoder_t *encoder, const char *value, uint32_t valueLen
 int cbip_add_boolean(cbipEncoder_t *encoder, bool value);
 int cbip_add_array_header(cbipEncoder_t *encoder, uint32_t length);
 int cbip_add_map_header(cbipEncoder_t *encoder, uint32_t length);
+// carbs: encode the header of a byte string of valueLength bytes and reserve them; on success
+// *value points at the bytes the caller fills (already counted in encoder->offset).
+int cbip_reserve_byte_string(cbipEncoder_t *encoder, uint32_t valueLength, uint8_t **value);
 
 #endif

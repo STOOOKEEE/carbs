@@ -131,3 +131,16 @@ int cbip_add_map_header(cbipEncoder_t *encoder, uint32_t length) {
     CHECK_FAULT();
     return cbip_add_header(encoder, CBOR_MAP, length);
 }
+
+int cbip_reserve_byte_string(cbipEncoder_t *encoder, uint32_t valueLength, uint8_t **value) {
+    int result;
+    CHECK_FAULT();
+    result = cbip_add_header(encoder, CBOR_BYTE_STRING, valueLength);
+    if (result < 0) {
+        return result;
+    }
+    CHECK_AVAILABLE(valueLength);
+    *value = encoder->buffer + encoder->offset;
+    encoder->offset += valueLength;
+    return 0;
+}

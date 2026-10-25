@@ -226,6 +226,15 @@ static int process_makeCred_authnr_keyCredParams(cbipDecoder_t *decoder, cbipIte
                     ctap2RegisterData->coseAlgorithm = algorithmType;
                 }
                 break;
+#ifdef HAVE_MLDSA_CREDENTIALS
+            case COSE_ALG_ML_DSA_44:
+                // carbs: post-quantum credential, only where its response can be sent
+                // (USB CTAPHID); elsewhere it is an unsupported algorithm, and is skipped.
+                if ((ctap2RegisterData->coseAlgorithm == 0) && ctap2_large_response_supported()) {
+                    ctap2RegisterData->coseAlgorithm = algorithmType;
+                }
+                break;
+#endif
             default:
                 // Ignore unsupported algorithm
                 break;
@@ -237,6 +246,9 @@ static int process_makeCred_authnr_keyCredParams(cbipDecoder_t *decoder, cbipIte
         case COSE_ALG_ES256:
         case COSE_ALG_ES256K:
         case COSE_ALG_EDDSA:
+#ifdef HAVE_MLDSA_CREDENTIALS
+        case COSE_ALG_ML_DSA_44:
+#endif
             break;
         default:
             PRINTF("Unknown algorithm\n");

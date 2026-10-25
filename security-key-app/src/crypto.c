@@ -30,6 +30,7 @@
 #define ROLE_PRIVATE_KEY           0
 #define ROLE_CRED_RANDOM_KEY_UV    1
 #define ROLE_CRED_RANDOM_KEY_NO_UV 2
+#define ROLE_MLDSA_SEED            3  // carbs
 
 void crypto_hash(cx_hash_t *hash,
                  uint32_t mode,
@@ -137,6 +138,23 @@ void crypto_generate_credRandom_key(const uint8_t *nonce, uint8_t *credRandom, b
                           (const uint8_t *) N_u2f.privateKeySeed,
                           sizeof(N_u2f.privateKeySeed),
                           credRandom);
+    explicit_bzero(extended_nonce, sizeof(extended_nonce));
+}
+
+void crypto_generate_mldsa_seed(const uint8_t *nonce, uint8_t *seed) {
+    uint8_t extended_nonce[32];
+
+    // carbs: ML-DSA-44 seed xi = SHA256((3 << 128 | nonce) || privateKeySeed), the same
+    // construction as the ECDSA private key with its own role, so that the seed of a
+    // credential is never the ECDSA private key or credRandom of the same nonce.
+    memset(extended_nonce, 0, sizeof(extended_nonce));
+    extended_nonce[15] = ROLE_MLDSA_SEED;
+    memcpy(extended_nonce + 16, nonce, CREDENTIAL_NONCE_SIZE);
+    crypto_compute_sha256(extended_nonce,
+                          sizeof(extended_nonce),
+                          (const uint8_t *) N_u2f.privateKeySeed,
+                          sizeof(N_u2f.privateKeySeed),
+                          seed);
     explicit_bzero(extended_nonce, sizeof(extended_nonce));
 }
 

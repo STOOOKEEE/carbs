@@ -64,6 +64,12 @@ int crypto_generate_public_key(cx_ecfp_private_key_t *private_key,
 void crypto_generate_credRandom_key(const uint8_t *nonce, uint8_t *credRandom, bool with_uv);
 
 /**
+ * carbs: generate the 32-byte ML-DSA-44 key generation seed (FIPS 204 xi) of a credential
+ * from its nonce.
+ */
+void crypto_generate_mldsa_seed(const uint8_t *nonce, uint8_t *seed);
+
+/**
  * Sign data_hash with private_key and store it in signature.
  * Return the length of the signature.
  */

@@ -30,6 +30,9 @@
 #include "ui_messages.h"
 
 #include "make_credential_utils.h"
+#ifdef HAVE_MLDSA_CREDENTIALS
+#include "mldsa_credential.h"
+#endif
 
 #define TAG_RESP_FMT      0x01
 #define TAG_RESP_AUTHDATA 0x02
@@ -86,6 +89,14 @@ static int encode_makeCred_public_key(const uint8_t *nonce,
     cbipEncoder_t encoder;
     cx_ecfp_public_key_t publicKey;
     int status;
+
+#ifdef HAVE_MLDSA_CREDENTIALS
+    // carbs: the key is derived from the nonce, the pre-generated NFC nonce included (it is
+    // wiped by ctap2_make_credential_confirm() once used, as for the other algorithms).
+    if (coseAlgorithm == COSE_ALG_ML_DSA_44) {
+        return mldsa_credential_encode_cose_key(nonce, buffer, bufferLength);
+    }
+#endif
 
 #ifdef HAVE_NFC
     // Spare response time by pre-generating part of the answer
@@ -256,6 +267,17 @@ static int sign_and_build_makeCred_response(uint8_t *authData,
     return encoder.offset;
 }
 
+// carbs: an ML-DSA-44 credential (only chosen over CTAPHID) may use the whole response
+// buffer; the other algorithms keep the APDU-sized bound they always had.
+static uint32_t makeCred_response_capacity(void) {
+#ifdef HAVE_MLDSA_CREDENTIALS
+    if (globals_get_ctap2_register_data()->coseAlgorithm == COSE_ALG_ML_DSA_44) {
+        return sizeof(responseBuffer) - 1;
+    }
+#endif
+    return CUSTOM_IO_APDU_BUFFER_SIZE - 1;
+}
+
 void ctap2_make_credential_confirm() {
     ctap2_register_data_t *ctap2RegisterData = globals_get_ctap2_register_data();
     uint32_t dataLen;
@@ -309,7 +331,7 @@ void ctap2_make_credential_confirm() {
     status = sign_and_build_makeCred_response(shared_ctx.sharedBuffer,
                                               dataLen,
                                               responseBuffer + 1,
-                                              CUSTOM_IO_APDU_BUFFER_SIZE - 1);
+                                              makeCred_response_capacity());
     if (status < 0) {
         status = ERROR_OTHER;
         goto exit;

@@ -122,7 +122,21 @@ extern global_t g;
 
 extern u2f_service_t G_io_u2f;
 
-extern uint8_t responseBuffer[IO_APDU_BUFFER_SIZE];
+#ifdef HAVE_MLDSA_CREDENTIALS
+#include "mldsa_credential.h"
+// carbs: an ML-DSA-44 assertion carries a 2420-byte signature, a credential a 1322-byte COSE
+// key; the response is sent over CTAPHID from this buffer (ctap2_large_response_supported).
+// The 1024 bytes besides the signature hold the rest of the largest assertion (credential ID,
+// authenticator data with hmac-secret, user entity with 64-byte id and names), about 600.
+#define RESPONSE_BUFFER_SIZE (1 + MLDSA_CREDENTIAL_SIGNATURE_SIZE + 1024)
+// The authenticator data of a makeCredential, built here, carries the COSE key.
+#define SHARED_BUFFER_SIZE (500 + MLDSA_CREDENTIAL_COSE_KEY_SIZE)
+#else
+#define RESPONSE_BUFFER_SIZE IO_APDU_BUFFER_SIZE
+#define SHARED_BUFFER_SIZE   500
+#endif
+
+extern uint8_t responseBuffer[RESPONSE_BUFFER_SIZE];
 
 // App-owned copy of the CBOR request. G_io_apdu_buffer aliases G_io_tx_buffer and
 // is overwritten by the next command without the app being called, while handlers
@@ -141,7 +155,7 @@ typedef struct shared_ctx_s {
         u2f_data_t u2fData;
         ctap2_data_t ctap2Data;
     } u;
-    uint8_t sharedBuffer[500];
+    uint8_t sharedBuffer[SHARED_BUFFER_SIZE];
 } shared_ctx_t;
 
 extern shared_ctx_t shared_ctx;

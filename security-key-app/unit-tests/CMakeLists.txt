@@ -227,3 +227,121 @@ ledger_unit_tests_add_test(
     COMPILE_DEFS    ${UT_COMPILE_DEFS_SDK} ${UT_COMPILE_DEFS}
     COMPILE_OPTIONS "SHELL:-include os.h" "SHELL:-include cx.h"
 )
+
+#######################################################################
+#      carbs: ML-DSA-44 credentials (built as for Stax, Flex, Apex P)  #
+#######################################################################
+# The large-screen devices build with HAVE_MLDSA_CREDENTIALS (see the Makefile); the
+# suites above keep the configuration of the other devices.
+set(UT_MLDSA_COMPILE_DEFS ${UT_COMPILE_DEFS_SDK} ${UT_COMPILE_DEFS} HAVE_MLDSA_CREDENTIALS)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_cose
+    SOURCES         ${APP_DIR}/src/cbip_helper.c
+                    ${APP_DIR}/cbor-src/cbip_decode.c
+                    ${APP_DIR}/cbor-src/cbip_encode.c
+    MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_ecfp.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+    COMPILE_OPTIONS ${UT_SANITIZERS}
+    LINK_OPTIONS    ${UT_SANITIZERS}
+)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_credential
+    SOURCES         ${APP_DIR}/src/cose_keys.c
+                    ${APP_DIR}/src/cbip_helper.c
+                    ${APP_DIR}/cbor-src/cbip_decode.c
+                    ${APP_DIR}/cbor-src/cbip_encode.c
+    MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_ecfp.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+    COMPILE_OPTIONS ${UT_SANITIZERS}
+    LINK_OPTIONS    ${UT_SANITIZERS}
+)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_seed
+    MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_ecfp.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_hash.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_sha256.h
+                    ${SDK_DIR}/include/ledger_assert_internals.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_get_assertion
+    SOURCES         ${APP_DIR}/src/globals.c
+                    ${APP_DIR}/src/string_utils.c
+                    ${APP_DIR}/src/cbip_helper.c
+                    ${APP_DIR}/cbor-src/cbip_decode.c
+                    ${APP_DIR}/cbor-src/cbip_encode.c
+    MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_ecfp.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_hmac.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_rng.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_sha256.h
+                    ${APP_DIR}/include/config.h
+                    ${APP_DIR}/include/cose_keys.h
+                    ${APP_DIR}/include/credential.h
+                    ${APP_DIR}/include/crypto.h
+                    ${APP_DIR}/include/ctap2.h
+                    ${APP_DIR}/include/mldsa_credential.h
+                    ${APP_DIR}/src/ctap2/ctap2_utils.h
+                    ${APP_DIR}/src/ctap2/rk_storage.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+    COMPILE_OPTIONS "SHELL:-include os.h" "SHELL:-include cx.h"
+)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_make_credential
+    SOURCES         ${APP_DIR}/src/globals.c
+                    ${APP_DIR}/src/string_utils.c
+                    ${APP_DIR}/src/cbip_helper.c
+                    ${APP_DIR}/cbor-src/cbip_decode.c
+                    ${APP_DIR}/cbor-src/cbip_encode.c
+    MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_ecfp.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_rng.h
+                    ${SDK_DIR}/lib_cxng/include/lcx_sha256.h
+                    ${APP_DIR}/include/config.h
+                    ${APP_DIR}/include/cose_keys.h
+                    ${APP_DIR}/include/credential.h
+                    ${APP_DIR}/include/crypto.h
+                    ${APP_DIR}/include/mldsa_credential.h
+                    ${APP_DIR}/src/ctap2/ctap2_utils.h
+                    ${APP_DIR}/src/ctap2/rk_storage.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+    COMPILE_OPTIONS "SHELL:-include os.h" "SHELL:-include cx.h"
+)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_make_credential_params
+    SOURCES         ${APP_DIR}/src/globals.c
+                    ${APP_DIR}/src/string_utils.c
+                    ${APP_DIR}/src/cbip_helper.c
+                    ${APP_DIR}/cbor-src/cbip_decode.c
+                    ${APP_DIR}/cbor-src/cbip_encode.c
+    MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_sha256.h
+                    ${APP_DIR}/include/config.h
+                    ${APP_DIR}/include/credential.h
+                    ${APP_DIR}/src/ctap2/ctap2_utils.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+    COMPILE_OPTIONS "SHELL:-include os.h" "SHELL:-include cx.h"
+)
+
+ledger_unit_tests_add_test(
+    NAME            test_mldsa_get_info
+    SOURCES         ${APP_DIR}/src/globals.c
+                    ${APP_DIR}/src/string_utils.c
+                    ${APP_DIR}/src/cbip_helper.c
+                    ${APP_DIR}/cbor-src/cbip_decode.c
+                    ${APP_DIR}/cbor-src/cbip_encode.c
+    MOCK_HEADERS    ${APP_DIR}/include/config.h
+                    ${APP_DIR}/src/ctap2/ctap2_utils.h
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
+    COMPILE_OPTIONS "SHELL:-include os.h" "SHELL:-include cx.h"
+)

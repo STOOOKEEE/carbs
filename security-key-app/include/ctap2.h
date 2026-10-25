@@ -81,6 +81,13 @@
 #define COSE_CURVE_P256           1
 #define COSE_CURVE_ED25519        6
 
+// carbs: ML-DSA-44 (FIPS 204), draft-ietf-cose-dilithium: an "AKP" (algorithm key pair) key
+// whose public key is the raw 1312-byte ML-DSA-44 public key in parameter -1 ("pub").
+#define COSE_ALG_ML_DSA_44   -48
+#define COSE_KEYTYPE_AKP     7
+#define TAG_COSE_AKP_PUB     -1
+#define COSE_AKP_HEADER_SIZE 10  // map(3), kty: 7, alg: -48, pub: bstr header (2-byte length)
+
 #define AUTHDATA_FLAG_USER_PRESENCE                    0x01
 #define AUTHDATA_FLAG_USER_VERIFIED                    0x04
 #define AUTHDATA_FLAG_ATTESTED_CREDENTIAL_DATA_PRESENT 0x40

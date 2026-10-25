@@ -29,4 +29,16 @@ int decode_cose_key(cbipDecoder_t *decoder,
                     bool forExchange);
 cx_curve_t cose_alg_to_cx(int coseAlgorithn);
 
+/**
+ * carbs: encode the header of a COSE "AKP" key (draft-ietf-cose-dilithium)
+ *   {1 (kty): 7 (AKP), 3 (alg): alg, -1 (pub): bstr of publicKeyLength bytes}
+ * and reserve its public key: on success *publicKey points at the publicKeyLength bytes the
+ * caller fills, already counted in encoder->offset, so the key can be generated in place.
+ * Returns 0, or -1 (encoder fault set) when the encoder has no room for the whole key.
+ */
+int encode_cose_key_akp(cbipEncoder_t *encoder,
+                        int alg,
+                        uint32_t publicKeyLength,
+                        uint8_t **publicKey);
+
 #endif

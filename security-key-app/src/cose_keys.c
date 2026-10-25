@@ -205,6 +205,23 @@ int decode_cose_key(cbipDecoder_t *decoder,
     return 0;
 }
 
+int encode_cose_key_akp(cbipEncoder_t *encoder,
+                        int alg,
+                        uint32_t publicKeyLength,
+                        uint8_t **publicKey) {
+    // Keys in CTAP2 canonical order: 1, 3, -1.
+    cbip_add_map_header(encoder, 3);
+    cbip_add_int(encoder, TAG_COSE_KTY);
+    cbip_add_int(encoder, COSE_KEYTYPE_AKP);
+    cbip_add_int(encoder, TAG_COSE_ALG);
+    cbip_add_int(encoder, alg);
+    cbip_add_int(encoder, TAG_COSE_AKP_PUB);
+    if (cbip_reserve_byte_string(encoder, publicKeyLength, publicKey) < 0) {
+        return -1;
+    }
+    return 0;
+}
+
 cx_curve_t cose_alg_to_cx(int coseAlgorithm) {
     switch (coseAlgorithm) {
         case COSE_ALG_ES256:

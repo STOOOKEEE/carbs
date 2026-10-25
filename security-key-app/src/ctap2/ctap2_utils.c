@@ -64,6 +64,10 @@ void ctap2_send_keepalive_processing() {
     }
 }
 
+bool ctap2_large_response_supported(void) {
+    return CMD_IS_OVER_CTAP2_CBOR_CMD && !CMD_IS_OVER_U2F_NFC;
+}
+
 void performBuiltInUv(void) {
     PRINTF("performBuiltInUv\n");
     // No-op as the user is verified through the session PIN.

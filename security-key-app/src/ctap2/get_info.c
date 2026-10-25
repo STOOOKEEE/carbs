@@ -65,7 +65,7 @@ static void cbip_add_option(cbipEncoder_t *encoder,
     cbip_add_boolean(encoder, value);
 }
 
-/*
+#ifdef HAVE_MLDSA_CREDENTIALS
 static void cbip_add_alg_pkey(cbipEncoder_t *encoder,
                               const char *alg_desc,
                               size_t alg_desc_size,
@@ -76,7 +76,7 @@ static void cbip_add_alg_pkey(cbipEncoder_t *encoder,
     cbip_add_string(encoder, CREDENTIAL_DESCRIPTOR_TYPE, sizeof(CREDENTIAL_DESCRIPTOR_TYPE) - 1);
     cbip_add_string(encoder, CREDENTIAL_TYPE_PUBLIC_KEY, sizeof(CREDENTIAL_TYPE_PUBLIC_KEY) - 1);
 }
-*/
+#endif
 
 void ctap2_get_info_handle(u2f_service_t *service, uint8_t *buffer, uint16_t length) {
     UNUSED(buffer);
@@ -88,7 +88,13 @@ void ctap2_get_info_handle(u2f_service_t *service, uint8_t *buffer, uint16_t len
 
     cbip_encoder_init(&encoder, responseBuffer + 1, CUSTOM_IO_APDU_BUFFER_SIZE - 1);
 
+#ifdef HAVE_MLDSA_CREDENTIALS
+    // carbs: the algorithms member (0x0A) is added so that a platform can see ML-DSA-44.
+    const bool listMlDsa = ctap2_large_response_supported();
+    cbip_add_map_header(&encoder, 7);
+#else
     cbip_add_map_header(&encoder, 6);
+#endif
 
     // versions (0x01)
 
@@ -167,6 +173,32 @@ void ctap2_get_info_handle(u2f_service_t *service, uint8_t *buffer, uint16_t len
     cbip_add_int(&encoder, TAG_PIN_PROTOCOLS);
     cbip_add_array_header(&encoder, 1);
     cbip_add_int(&encoder, PIN_PROTOCOL_VERSION_V1);
+
+#ifdef HAVE_MLDSA_CREDENTIALS
+    // algorithms (0x0A)
+    // ES256, EDDSA, ES256K as in the list below, then ML-DSA-44 where makeCredential accepts
+    // it (USB CTAPHID, see ctap2_large_response_supported).
+    cbip_add_int(&encoder, TAG_ALGORITHMS);
+    cbip_add_array_header(&encoder, listMlDsa ? 4 : 3);
+    cbip_add_alg_pkey(&encoder,
+                      CREDENTIAL_DESCRIPTOR_ALG,
+                      sizeof(CREDENTIAL_DESCRIPTOR_ALG) - 1,
+                      COSE_ALG_ES256);
+    cbip_add_alg_pkey(&encoder,
+                      CREDENTIAL_DESCRIPTOR_ALG,
+                      sizeof(CREDENTIAL_DESCRIPTOR_ALG) - 1,
+                      COSE_ALG_EDDSA);
+    cbip_add_alg_pkey(&encoder,
+                      CREDENTIAL_DESCRIPTOR_ALG,
+                      sizeof(CREDENTIAL_DESCRIPTOR_ALG) - 1,
+                      COSE_ALG_ES256K);
+    if (listMlDsa) {
+        cbip_add_alg_pkey(&encoder,
+                          CREDENTIAL_DESCRIPTOR_ALG,
+                          sizeof(CREDENTIAL_DESCRIPTOR_ALG) - 1,
+                          COSE_ALG_ML_DSA_44);
+    }
+#endif
 
     /*
     // transports (0x09)

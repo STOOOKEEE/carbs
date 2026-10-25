@@ -34,6 +34,9 @@
 #include "ui_shared.h"
 
 #include "get_assertion_utils.h"
+#ifdef HAVE_MLDSA_CREDENTIALS
+#include "mldsa_credential.h"
+#endif
 
 #define TAG_RESP_CREDENTIAL  0x01
 #define TAG_RESP_AUTH_DATA   0x02
@@ -285,7 +288,10 @@ static int sign_and_encode_credential_authData_signature(cbipEncoder_t *encoder,
                                                          credential_data_t *credData) {
     ctap2_assert_data_t *ctap2AssertData = globals_get_ctap2_assert_data();
     uint8_t attestationSignature[72];
+    uint8_t *signature = attestationSignature;
     uint32_t signatureLength;
+    // End of the room the credential and authData may use in buffer (see the ML-DSA case).
+    uint32_t freeLen = bufferLen;
     int status;
 
     PRINTF("Data to sign (size %d) %.*H\n", authDataLen, authDataLen, authData);
@@ -296,6 +302,29 @@ static int sign_and_encode_credential_authData_signature(cbipEncoder_t *encoder,
     // a hash context that is heavy and can be avoided
     memmove(authData + authDataLen, ctap2AssertData->clientDataHash, CX_SHA256_SIZE);
 
+#ifdef HAVE_MLDSA_CREDENTIALS
+    if (credData->coseAlgorithm == COSE_ALG_ML_DSA_44) {
+        // carbs: the 2420-byte signature is computed at the end of the response buffer,
+        // which nothing uses yet, and moved into place by the encoder (memmove) once the
+        // credential and authData are encoded in front of it. It is signed first, as for the
+        // other algorithms, because rewrapping the credential below overwrites the nonce.
+        if ((encoder->offset > bufferLen) ||
+            (bufferLen - encoder->offset < MLDSA_CREDENTIAL_SIGNATURE_SIZE + CX_SHA256_SIZE)) {
+            return -1;
+        }
+        freeLen = bufferLen - MLDSA_CREDENTIAL_SIGNATURE_SIZE;
+        signature = buffer + freeLen;
+        status = mldsa_credential_sign(ctap2AssertData->nonce,
+                                       authData,
+                                       authDataLen + CX_SHA256_SIZE,
+                                       signature,
+                                       MLDSA_CREDENTIAL_SIGNATURE_SIZE);
+        if (status < 0) {
+            return -1;
+        }
+        signatureLength = status;
+    } else
+#endif
     {
         // Use a new block scope to reduce the impact of privateKey on the stack.
         cx_ecfp_private_key_t privateKey;
@@ -358,8 +387,11 @@ static int sign_and_encode_credential_authData_signature(cbipEncoder_t *encoder,
                 return -1;
             }
 
+            if (freeLen <= WRAPPED_CREDENTIAL_OFFSET) {
+                return -1;
+            }
             credential = buffer + WRAPPED_CREDENTIAL_OFFSET;
-            credentialLength = bufferLen - WRAPPED_CREDENTIAL_OFFSET;
+            credentialLength = freeLen - WRAPPED_CREDENTIAL_OFFSET;
             status = credential_wrap(ctap2AssertData->rpIdHash,
                                      ctap2AssertData->nonce,
                                      &tmpCredData,
@@ -375,6 +407,15 @@ static int sign_and_encode_credential_authData_signature(cbipEncoder_t *encoder,
         }
 
         ctap2_send_keepalive_processing();
+
+        // The credential and authData must not reach the signature computed at freeLen:
+        // headers (credential map, its 2 keys, the "public-key" type, both byte string
+        // headers) take less than 32 bytes.
+        if ((encoder->offset > freeLen) ||
+            (credentialLength + authDataLen + 32 > freeLen - encoder->offset)) {
+            PRINTF("No room for the credential and authData\n");
+            return -1;
+        }
 
         PRINTF("Adding credential %.*H\n", credentialLength, credential);
         cbip_add_int(encoder, TAG_RESP_CREDENTIAL);
@@ -393,7 +434,10 @@ static int sign_and_encode_credential_authData_signature(cbipEncoder_t *encoder,
     cbip_add_byte_string(encoder, authData, authDataLen);
 
     cbip_add_int(encoder, TAG_RESP_SIGNATURE);
-    cbip_add_byte_string(encoder, attestationSignature, signatureLength);
+    cbip_add_byte_string(encoder, signature, signatureLength);
+    if (encoder->fault) {
+        return -1;
+    }
 
     return encoder->offset;
 }
@@ -643,8 +687,21 @@ void get_assertion_send(void) {
         goto exit;
     }
 
+    uint32_t responseCapacity = CUSTOM_IO_APDU_BUFFER_SIZE - 1;
+#ifdef HAVE_MLDSA_CREDENTIALS
+    if (credData.coseAlgorithm == COSE_ALG_ML_DSA_44) {
+        // carbs: an ML-DSA-44 assertion only fits a CTAPHID response (see
+        // ctap2_large_response_supported); it uses the whole response buffer.
+        if (!ctap2_large_response_supported()) {
+            status = ERROR_UNSUPPORTED_ALGORITHM;
+            goto exit;
+        }
+        responseCapacity = sizeof(responseBuffer) - 1;
+    }
+#endif
+
     status = build_and_encode_getAssertion_response(responseBuffer + 1,
-                                                    CUSTOM_IO_APDU_BUFFER_SIZE - 1,
+                                                    responseCapacity,
                                                     &credData,
                                                     &dataLen);
     if (status != ERROR_NONE) {

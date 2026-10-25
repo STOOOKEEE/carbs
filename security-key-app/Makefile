@@ -174,6 +174,15 @@ endif
 
 ENABLE_NFC = 1
 
+# carbs: post-quantum credentials, ML-DSA-44 (COSE algorithm -48), on the large-screen
+# devices only (RAM). ML-DSA is not exported by the OS crypto library, so the SDK sources
+# are compiled in; HAVE_MLDSA_OPTIMIZATION selects their low-RAM variant. See CARBS.md.
+ifeq ($(TARGET_NAME),$(filter $(TARGET_NAME),TARGET_STAX TARGET_FLEX TARGET_APEX_P))
+    DEFINES += HAVE_MLDSA_CREDENTIALS HAVE_MLDSA_OPTIMIZATION
+    APP_SOURCE_FILES += $(wildcard ${BOLOS_SDK}/lib_cxng/src/cx_mldsa*.c)
+    INCLUDES_PATH += ${BOLOS_SDK}/lib_cxng/src
+endif
+
 ##############
 # Compiler #
 ##############

@@ -35,3 +35,11 @@ void send_cbor_error(u2f_service_t *service, uint8_t error);
  */
 void send_cbor_response(u2f_service_t *service, uint32_t length, const char *status);
 void ctap2_send_keepalive_processing(void);
+
+/*
+ * carbs: whether the current command can be answered with a response larger than the APDU
+ * buffer (an ML-DSA-44 credential or assertion). Only a CTAPHID_CBOR message on USB can:
+ * its HID transport sends from responseBuffer, while the APDU paths (CTAP2 over U2F_MSG, NFC)
+ * copy the response into the CUSTOM_IO_APDU_BUFFER_SIZE IO buffer.
+ */
+bool ctap2_large_response_supported(void);
