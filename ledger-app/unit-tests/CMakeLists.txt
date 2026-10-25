@@ -26,6 +26,8 @@ add_library(xrp
   ../src/xrp/amount.c
   ../src/xrp/amount.h
   ../src/xrp/array.h
+  ../src/xrp/batch.c
+  ../src/xrp/batch.h
   ../src/xrp/fields.c
   ../src/xrp/fields.h
   ../src/xrp/field_sort.c

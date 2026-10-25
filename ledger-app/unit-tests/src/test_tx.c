@@ -152,6 +152,9 @@ static const char* testcases[] = {
     "01-own-close.raw",
     "../../tests/standalone/testcases/31-signing-session-delete/"
     "02-expired-by-third-party.raw",
+    // carbs: Batch clear signing (FIANSO-SPEC 7.4), encoded the same way.
+    "../../tests/standalone/testcases/32-batch/01-session-and-payment.raw",
+    "../../tests/standalone/testcases/32-batch/02-three-session-deletes.raw",
     NULL,
 };
 
@@ -228,21 +231,6 @@ static uint8_t* load_transaction_data(const char* filename, size_t* size) {
     return data;
 }
 
-static void update_title(field_t* field, field_name_t* title) {
-    const char* name = resolve_field_name(field);
-    strncpy(title->buf, name, sizeof(title->buf));
-    title->buf[sizeof(title->buf) - 1] = '\x00';
-
-    size_t len = strlen(title->buf);
-    if (field->array_info.type == ARRAY_PATHSET) {
-        snprintf(title->buf + len, sizeof(title->buf) - len, " [P%d: S%d]",
-                 field->array_info.index1, field->array_info.index2);
-    } else if (field->array_info.type != ARRAY_NONE) {
-        snprintf(title->buf + len, sizeof(title->buf) - len, " [%d]",
-                 field->array_info.index1);
-    }
-}
-
 static void update_value(field_t* field, field_value_t* value) {
     format_field(field, value);
 }
@@ -267,7 +255,7 @@ static void generate_expected_result(const char* filename,
         field_t* field = &transaction->fields[i];
         field_name_t field_name;
         field_value_t field_value;
-        update_title(field, &field_name);
+        format_field_title(field, &field_name);
         update_value(field, &field_value);
         fprintf(fp, "%s; %s\n", field_name.buf, field_value.buf);
     }
@@ -288,7 +276,7 @@ static void check_transaction_results(const char* filename,
         field_t* field = &transaction->fields[i];
         field_name_t field_name;
         field_value_t field_value;
-        update_title(field, &field_name);
+        format_field_title(field, &field_name);
         update_value(field, &field_value);
 
         char line[4096];
@@ -370,6 +358,18 @@ static const char* session_blind_testcases[] = {
     NULL,
 };
 
+// A Batch the app cannot show in full goes blind (FIANSO-SPEC 7.4), never a
+// partial clear-sign review.
+static const char* batch_blind_testcases[] = {
+    // TicketCreate is not an inner type the review supports.
+    "../../tests/standalone/testcases/32-batch/03-unsupported-inner-type.raw",
+    // An inner Fee other than 0 would be hidden as a protocol constant.
+    "../../tests/standalone/testcases/32-batch/04-inner-fee-not-zero.raw",
+    // Memos inside an inner transaction: an array nested in RawTransactions.
+    "../../tests/standalone/testcases/32-batch/05-memos-in-inner.raw",
+    NULL,
+};
+
 // Malformed session data is refused outright, not offered for blind signing.
 static const char* session_refused_testcases[] = {
     // 01-mode-all with its last 5 bytes cut.
@@ -400,14 +400,21 @@ static int parse_file(const char* filename) {
     return result;
 }
 
-void test_session_blind_required(void** state) {
-    (void)state;
-
-    for (const char** testcase = session_blind_testcases; *testcase != NULL;
-         testcase++) {
+static void assert_all_blind_required(const char** cases) {
+    for (const char** testcase = cases; *testcase != NULL; testcase++) {
         printf("[*] %s\n", *testcase);
         assert_int_equal(parse_file(*testcase), BLIND_SIGN_REQUIRED);
     }
+}
+
+void test_session_blind_required(void** state) {
+    (void)state;
+    assert_all_blind_required(session_blind_testcases);
+}
+
+void test_batch_blind_required(void** state) {
+    (void)state;
+    assert_all_blind_required(batch_blind_testcases);
 }
 
 void test_session_refused(void** state) {
@@ -427,6 +434,7 @@ int main() {
         cmocka_unit_test(test_transactions),
         cmocka_unit_test(test_invalid_transactions),
         cmocka_unit_test(test_session_blind_required),
+        cmocka_unit_test(test_batch_blind_required),
         cmocka_unit_test(test_session_refused),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

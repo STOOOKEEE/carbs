@@ -128,6 +128,22 @@ static bool is_supported_transaction_type(uint16_t t) {
         case TRANSACTION_AMM_DELETE:
         case TRANSACTION_SIGNING_SESSION_SET:
         case TRANSACTION_SIGNING_SESSION_DELETE:
+        case TRANSACTION_BATCH:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Inner transactions a Batch review can show (FIANSO-SPEC 7.4): the ones
+// carbs batches. Any other inner type sends the whole Batch to blind signing.
+static bool is_supported_batch_inner_type(uint16_t t) {
+    switch (t) {
+        case TRANSACTION_PAYMENT:
+        case TRANSACTION_ACCOUNT_SET:
+        case TRANSACTION_SET_REGULAR_KEY:
+        case TRANSACTION_SIGNING_SESSION_SET:
+        case TRANSACTION_SIGNING_SESSION_DELETE:
             return true;
         default:
             return false;
@@ -141,6 +157,32 @@ uint8_t* current_position(parseContext_t* context) {
 typedef struct err_s {
     int err;
 } err_t;
+
+// A Batch too long to show in full is still a valid transaction: offer it
+// for blind signing instead of refusing it.
+static err_t out_of_space(parseContext_t* context) {
+    err_t err;
+    err.err = context->transaction_type == TRANSACTION_BATCH
+                  ? BLIND_SIGN_REQUIRED
+                  : NOT_ENOUGH_SPACE;
+    return err;
+}
+
+// The inner transaction of the Batch being parsed that this field sits in
+// (directly inside its RawTransaction object), or NULL.
+static batchInnerTx_t* batch_inner_tx(parseContext_t* context,
+                                      const field_t* field) {
+    uint8_t index = field->array_info.index1;
+
+    if (context->transaction_type != TRANSACTION_BATCH ||
+        field->array_info.type != XRP_STARRAY_RAW_TRANSACTIONS ||
+        field->object_depth != 1 || index < 1 ||
+        index > context->batch.inner_count) {
+        return NULL;
+    }
+
+    return &context->batch.inner[index - 1];
+}
 
 err_t advance_position(parseContext_t* context, uint32_t num_bytes) {
     err_t err;
@@ -193,8 +235,7 @@ err_t append_new_field(parseContext_t* context, field_t** field) {
     err_t err;
 
     if (context->result.num_fields >= MAX_FIELD_COUNT) {
-        err.err = NOT_ENOUGH_SPACE;
-        return err;
+        return out_of_space(context);
     }
 
     *field = &context->result.fields[context->result.num_fields++];
@@ -327,8 +368,7 @@ err_t read_vector256_field(parseContext_t* context, field_t* field) {
 
     uint16_t count = data_length / XRP_VECTOR256_SIZE;
     if (count > (MAX_FIELD_COUNT - context->result.num_fields)) {
-        err.err = NOT_ENOUGH_SPACE;
-        return err;
+        return out_of_space(context);
     }
 
     CHECK(read_fixed_size_field(context, field, data_length));
@@ -381,9 +421,46 @@ err_t read_issue(parseContext_t* context, field_t* field) {
     return err;
 }
 
-void handle_array_field(parseContext_t* context, field_t* field) {
+// An array (or a path set) inside another array would make the parser lose
+// track of the outer one, and the fields after it would show at the wrong
+// level. No supported transaction nests them: blind signing.
+static err_t check_not_nested(parseContext_t* context) {
+    err_t err;
+    err.err = context->current_array == ARRAY_NONE ? SUCCESS
+                                                   : BLIND_SIGN_REQUIRED;
+    return err;
+}
+
+// A Batch shows its RawTransactions and its Memos. Any other array (the
+// BatchSigners are not even part of the signed data), a second
+// RawTransactions, or one inside an object cannot be shown: blind signing.
+static err_t begin_batch_array(parseContext_t* context, field_t* field) {
+    err_t err;
+    err.err = SUCCESS;
+
+    if (field->id == XRP_STARRAY_MEMOS) {
+        return err;
+    }
+    if (field->id == XRP_STARRAY_RAW_TRANSACTIONS &&
+        context->object_depth == 0 && !context->batch.has_raw_transactions) {
+        context->batch.has_raw_transactions = true;
+        return err;
+    }
+
+    err.err = BLIND_SIGN_REQUIRED;
+    return err;
+}
+
+err_t handle_array_field(parseContext_t* context, field_t* field) {
+    err_t err;
+    err.err = SUCCESS;
+
     if (field->id != ARR_END) {
         // Begin array
+        CHECK(check_not_nested(context));
+        if (context->transaction_type == TRANSACTION_BATCH) {
+            CHECK(begin_batch_array(context, field));
+        }
         context->current_array = field->id;
         context->array_index1 = 0;
         context->array_index2 = 0;
@@ -391,12 +468,44 @@ void handle_array_field(parseContext_t* context, field_t* field) {
         // End array
         context->current_array = ARRAY_NONE;
     }
+
+    return err;
+}
+
+// In a Batch, the only objects are the RawTransaction objects straight in
+// RawTransactions (one per inner transaction, recorded here) and the
+// top-level Memo objects. Anything deeper cannot be shown: blind signing.
+static err_t begin_batch_object(parseContext_t* context, field_t* field) {
+    err_t err;
+    err.err = BLIND_SIGN_REQUIRED;
+
+    if (context->object_depth != 0 || context->current_array == ARRAY_NONE) {
+        return err;
+    }
+
+    if (context->current_array == XRP_STARRAY_RAW_TRANSACTIONS) {
+        if (field->id != XRP_STOBJECT_RAW_TRANSACTION ||
+            context->batch.inner_count >= BATCH_MAX_INNER_TXS) {
+            return err;
+        }
+        batchInnerTx_t* inner =
+            &context->batch.inner[context->batch.inner_count++];
+        inner->transaction_type = TRANSACTION_INVALID;
+        inner->has_inner_flag = false;
+    }
+
+    err.err = SUCCESS;
+    return err;
 }
 
 err_t handle_object_field(parseContext_t* context, field_t* field) {
     err_t err;
 
     if (field->id != OBJ_END) {
+        if (context->transaction_type == TRANSACTION_BATCH) {
+            CHECK(begin_batch_object(context, field));
+        }
+
         // Normal object, only increment first array index
         context->array_index1++;
         context->object_depth++;
@@ -494,7 +603,10 @@ err_t handle_path_field(parseContext_t* context, field_t* field) {
     return err;
 }
 
-void handle_path_set_field(parseContext_t* context) {
+err_t handle_path_set_field(parseContext_t* context) {
+    err_t err;
+
+    CHECK(check_not_nested(context));
     context->current_array = ARRAY_PATHSET;
 
     // The code for handling path set fields becomes easier if we
@@ -502,6 +614,8 @@ void handle_path_set_field(parseContext_t* context) {
     // to the user
     context->array_index1 = 1;
     context->array_index2 = 1;
+
+    return err;
 }
 
 err_t read_field_value(parseContext_t* context, field_t* field) {
@@ -542,13 +656,13 @@ err_t read_field_value(parseContext_t* context, field_t* field) {
             err = read_vector256_field(context, field);
             break;
         case STI_ARRAY:
-            handle_array_field(context, field);
+            err = handle_array_field(context, field);
             break;
         case STI_OBJECT:
             err = handle_object_field(context, field);
             break;
         case STI_PATHSET:
-            handle_path_set_field(context);
+            err = handle_path_set_field(context);
             break;
         case STI_ISSUE:
             err = read_issue(context, field);
@@ -594,16 +708,77 @@ err_t read_field_header(parseContext_t* context, field_t* field) {
     return err;
 }
 
+// The positive bit and nothing else: the only encoding of XRP 0.
+static const uint8_t ZERO_XRP_AMOUNT[XRP_AMOUNT_LEN] = {0x40, 0, 0, 0,
+                                                        0,    0, 0, 0};
+
+static bool is_zero_xrp_amount(const field_t* field) {
+    return field->length == XRP_AMOUNT_LEN &&
+           memcmp(field->data.ptr, ZERO_XRP_AMOUNT, XRP_AMOUNT_LEN) == 0;
+}
+
+// Records an inner transaction's type and flags. What the protocol fixes in
+// an inner transaction is hidden from the review (is_batch_fixed_field), so
+// it must hold: Fee 0, empty SigningPubKey, no signature, and Flags carrying
+// tfInnerBatchTxn (dropped from the display, never from the signed bytes).
+// Anything else sends the Batch to blind signing.
+static err_t check_batch_inner_field(parseContext_t* context, field_t* field) {
+    err_t err;
+    err.err = SUCCESS;
+
+    batchInnerTx_t* inner = batch_inner_tx(context, field);
+    if (inner == NULL) {
+        return err;
+    }
+
+    bool valid = true;
+    switch (field->data_type) {
+        case STI_UINT16:
+            if (is_transaction_type_field(field)) {
+                valid = inner->transaction_type == TRANSACTION_INVALID;
+                inner->transaction_type = field->data.u16;
+            }
+            break;
+        case STI_UINT32:
+            if (field->id == XRP_UINT32_FLAGS) {
+                valid = !inner->has_inner_flag &&
+                        (field->data.u32 & TF_INNER_BATCH_TXN) != 0;
+                inner->has_inner_flag = true;
+                field->data.u32 &= ~TF_INNER_BATCH_TXN;
+            }
+            break;
+        case STI_AMOUNT:
+            valid = field->id != XRP_UINT64_FEE || is_zero_xrp_amount(field);
+            break;
+        case STI_VL:
+            valid = (field->id != XRP_VL_SIGNING_PUB_KEY ||
+                     field->length == 0) &&
+                    field->id != XRP_VL_TXN_SIGNATURE;
+            break;
+        default:
+            break;
+    }
+
+    if (!valid) {
+        err.err = BLIND_SIGN_REQUIRED;
+    }
+    return err;
+}
+
 err_t post_process_field(parseContext_t* context, field_t* field) {
     err_t err;
     err.err = SUCCESS;
+
+    CHECK(check_batch_inner_field(context, field));
 
     switch (field->data_type) {
         case STI_UINT16:
             // Trust only the first top-level TransactionType field. A
             // later occurrence, at any nesting level, could disagree with
-            // it. Force blind signing in that case.
-            if (is_transaction_type_field(field)) {
+            // it. Force blind signing in that case. An inner transaction's
+            // own type was recorded just above.
+            if (is_transaction_type_field(field) &&
+                batch_inner_tx(context, field) == NULL) {
                 // Not inside any array/object.
                 bool is_top_level = field->array_info.type == ARRAY_NONE &&
                                     context->object_depth == 0;
@@ -654,15 +829,34 @@ err_t post_process_field(parseContext_t* context, field_t* field) {
     return err;
 }
 
-err_t post_process_transaction(parseContext_t* context) {
+// Puts a row the app appends itself where the review of the given
+// transaction shows it: the top level, or one inner transaction of a Batch.
+static err_t append_review_row(parseContext_t* context, uint8_t group,
+                               field_t** field) {
+    err_t err;
+
+    CHECK(append_new_field(context, field));
+    if (group != BATCH_OUTER_GROUP) {
+        (*field)->array_info.type = XRP_STARRAY_RAW_TRANSACTIONS;
+        (*field)->array_info.index1 = group;
+        (*field)->array_info.index2 = 0;
+        (*field)->object_depth = 1;
+    }
+
+    return err;
+}
+
+// Rows the app adds to the review of one transaction.
+static err_t append_review_rows(parseContext_t* context,
+                                uint16_t transaction_type,
+                                bool has_regular_key, uint8_t group) {
     err_t err;
     err.err = SUCCESS;
+    field_t* field;
 
     // Append "empty" regular key field when clearing it
-    if (context->transaction_type == TRANSACTION_SET_REGULAR_KEY &&
-        !has_field(context, STI_ACCOUNT, 8, false)) {
-        field_t* field;
-        CHECK(append_new_field(context, &field));
+    if (transaction_type == TRANSACTION_SET_REGULAR_KEY && !has_regular_key) {
+        CHECK(append_review_row(context, group, &field));
         field->data_type = STI_ACCOUNT;
         field->id = XRP_ACCOUNT_REGULAR_KEY;
         field->data.ptr = NULL;  // Special value to indicate empty regular key
@@ -682,15 +876,93 @@ err_t post_process_transaction(parseContext_t* context) {
 
     // A session review ends with what the session key can never do
     // (FIANSO-SPEC 7.3 f): the node enforces it, the screen states it.
-    if (context->transaction_type == TRANSACTION_SIGNING_SESSION_SET) {
-        field_t* field;
-        CHECK(append_new_field(context, &field));
+    if (transaction_type == TRANSACTION_SIGNING_SESSION_SET) {
+        CHECK(append_review_row(context, group, &field));
         field->data_type = STI_VL;
         field->id = XRP_VL_SESSION_NOTE;
         field->data.ptr = (uint8_t*)SESSION_NOTE_TEXT;
         field->length = sizeof(SESSION_NOTE_TEXT) - 1;
     }
 
+    return err;
+}
+
+static bool batch_inner_has_regular_key(parseContext_t* context,
+                                        uint8_t group) {
+    for (uint8_t i = 0; i < context->result.num_fields; ++i) {
+        field_t* field = &context->result.fields[i];
+        if (field->data_type == STI_ACCOUNT &&
+            field->id == XRP_ACCOUNT_REGULAR_KEY &&
+            batch_inner_tx(context, field) == &context->batch.inner[group - 1]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+err_t post_process_transaction(parseContext_t* context) {
+    err_t err;
+
+    CHECK(append_review_rows(
+        context, context->transaction_type,
+        has_field(context, STI_ACCOUNT, XRP_ACCOUNT_REGULAR_KEY, false),
+        BATCH_OUTER_GROUP));
+
+    // Each inner transaction of a Batch gets the rows of its own review;
+    // sort_fields() moves them to the end of that inner transaction.
+    if (context->transaction_type == TRANSACTION_BATCH) {
+        for (uint8_t group = 1; group <= context->batch.inner_count; ++group) {
+            batchInnerTx_t* inner = &context->batch.inner[group - 1];
+            CHECK(append_review_rows(context, inner->transaction_type,
+                                     batch_inner_has_regular_key(context, group),
+                                     group));
+        }
+    }
+
+    return err;
+}
+
+// A Batch is clear-signed only when every inner transaction can be shown in
+// full (FIANSO-SPEC 7.4): a node-valid count of inner transactions, each of
+// a supported type and marked tfInnerBatchTxn, exactly one outer mode, and
+// no inner flag bit the review cannot name.
+static err_t check_batch(parseContext_t* context) {
+    err_t err;
+    err.err = BLIND_SIGN_REQUIRED;
+    batchState_t* batch = &context->batch;
+
+    if (!batch->has_raw_transactions ||
+        batch->inner_count < BATCH_MIN_INNER_TXS ||
+        batch->inner_count > BATCH_MAX_INNER_TXS) {
+        return err;
+    }
+
+    for (uint8_t i = 0; i < batch->inner_count; ++i) {
+        if (!batch->inner[i].has_inner_flag ||
+            !is_supported_batch_inner_type(batch->inner[i].transaction_type)) {
+            return err;
+        }
+    }
+
+    uint32_t mode_flags;
+    bool mode_duplicate;
+    if (!find_top_level_flags_value(context, &mode_flags, &mode_duplicate) ||
+        mode_duplicate || resolve_batch_mode(mode_flags) == NULL) {
+        return err;
+    }
+
+    for (uint8_t i = 0; i < context->result.num_fields; ++i) {
+        field_t* field = &context->result.fields[i];
+        batchInnerTx_t* inner = batch_inner_tx(context, field);
+        if (inner != NULL && field->data_type == STI_UINT32 &&
+            field->id == XRP_UINT32_FLAGS &&
+            has_unknown_flags(inner->transaction_type, field->data.u32)) {
+            return err;
+        }
+    }
+
+    err.err = SUCCESS;
     return err;
 }
 
@@ -713,6 +985,7 @@ err_t parse_tx_internal(parseContext_t* context) {
     context->transaction_type = TRANSACTION_INVALID;
     context->has_empty_pub_key = false;
     context->object_depth = 0;
+    memset(&context->batch, 0, sizeof(context->batch));
 
     while (context->offset != context->length) {
         if (context->offset > context->length) {
@@ -745,6 +1018,10 @@ err_t parse_tx_internal(parseContext_t* context) {
         !is_supported_transaction_type(context->transaction_type)) {
         err.err = BLIND_SIGN_REQUIRED;
         return err;
+    }
+
+    if (context->transaction_type == TRANSACTION_BATCH) {
+        CHECK(check_batch(context));
     }
 
     // An unrecognized flag bit must not clear-sign, since it can't be
@@ -788,7 +1065,35 @@ err_t parse_tx_internal(parseContext_t* context) {
     return err;
 }
 
+// A blind Batch review must not list some inner transactions and not the
+// others (parsing stops at the first one it cannot show): keep the outer
+// fields only, without the array/object markers left by an early stop.
+static void keep_outer_batch_fields(parseContext_t* context) {
+    parseResult_t* result = &context->result;
+    uint8_t kept = 0;
+
+    for (uint8_t i = 0; i < result->num_fields; ++i) {
+        field_t* field = &result->fields[i];
+        if (field->array_info.type == XRP_STARRAY_RAW_TRANSACTIONS ||
+            field->data_type == STI_ARRAY || field->data_type == STI_OBJECT) {
+            continue;
+        }
+        if (kept != i) {
+            result->fields[kept] = *field;
+        }
+        kept++;
+    }
+
+    memset(&result->fields[kept], 0,
+           (result->num_fields - kept) * sizeof(field_t));
+    result->num_fields = kept;
+}
+
 int parse_tx(parseContext_t* context) {
     err_t err = parse_tx_internal(context);
+    if (err.err == BLIND_SIGN_REQUIRED &&
+        context->transaction_type == TRANSACTION_BATCH) {
+        keep_outer_batch_fields(context);
+    }
     return err.err;
 }

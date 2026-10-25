@@ -110,6 +110,8 @@ static const char* resolve_transaction_name(uint16_t value) {
             return "Open session";
         case TRANSACTION_SIGNING_SESSION_DELETE:
             return "Close session";
+        case TRANSACTION_BATCH:
+            return "Batch";
         default:
             return "Unknown";
     }

@@ -307,6 +307,14 @@ def test_sign_valid_tx(
     ):
         if raw_tx_path.endswith(f"30-signing-session-set/{name}"):
             pytest.skip(f"skip session tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
+    # carbs: Batch vectors that must go blind (unit-tested in test_tx.c).
+    for name in (
+        "03-unsupported-inner-type.raw",
+        "04-inner-fee-not-zero.raw",
+        "05-memos-in-inner.raw",
+    ):
+        if raw_tx_path.endswith(f"32-batch/{name}"):
+            pytest.skip(f"skip Batch tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
 
     xrp = XRPClient(backend, navigator)
 

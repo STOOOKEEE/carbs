@@ -21,24 +21,40 @@
 
 #include "transaction_types.h"
 
+// Whether the field sits at the level of its own transaction: the top level,
+// or directly inside an inner transaction of a Batch.
+static bool is_transaction_level(field_t* field) {
+    return field->array_info.type == ARRAY_NONE || is_batch_inner_field(field);
+}
+
 uint8_t get_priority_score(field_t* field) {
+    if (!is_transaction_level(field)) {
+        return 2;
+    }
+
     if (is_transaction_type_field(field)) {
         return 0;
     }
 
     // The session key is what a session review is about: keep it next to the
     // account (Account is serialized before it, and the sort is stable).
-    if (is_normal_account_field(field) ||
-        (field->data_type == STI_ACCOUNT &&
-         field->id == XRP_ACCOUNT_SESSION_KEY &&
-         field->array_info.type == ARRAY_NONE)) {
+    if (field->data_type == STI_ACCOUNT &&
+        (field->id == XRP_ACCOUNT_ACCOUNT ||
+         field->id == XRP_ACCOUNT_SESSION_KEY)) {
         return 1;
     }
 
     return 2;
 }
 
+// The fields of each inner transaction of a Batch stay together, after the
+// outer ones and in order; each group then starts with its type and account.
 bool is_preceding(field_t* field, field_t* other_field) {
+    uint8_t group = batch_group(field);
+    uint8_t other_group = batch_group(other_field);
+    if (group != other_group) {
+        return group < other_group;
+    }
     return get_priority_score(field) < get_priority_score(other_field);
 }
 
