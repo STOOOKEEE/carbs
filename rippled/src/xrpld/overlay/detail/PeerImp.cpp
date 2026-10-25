@@ -3147,8 +3147,9 @@ PeerImp::checkTransaction(
                 // would block a correctly new-prefix-signed transaction until
                 // the router entry ages out. Remove the guard together with
                 // the amendment. The same holds for a WebAuthn passkey
-                // signature until fixPasskeyChallenge is enabled, and for a
-                // P-256 signature until fixP256StrictDer is (see
+                // signature until fixPasskeyChallenge is enabled, for a P-256
+                // signature until fixP256StrictDer is, and for an ML-DSA-44
+                // passkey signature until PasskeyMLDSA is (see
                 // isSignatureVerdictCacheable).
                 if ((validatedRules.enabled(fixCleanup3_4_0) ||
                      (!stx->isFieldPresent(sfSponsorSignature) &&

@@ -202,7 +202,8 @@ private:
         STObject const& sigObject,
         HashPrefix prefix,
         bool challengeAsBytes,
-        bool strictP256Der) const;
+        bool strictP256Der,
+        bool passkeyMLDSA) const;
 
     [[nodiscard]] std::expected<void, std::string>
     checkMultiSign(
@@ -254,6 +255,29 @@ sterilize(STTx const& stx);
  */
 bool
 isPseudoTx(STObject const& tx);
+
+/**
+ * Whether a passkey may hold an ML-DSA-44 key under `rules`: PasskeyMLDSA and
+ * the amendments it builds on, Passkey, Quantum and fixP256StrictDer, are all
+ * enabled. fixP256StrictDer is required because before it no verdict on a
+ * transaction carrying a PasskeySignature is ever cached
+ * (isSignatureVerdictCacheable), and because it refuses a TxnSignature next to
+ * a PasskeySignature. A passkey list then takes ML-DSA-44 public keys next to
+ * P-256 ones, and a PasskeySignature next to an ML-DSA-44 SigningPubKey is
+ * verified as a WebAuthn assertion (COSE algorithm -48).
+ */
+[[nodiscard]] bool
+isPasskeyMLDSAEnabled(Rules const& rules);
+
+/**
+ * Whether `sigObject` is signed by an ML-DSA-44 passkey under `rules`: it holds
+ * a PasskeySignature next to an ML-DSA-44 SigningPubKey, and
+ * isPasskeyMLDSAEnabled. Such a signature authorizes only through a passkey
+ * list entry that holds that key under the same PasskeyID
+ * (Transactor::checkSign).
+ */
+[[nodiscard]] bool
+isMLDSAPasskeySigned(STObject const& sigObject, Rules const& rules);
 
 inline STTx::STTx(SerialIter&& sit)  // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved)
     : STTx(sit)

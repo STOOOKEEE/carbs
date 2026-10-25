@@ -38,8 +38,8 @@ enum class HashRouterFlags : std::uint32_t {
     // Used in apply.cpp
     PRIVATE7 = 0x4000,
     PRIVATE8 = 0x8000,
-    // Used in apply.cpp. Remove when PasskeyChallenge and P256StrictDer are
-    // both retired.
+    // Used in apply.cpp. Remove when PasskeyChallenge, P256StrictDer and
+    // PasskeyMLDSA are all retired.
     PRIVATE9 = 0x10000
 };
 
