@@ -33,6 +33,7 @@
 #include <test/jtx/txflags.h>
 #include <test/jtx/webauthn.h>
 
+#include <xrpld/app/ledger/LedgerMaster.h>
 #include <xrpld/app/main/Application.h>
 #include <xrpld/app/misc/TxQ.h>
 
@@ -40,6 +41,8 @@
 #include <xrpl/beast/unit_test.h>
 #include <xrpl/config/Constants.h>
 #include <xrpl/json/to_string.h>
+#include <xrpl/ledger/Ledger.h>
+#include <xrpl/ledger/OpenView.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Firewall.h>
 #include <xrpl/protocol/Indexes.h>
@@ -56,6 +59,7 @@
 #include <xrpl/protocol/jss.h>
 #include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
+#include <xrpl/tx/apply.h>
 
 #pragma push_macro("TRANSACTION")
 #undef TRANSACTION
@@ -1395,6 +1399,109 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(txCount() == 3);
     }
 
+    // A fee cut short by the reset: in a closed ledger an account whose
+    // balance is below the fee pays what it holds (tecINSUFF_FEE), and the
+    // session counts that amount, not the declared Fee (chargeSession takes
+    // the fee reset returns). The ledger is built and applied by hand, like
+    // Regression_test, since an open ledger refuses the transaction instead.
+    void
+    testModeCShortFee(FeatureBitset features)
+    {
+        testcase("mode C accounting, fee cut short");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), session::Cap(XRP(100)));
+        env.close();
+
+        auto const closed = env.app().getLedgerMaster().getClosedLedger();
+        auto next = std::make_shared<Ledger>(*closed, env.app().getTimeKeeper().closeTime());
+        auto const fee = next->fees().base;
+        auto const held = drops(4);
+        BEAST_EXPECT(held < fee);
+        {
+            auto const sle = next->read(keylet::account(alice.id()));
+            if (!BEAST_EXPECT(sle))
+                return;
+            auto replacement = std::make_shared<SLE>(*sle);
+            (*replacement)[sfBalance] = STAmount{held};
+            next->rawReplace(replacement);
+        }
+
+        auto const jt = env.jt(
+            pay(alice, bob, XRP(1)),
+            Sig(key),
+            Fee(fee),
+            Seq(env.seq(alice)),
+            LastLedgerSeq(next->seq() + 10));
+        OpenView accum(&*next);
+        auto const result = xrpl::apply(env.app(), accum, *jt.stx, TapNone, env.journal);
+        BEAST_EXPECT(result.ter == tecINSUFF_FEE);
+        BEAST_EXPECT(result.applied);
+        accum.apply(*next);
+
+        auto const session = next->read(sessionKeylet(alice, key));
+        if (!BEAST_EXPECT(session))
+            return;
+        BEAST_EXPECT((*session)[sfSessionSpent] == STAmount{held});
+        BEAST_EXPECT((*next->read(keylet::account(alice.id())))[sfBalance] == STAmount{0});
+    }
+
+    // Mode P checks eligibility again at use: a session entry that lists a
+    // non-delegable type, at the transaction level or as a granular
+    // permission, cannot sign it. No transaction can write such an entry
+    // (SigningSessionSet refuses it), so it is written into the open ledger.
+    void
+    testModePEligibilityAtUse(FeatureBitset features)
+    {
+        testcase("mode P eligibility at use");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, keyTx{"keyTx"}, keyGranular{"keyGranular"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, keyTx, 600), session::Permissions({"Payment"}));
+        env(session::set(alice, keyGranular, 600), session::Permissions({"Payment"}));
+        env.close();
+
+        auto const list = [&](Account const& key, std::uint32_t value) {
+            env.app().getOpenLedger().modify([&](OpenView& view, beast::Journal) {
+                auto const sle = view.read(sessionKeylet(alice, key));
+                if (!sle)
+                    return false;
+                auto replacement = std::make_shared<SLE>(*sle);
+                STArray permissions(sfPermissions, 2);
+                for (auto const v : {static_cast<std::uint32_t>(ttPAYMENT + 1), value})
+                {
+                    STObject permission = STObject::makeInnerObject(sfPermission);
+                    permission.setFieldU32(sfPermissionValue, v);
+                    permissions.push_back(std::move(permission));
+                }
+                replacement->setFieldArray(sfPermissions, permissions);
+                view.rawReplace(replacement);
+                return true;
+            });
+        };
+        list(keyTx, ttACCOUNT_SET + 1);
+        list(keyGranular, AccountDomainSet);
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        env(pay(alice, bob, XRP(1)), Sig(keyTx), lls());
+        env(pay(alice, bob, XRP(1)), Sig(keyGranular), lls());
+        env(fset(alice, asfRequireDest), Sig(keyTx), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        auto jt = noop(alice);
+        jt[sfDomain] = strHex(std::string{"example.com"});
+        env(jt, Sig(keyGranular), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env.close();
+        auto const root = env.le(alice);
+        BEAST_EXPECT(!root->isFlag(lsfRequireDestTag));
+        BEAST_EXPECT(!root->isFieldPresent(sfDomain));
+    }
+
     // Case 17: a session key later made the RegularKey stays bounded until its
     // session is deleted; case 17b: LastLedgerSequence present and near.
     void
@@ -2407,6 +2514,8 @@ public:
         testModeC(all);
         testModeCShapes(all);
         testModeCAccounting(all);
+        testModeCShortFee(all);
+        testModePEligibilityAtUse(all);
         testModeCAntiDrain(all);
         testFirewall(all);
         testQueue(all);
