@@ -5,7 +5,7 @@
 On XRPL a key has all the authority of an account or none, and a public key that has signed once stays visible forever, which is a forgery target for a future quantum computer. carbs adds three things that fit together:
 
 1. **A post-quantum root in hardware.** A Ledger Stax holds an **ML-DSA-44** key and clear-signs XRPL transactions with it, so an account can drop its classical keys (`SetRegularKey` to the ML-DSA key, then `asfDisableMaster`).
-2. **Sessions enforced by the ledger.** A rippled amendment, `SigningSessions`, lets an account open a short-lived key (at most 10 minutes) that signs without prompting, bounded by the **ledger itself**:
+2. **Sessions enforced by the ledger.** A rippled amendment, `SigningSessions`, lets an account open a short-lived key (at most 10 minutes, measured in ledger close time: from the parent ledger's close time at opening, against the parent close time of each later ledger) that signs without prompting, bounded by the **ledger itself**:
 
    | Mode  | A session key may                                              | Bound                                              |
    | ----- | -------------------------------------------------------------- | -------------------------------------------------- |
@@ -13,7 +13,7 @@ On XRPL a key has all the authority of an account or none, and a public key that
    | **P** | sign the listed XLS-75 permissions                             | time, the list, fee ceiling                        |
    | **C** | send direct XRP `Payment` only                                 | time, a total XRP cap (fees included), fee ceiling |
 
-   A session is opened with **one ordinary signature**, from the Stax (which shows the rules on its screen) or from a passkey. A session key can never change who controls the account.
+   A session is opened with **one ordinary signature**, from the Stax (which shows the rules on its screen) or from a passkey. A session key can never change who controls the account. The session's own close (a `SigningSessionDelete` signed by the session key) is exempt from the expiry and from the cap: its fee is not counted in mode C and may reach the fee ceiling, the required base fee plus 1000 times the base fee unit.
 
 3. **A quantum exposure check and a guided migration** for any XRPL account, plus the `@carbs/sessions` library. Planned, **not built**: a Device Management Kit Ledger adapter for `xrpl-connect` and a `create-xrp` sessions template (spec 8.8, tasks E1 and E2).
 
