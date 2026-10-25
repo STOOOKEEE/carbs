@@ -1189,10 +1189,19 @@ Transactor::checkSession(
 
     // 7. The witness, except for the own close: its signature was verified
     // with the transaction's (STTx::checkSign); here it must come from a key
-    // of the session's witness.
-    if (auto const witness = (*session)[~sfSessionWitness];
-        witness && !ownClose && !isSessionWitnessed(ctx.view, ctx.tx, *witness))
+    // of the session's witness. A transaction that needs no witness, the own
+    // close included, takes no WitnessSignature: one that nothing checks
+    // could be added or stripped by anyone, changing the transaction's ID.
+    auto const witness = (*session)[~sfSessionWitness];
+    if (!witness || ownClose)
+    {
+        if (ctx.tx.isFieldPresent(sfWitnessSignature))
+            return tefBAD_SIGNATURE;
+    }
+    else if (!isSessionWitnessed(ctx.view, ctx.tx, *witness))
+    {
         return tefSESSION_NO_WITNESS;
+    }
 
     return tesSUCCESS;
 }
