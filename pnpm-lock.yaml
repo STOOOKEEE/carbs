@@ -55,6 +55,9 @@ importers:
       '@types/node':
         specifier: ^22.18.0
         version: 22.19.0
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
       vite:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@22.19.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.1)

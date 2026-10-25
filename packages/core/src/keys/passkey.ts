@@ -7,11 +7,14 @@
  * `PasskeySignature {PasskeyID, AuthenticatorData, ClientDataJSON, Signature}`
  * (`rippled/src/libxrpl/protocol/InnerObjectFormats.cpp:163-170`) is not a signing field, so it is
  * added after the signing data is computed. The signature is normalized to low-S strict DER.
+ *
+ * An ML-DSA-44 passkey (1 312-byte key, amendment `PasskeyMLDSA`) takes the same path with a raw
+ * 2 420-byte signature: `signWithPasskey` hands it to `signWithMlDsaPasskey` (`pq-passkey.ts`).
  */
 
 import { p256 } from "@noble/curves/nist.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { addressFromPublicKey } from "../address.js";
+import { addressFromPublicKey, keyTypeOf } from "../address.js";
 import {
   base64UrlEncode,
   bytesToHex,
@@ -27,11 +30,15 @@ import { encodeForSigning, encodeTx, transactionHash, type TxJson } from "../enc
 import type { BytesSigner, SignedTx } from "../sign.js";
 import { KeyError } from "./classic.js";
 import { xrplP256PublicKey } from "./p256-session.js";
+import { signWithMlDsaPasskey } from "./pq-passkey.js";
 
 export interface PasskeyCredential {
   /** The WebAuthn credential id, stored as `PasskeyID`. */
   credentialId: Uint8Array;
-  /** `0xF6 ‖ X ‖ Y`, stored as `PublicKey` in the passkey list. */
+  /**
+   * Stored as `PublicKey` in the passkey list: `0xF6 ‖ X ‖ Y` for P-256, or the raw 1 312-byte
+   * ML-DSA-44 key (the COSE AKP `pub`).
+   */
   publicKey: Uint8Array;
 }
 
@@ -44,7 +51,7 @@ export interface AssertionRequest {
 export interface WebAuthnAssertion {
   authenticatorData: Uint8Array;
   clientDataJSON: Uint8Array;
-  /** DER, as authenticators return it (possibly high-S). */
+  /** P-256: DER, as authenticators return it (possibly high-S). ML-DSA-44: 2 420 raw bytes. */
   signature: Uint8Array;
 }
 
@@ -64,12 +71,22 @@ export function passkeyPublicKeyFromSpki(spki: Uint8Array): Uint8Array {
   return xrplP256PublicKey(spki.subarray(spki.length - kP256PublicKeyLength));
 }
 
-/** A `PasskeyListSet` with every passkey of the account (the list cannot be replaced later: P6). */
+/**
+ * A `PasskeyListSet` with every passkey of the account (the list cannot be replaced later: P6).
+ * P-256 and ML-DSA-44 keys may share the list (ML-DSA-44 needs `PasskeyMLDSA` on the node).
+ */
 export function buildPasskeyListSet(
   account: string,
   passkeys: readonly PasskeyCredential[],
 ): TxJson {
   if (passkeys.length === 0) throw new KeyError("a passkey list holds at least one passkey");
+  for (const p of passkeys) {
+    const type = keyTypeOf(p.publicKey);
+    if (type !== "p256" && type !== "ml-dsa-44") {
+      throw new KeyError("a passkey is a P-256 (65-byte) or an ML-DSA-44 (1 312-byte) key");
+    }
+    if (p.credentialId.length === 0) throw new KeyError("a passkey has a credential id");
+  }
   return {
     TransactionType: "PasskeyListSet",
     Account: account,
@@ -79,7 +96,10 @@ export function buildPasskeyListSet(
   };
 }
 
-/** Sign `tx` with a passkey through WebAuthn and return the signed transaction. */
+/**
+ * Sign `tx` with a passkey through WebAuthn and return the signed transaction. An ML-DSA-44
+ * passkey goes to `signWithMlDsaPasskey`; a P-256 one is handled here, unchanged.
+ */
 export async function signWithPasskey(
   tx: TxJson,
   credential: PasskeyCredential,
@@ -87,6 +107,9 @@ export async function signWithPasskey(
   rpId: string,
   defs: Definitions,
 ): Promise<SignedTx> {
+  if (keyTypeOf(credential.publicKey) === "ml-dsa-44") {
+    return signWithMlDsaPasskey(tx, credential, authenticator, rpId, defs);
+  }
   const unsigned: TxJson = { ...tx, SigningPubKey: bytesToHex(credential.publicKey) };
   delete unsigned["TxnSignature"];
   delete unsigned["PasskeySignature"];
@@ -109,21 +132,36 @@ export async function signWithPasskey(
   return { tx: signed, blob, hash: transactionHash(blob) };
 }
 
+export interface BrowserAuthenticatorOptions {
+  /** Transport hints for the credential (for example `["usb"]` for a Ledger Stax). */
+  transports?: AuthenticatorTransport[];
+  /** Ceremony timeout; the browser's default when absent. */
+  timeoutMs?: number;
+}
+
 /**
  * The browser authenticator: `navigator.credentials.get` for one credential. The library never
  * calls it on its own; the page passes `navigator.credentials` when the user asks to sign.
  */
-export function browserAuthenticator(container: CredentialsContainer): Authenticator {
+export function browserAuthenticator(
+  container: CredentialsContainer,
+  options: BrowserAuthenticatorOptions = {},
+): Authenticator {
   return {
     async getAssertion({ challenge, credentialId, rpId }) {
-      const credential = await container.get({
-        publicKey: {
-          challenge: toArrayBufferView(challenge),
-          rpId,
-          allowCredentials: [{ type: "public-key", id: toArrayBufferView(credentialId) }],
-          userVerification: "preferred",
-        },
-      });
+      const descriptor: PublicKeyCredentialDescriptor = {
+        type: "public-key",
+        id: toArrayBufferView(credentialId),
+      };
+      if (options.transports !== undefined) descriptor.transports = options.transports;
+      const publicKey: PublicKeyCredentialRequestOptions = {
+        challenge: toArrayBufferView(challenge),
+        rpId,
+        allowCredentials: [descriptor],
+        userVerification: "preferred",
+      };
+      if (options.timeoutMs !== undefined) publicKey.timeout = options.timeoutMs;
+      const credential = await container.get({ publicKey });
       if (!(credential instanceof PublicKeyCredential)) {
         throw new KeyError("the authenticator returned no public-key credential");
       }

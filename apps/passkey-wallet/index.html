@@ -88,6 +88,44 @@
         </p>
       </section>
 
+      <section id="pq-stax-section">
+        <h2>Passkey post-quantique (Ledger Stax)</h2>
+        <p class="muted">
+          Une passkey WebAuthn ML-DSA-44 (COSE -48) créée sur la Stax par l'app Security Key
+          modifiée, enregistrée sur le ledger par PasskeyListSet (sa clé publique de 1 312 octets)
+          et vérifiée par le nœud à chaque signature (amendement PasskeyMLDSA). Chrome, Stax
+          branchée en USB, app Security Key ouverte.
+        </p>
+        <div id="pq-stax-info" class="muted">Pas de passkey post-quantique dans ce navigateur.</div>
+        <div class="actions">
+          <button id="pq-stax-create" type="button">
+            1. Créer la passkey sur la Stax (alg -48)
+          </button>
+          <button id="pq-stax-register" type="button">
+            2. Créer le compte et enregistrer la passkey (PasskeyListSet)
+          </button>
+          <button id="pq-stax-forget" type="button" class="secondary">Oublier</button>
+        </div>
+        <form id="pq-stax-pay-form">
+          <label>Destination <input id="pq-stax-destination" required placeholder="r…" /></label>
+          <label
+            >Montant (XRP)
+            <input id="pq-stax-amount" required type="number" min="0.000001" step="any" value="1"
+          /></label>
+          <button type="submit">3. Payer (Stax → ML-DSA-44)</button>
+          <button id="pq-stax-session" type="button">
+            4. Ouvrir une session (Stax) et payer avec la clé de session
+          </button>
+        </form>
+        <div class="actions">
+          <button id="pq-stax-lock" type="button" class="secondary">
+            Passkey post-quantique uniquement (désactiver la clé maître)
+          </button>
+        </div>
+        <p class="muted">Réponses du nœud, la plus récente en haut :</p>
+        <ol id="pq-stax-results"></ol>
+      </section>
+
       <section id="ledger-section">
         <h2>Ledger Stax</h2>
         <p class="muted">

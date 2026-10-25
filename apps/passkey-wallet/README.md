@@ -23,6 +23,33 @@ GENESIS_SEED=<genesis seed> XRPLD_WS=ws://127.0.0.1:6006 PORT=8080 pnpm serve
 
 WebAuthn needs a secure context: `http://localhost` or HTTPS with a real host name (not an IP). Deployed, `infra/compose.yaml` runs the node, the closer and this wallet; `tailscale serve` provides HTTPS.
 
+## Post-quantum passkey on a Ledger Stax
+
+The section "Passkey post-quantique (Ledger Stax)" (`src/pq-stax-panel.ts`, flow in `src/pq-webauthn.ts`) uses an ML-DSA-44 WebAuthn passkey (COSE -48). The node must have the amendment `PasskeyMLDSA` (PR #113, with `Passkey` and `Quantum`), and the authenticator must make -48 credentials: the team's Ledger Stax running the modified Security Key app of PR #109, over USB.
+
+1. **Create**: `navigator.credentials.create` with `pubKeyCredParams: [{alg: -48}]` and `authenticatorAttachment: "cross-platform"`. The 1,312-byte key is read from the `attestationObject` (COSE AKP `pub`).
+2. **Register**: a new classical account funded by the faucet, then `PasskeyListSet` signed by its master key (`PasskeyID` = the credential id, `PublicKey` = the 1,312 bytes).
+3. **Pay**: `SigningPubKey` = the 1,312-byte key, WebAuthn challenge = `STX\0 ‖ fields` (about 1.4 KB), and a `PasskeySignature` with the raw 2,420-byte signature.
+4. **Session**: `SigningSessionSet` (mode C, 20 XRP, 5 per payment, 300 s) signed by the Stax. A fresh non-extractible WebCrypto P-256 session key then pays once without the device.
+5. **Lock** (optional): `SetRegularKey` to the black hole, then `asfDisableMaster`. The passkey becomes the account's only authority, and the master seed is deleted from the browser.
+
+The section lists every node answer: the `engine_result` of `submit` and its message, then the validated result and ledger, with the hash linked to the explorer. A refusal that happens before the node is labelled "Rien n'a été envoyé au nœud": the browser, the authenticator, or the client's own check that the assertion is one the node would accept. **Not run with the Stax yet**: the owner's steps are in the pull request.
+
+**Without a device**, `pnpm pq-passkey-demo` runs the same flow against a node, with a software authenticator (SIMULATED: no device, no browser):
+
+```sh
+GENESIS_SEED=snoPBrXtMeMyMHUVTgbuqAfg1SUTb XRPLD_WS=ws://127.0.0.1:6006 pnpm pq-passkey-demo
+```
+
+It runs these steps in order:
+
+1. register the passkey and pay with it;
+2. submit three forged assertions: another `PasskeyID` (`tefBAD_AUTH`), one altered signature bit (`invalidTransaction`, "Invalid signature."), and an unregistered passkey (`tefBAD_AUTH`);
+3. open a session, pay from it and close it;
+4. lock the account, see the master key refused (`tefMASTER_DISABLED`), and pay with the passkey again.
+
+It prints each node answer and exits 1 at the first unexpected one.
+
 ## Stage demo: an AI agent on a budget
 
 The build has a second page, `demo.html` (full screen, English, for a projector): the AI

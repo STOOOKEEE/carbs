@@ -48,6 +48,30 @@ export const kMlDsa44SignatureLength = 2420;
 export const kMlDsa44SecretKeyLength = 2560;
 export const kMlDsa44SeedLength = 32;
 
+/**
+ * COSE (IANA registry, RFC 9964) for an ML-DSA-44 passkey: algorithm -48, key type AKP (7), the
+ * raw FIPS 204 public key in parameter `pub` (label -1). Not XRPL protocol codes: the node never
+ * sees them, the client reads them from the authenticator's COSE key.
+ */
+export const kCoseAlgMlDsa44 = -48;
+export const kCoseKeyTypeAkp = 7;
+export const kCoseLabelKty = 1;
+export const kCoseLabelAlg = 3;
+export const kCoseLabelAkpPub = -1;
+export const kCoseLabelAkpPriv = -2;
+
+/** WebAuthn `authenticatorData` layout and flags (WebAuthn Level 3, section 6.1). */
+export const kAuthDataRpIdHashLength = 32;
+export const kAuthDataMinLength = 37;
+export const kAuthDataAaguidLength = 16;
+export const kAuthDataFlagUserPresent = 0x01;
+export const kAuthDataFlagUserVerified = 0x04;
+export const kAuthDataFlagAttestedCredential = 0x40;
+export const kAuthDataFlagExtensions = 0x80;
+/** `clientDataJSON.type` of an assertion, the only one the node accepts. */
+export const kWebAuthnGetType = "webauthn.get";
+export const kWebAuthnCreateType = "webauthn.create";
+
 /** Length of a compressed secp256k1 or a prefixed Ed25519 public key. */
 export const kClassicPublicKeyLength = 33;
 /** Prefix of an XRPL Ed25519 public key. */

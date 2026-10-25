@@ -2,3 +2,4 @@
 export * from "./recorded-node.js";
 export * from "./simulated-definitions.js";
 export { SoftwareAuthenticator } from "../keys/passkey.js";
+export { SoftwareMlDsaAuthenticator } from "../keys/pq-passkey.js";

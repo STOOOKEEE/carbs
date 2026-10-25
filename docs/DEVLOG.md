@@ -753,3 +753,43 @@ Owner request: the web app follows the XRPL Commons look (an XRPL showcase app w
 
 - **What:** the wallet server answers CORS for its faucet (`/api/faucet`) to the origins in `WEB_ORIGINS` (default `https://carbs-kappa.vercel.app`): a preflight from a listed origin gets 204 with `access-control-allow-origin`, any other 403; the wallet's own pages stay same-origin. The hosted web app is built with `NUXT_PUBLIC_LOCAL_NODE_URL=wss://debian-docker.tail8b5861.ts.net:9448` and `NUXT_PUBLIC_LOCAL_FAUCET_URL=https://debian-docker.tail8b5861.ts.net:9449/api/faucet`, so "Live (local node)" reaches the team's node from a browser on the team's tailnet; elsewhere it falls back to the simulation with the reason shown. Both endpoints are on the team's server only (no public exposure).
 - **Checked:** the server locally: preflight from the listed origin 204 with the CORS headers, from another origin 403, a POST from the listed origin carries the header. The live run against the team's node needs the server redeployed with this change.
+
+## 2026-10-25: the client side of post-quantum passkeys (`PasskeyMLDSA`)
+
+- **What:** the client side of PR #113, which verifies ML-DSA-44 WebAuthn passkeys (COSE -48) in rippled under `PasskeyMLDSA`.
+  - **`@carbs/sessions`:** `keys/pq-passkey.ts` covers registration (`browserCreateMlDsaPasskey`, `mlDsaPasskeyFromAttestation` over a new CBOR subset, `cbor.ts`) and signing (`signWithMlDsaPasskey`, a raw 2,420-byte `PasskeySignature.Signature`, with the node's stateless checks run first in `mlDsaAssertionProblem`). It also has `SoftwareMlDsaAuthenticator` (SIMULATED). `signWithPasskey` routes a 1,312-byte credential to the new path, and P-256 is unchanged. `buildPasskeyListSet` now refuses a key that is neither P-256 nor ML-DSA-44, and an empty credential id. `browserAuthenticator` takes optional transports and a timeout.
+  - **Passkey wallet:** a section, "Passkey post-quantique (Ledger Stax)", creates a -48 credential on a cross-platform authenticator, registers it, pays, opens a session and locks the account. It lists each node answer. `scripts/pq-passkey-demo.ts` runs the same flow, from the same module (`src/pq-webauthn.ts`), with the software authenticator.
+- **Simulated:** every WebAuthn assertion in the tests and in the live run below comes from the software authenticator, with no device and no browser ceremony. The node's answers are real.
+- **Unit tests** (`cbor.test.ts`, `keys/pq-passkey.test.ts`, 17 new cases), covering:
+  - the RFC 8949 vectors;
+  - the AKP header bytes `A3 01 07 03 38 2F 20 59 05 20`;
+  - `packed` (ES256 statement, as PR #109's Stax returns) and `none` attestations;
+  - a challenge equal to `STX\0 ‖ fields` (1.4 KB, base64url without padding);
+  - the signature verified with `@noble/post-quantum`, failing with a context, over the bare signing data, or with another key;
+  - a `PasskeyID` equal to the listed id;
+  - nine assertions the client refuses before the node would.
+
+  Four mutations (the alg check, the `rawId` check, the challenge comparison, the `PasskeyID`) each failed one test.
+
+- **Live run** (Mac, standalone): the `xrpld` built in the `fianso/pq-passkey` worktree (head `48ca687`, `xrpld version 3.4.1+DEBUG`), with a temporary copy of that branch's `infra/standalone.cfg` (paths moved to a scratch directory), `infra/closer.ts`, and the standalone genesis seed. `feature` gave `PasskeyMLDSA` `enabled: true`. `pnpm --filter @carbs/passkey-wallet pq-passkey-demo` returned 14 node answers, all as expected:
+
+  | Step                                                       | Node answer                                                     |
+  | ---------------------------------------------------------- | --------------------------------------------------------------- |
+  | `PasskeyListSet` (master key)                              | `tesSUCCESS`; `account_objects` holds the 1,312-byte key        |
+  | Payment signed by the passkey                              | `tesSUCCESS` (see below)                                        |
+  | `PasskeyID` of another credential                          | `tefBAD_AUTH` ("Transaction's public key is not authorized.")   |
+  | One signature bit flipped                                  | `invalidTransaction` ("fails local checks: Invalid signature.") |
+  | Valid assertion of an unregistered ML-DSA-44 passkey       | `tefBAD_AUTH`                                                   |
+  | `SigningSessionSet` mode C (passkey)                       | `tesSUCCESS`                                                    |
+  | Payment by the P-256 session key                           | `tesSUCCESS`                                                    |
+  | `SigningSessionDelete` (passkey)                           | `tesSUCCESS`                                                    |
+  | `SetRegularKey` to the black hole, then `asfDisableMaster` | `tesSUCCESS` each                                               |
+  | Payment signed by the master key                           | `tefMASTER_DISABLED`                                            |
+  | Payment signed by the passkey again                        | `tesSUCCESS`                                                    |
+
+  The validated payment holds a `SigningPubKey` of 1,312 bytes, no `TxnSignature`, a 2,420-byte `Signature`, and a 1,395-byte challenge of type `webauthn.get`. This is the first time a node of ours accepted a WebAuthn ML-DSA-44 assertion built by `@noble/post-quantum` (an open point of `docs/XLS-PQ-Passkeys.md` §6).
+
+- **Not done:**
+  - Nothing has been run with the Stax or in a browser. The section is built (`vite build`) and typechecked only.
+  - **UNVERIFIED:** whether Chrome forwards `alg: -48` to a USB authenticator, accepts the AKP credential and passes a 1.4 KB challenge, and whether PR #109's Security Key app returns what the parser expects.
+  - The owner's steps are in the pull request.

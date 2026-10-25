@@ -14,7 +14,9 @@
  * Afterwards a passkey keeps full authority (`rippled/src/libxrpl/tx/Transactor.cpp:1141-1158`) and
  * signs everything, session openings included. Step 4 is refused unless step 2 was validated.
  *
- * Not post-quantum: a passkey is a P-256 key stored on the ledger (FIANSO-SPEC.md section 12).
+ * Not post-quantum with a P-256 passkey, whose key is on the ledger (FIANSO-SPEC.md section 12).
+ * With an ML-DSA-44 passkey (amendment `PasskeyMLDSA`, `keys/pq-passkey.ts`) the same four steps
+ * leave an account whose only authority is post-quantum.
  */
 
 import { kBlackholeAddress, kDisableMasterFlagName } from "./constants.js";
