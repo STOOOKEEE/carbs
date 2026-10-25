@@ -1,0 +1,38 @@
+{
+  "TransactionType": "Batch",
+  "Account": "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK",
+  "Flags": 131072,
+  "Fee": "40",
+  "Sequence": 10,
+  "LastLedgerSequence": 6000,
+  "NetworkID": 24100,
+  "SigningPubKey": "02EB0511FD55C2693C1A0E4C767D37ADF1C45B0138AC6ACE236DF58EB152E5E9AB",
+  "RawTransactions": [
+    {
+      "RawTransaction": {
+        "Account": "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK",
+        "Flags": 1073741824,
+        "Sequence": 11,
+        "Fee": "10",
+        "SigningPubKey": "",
+        "NetworkID": 24100,
+        "TransactionType": "Payment",
+        "Destination": "rawnHFk1gPQeEBC88cXbetXLqw3hnqk4pE",
+        "Amount": "1500000"
+      }
+    },
+    {
+      "RawTransaction": {
+        "Account": "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK",
+        "Flags": 1073741824,
+        "Sequence": 12,
+        "Fee": "0",
+        "SigningPubKey": "",
+        "NetworkID": 24100,
+        "TransactionType": "Payment",
+        "Destination": "rHH1wGruhP1ZSzJvvxYeimWLmXGG8WULED",
+        "Amount": "2000000"
+      }
+    }
+  ]
+}

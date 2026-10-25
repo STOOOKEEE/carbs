@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 
+#include "batch.h"
 #include "signing_session.h"
 #include "xrp_parse.h"
 
@@ -57,7 +58,8 @@
 #define TRANSACTION_AMM_BID                39
 #define TRANSACTION_AMM_DELETE             40
 // TRANSACTION_SIGNING_SESSION_SET (130) and TRANSACTION_SIGNING_SESSION_DELETE
-// (131) come from signing_session.h, with the other SigningSessions numbers.
+// (131) come from signing_session.h, with the other SigningSessions numbers;
+// TRANSACTION_BATCH (71) comes from batch.h.
 
 static inline bool is_transaction_type_field(field_t *field) {
     return field->data_type == STI_UINT16 && field->id == XRP_UINT16_TRANSACTION_TYPE;

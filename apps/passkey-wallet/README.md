@@ -22,3 +22,11 @@ GENESIS_SEED=<genesis seed> XRPLD_WS=ws://127.0.0.1:6006 PORT=8080 pnpm serve
 ```
 
 WebAuthn needs a secure context: `http://localhost` or HTTPS with a real host name (not an IP). Deployed, `infra/compose.yaml` runs the node, the closer and this wallet; `tailscale serve` provides HTTPS.
+
+## Stage demo: an AI agent on a budget
+
+The build has a second page, `demo.html` (full screen, English, for a projector): the AI
+agent's live timeline, its budget as the ledger stores it, its Agent ID, the Stax approvals,
+and the two guardrail layers (device session policy, ledger SigningSessions). Run sheet,
+Stax policy to set beforehand and the 3-minute script: [`scripts/agent/README.md`](scripts/agent/README.md);
+on the demo machine the page is **http://localhost:18080/demo.html**.

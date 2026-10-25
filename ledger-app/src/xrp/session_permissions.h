@@ -12,7 +12,7 @@
 #include "signing_session.h"
 
 // Name of a permission value (transaction type + 1, or a granular permission),
-// or NULL when the app does not know it: the review must then be blind.
+// or NULL when the app does not know it: the session is then refused.
 const char *resolve_permission_name(uint32_t value);
 
 static inline bool is_permission_value(const field_t *field) {

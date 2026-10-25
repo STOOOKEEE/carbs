@@ -28,6 +28,8 @@ TEST(SigningSessionTests, BuilderSettersRoundTrip)
     auto const sessionSpentValue = canonical_AMOUNT();
     auto const sessionMaxPerTxValue = canonical_AMOUNT();
     auto const sessionWitnessValue = canonical_ACCOUNT();
+    auto const sessionMaxTxCountValue = canonical_UINT32();
+    auto const sessionTxCountValue = canonical_UINT32();
     auto const ownerNodeValue = canonical_UINT64();
     auto const previousTxnIDValue = canonical_UINT256();
     auto const previousTxnLgrSeqValue = canonical_UINT32();
@@ -46,6 +48,8 @@ TEST(SigningSessionTests, BuilderSettersRoundTrip)
     builder.setSessionSpent(sessionSpentValue);
     builder.setSessionMaxPerTx(sessionMaxPerTxValue);
     builder.setSessionWitness(sessionWitnessValue);
+    builder.setSessionMaxTxCount(sessionMaxTxCountValue);
+    builder.setSessionTxCount(sessionTxCountValue);
 
     builder.setLedgerIndex(index);
     builder.setFlags(0x1u);
@@ -132,6 +136,22 @@ TEST(SigningSessionTests, BuilderSettersRoundTrip)
         EXPECT_TRUE(entry.hasSessionWitness());
     }
 
+    {
+        auto const& expected = sessionMaxTxCountValue;
+        auto const actualOpt = entry.getSessionMaxTxCount();
+        ASSERT_TRUE(actualOpt.has_value());
+        expectEqualField(expected, *actualOpt, "sfSessionMaxTxCount");
+        EXPECT_TRUE(entry.hasSessionMaxTxCount());
+    }
+
+    {
+        auto const& expected = sessionTxCountValue;
+        auto const actualOpt = entry.getSessionTxCount();
+        ASSERT_TRUE(actualOpt.has_value());
+        expectEqualField(expected, *actualOpt, "sfSessionTxCount");
+        EXPECT_TRUE(entry.hasSessionTxCount());
+    }
+
     EXPECT_TRUE(entry.hasLedgerIndex());
     auto const ledgerIndex = entry.getLedgerIndex();
     ASSERT_TRUE(ledgerIndex.has_value());
@@ -153,6 +173,8 @@ TEST(SigningSessionTests, BuilderFromSleRoundTrip)
     auto const sessionSpentValue = canonical_AMOUNT();
     auto const sessionMaxPerTxValue = canonical_AMOUNT();
     auto const sessionWitnessValue = canonical_ACCOUNT();
+    auto const sessionMaxTxCountValue = canonical_UINT32();
+    auto const sessionTxCountValue = canonical_UINT32();
     auto const ownerNodeValue = canonical_UINT64();
     auto const previousTxnIDValue = canonical_UINT256();
     auto const previousTxnLgrSeqValue = canonical_UINT32();
@@ -167,6 +189,8 @@ TEST(SigningSessionTests, BuilderFromSleRoundTrip)
     sle->at(sfSessionSpent) = sessionSpentValue;
     sle->at(sfSessionMaxPerTx) = sessionMaxPerTxValue;
     sle->at(sfSessionWitness) = sessionWitnessValue;
+    sle->at(sfSessionMaxTxCount) = sessionMaxTxCountValue;
+    sle->at(sfSessionTxCount) = sessionTxCountValue;
     sle->at(sfOwnerNode) = ownerNodeValue;
     sle->at(sfPreviousTxnID) = previousTxnIDValue;
     sle->at(sfPreviousTxnLgrSeq) = previousTxnLgrSeqValue;
@@ -305,6 +329,32 @@ TEST(SigningSessionTests, BuilderFromSleRoundTrip)
         expectEqualField(expected, *fromBuilderOpt, "sfSessionWitness");
     }
 
+    {
+        auto const& expected = sessionMaxTxCountValue;
+
+        auto const fromSleOpt = entryFromSle.getSessionMaxTxCount();
+        auto const fromBuilderOpt = entryFromBuilder.getSessionMaxTxCount();
+
+        ASSERT_TRUE(fromSleOpt.has_value());
+        ASSERT_TRUE(fromBuilderOpt.has_value());
+
+        expectEqualField(expected, *fromSleOpt, "sfSessionMaxTxCount");
+        expectEqualField(expected, *fromBuilderOpt, "sfSessionMaxTxCount");
+    }
+
+    {
+        auto const& expected = sessionTxCountValue;
+
+        auto const fromSleOpt = entryFromSle.getSessionTxCount();
+        auto const fromBuilderOpt = entryFromBuilder.getSessionTxCount();
+
+        ASSERT_TRUE(fromSleOpt.has_value());
+        ASSERT_TRUE(fromBuilderOpt.has_value());
+
+        expectEqualField(expected, *fromSleOpt, "sfSessionTxCount");
+        expectEqualField(expected, *fromBuilderOpt, "sfSessionTxCount");
+    }
+
     EXPECT_EQ(entryFromSle.getKey(), index);
     EXPECT_EQ(entryFromBuilder.getKey(), index);
 }
@@ -379,5 +429,9 @@ TEST(SigningSessionTests, OptionalFieldsReturnNullopt)
     EXPECT_FALSE(entry.getSessionMaxPerTx().has_value());
     EXPECT_FALSE(entry.hasSessionWitness());
     EXPECT_FALSE(entry.getSessionWitness().has_value());
+    EXPECT_FALSE(entry.hasSessionMaxTxCount());
+    EXPECT_FALSE(entry.getSessionMaxTxCount().has_value());
+    EXPECT_FALSE(entry.hasSessionTxCount());
+    EXPECT_FALSE(entry.getSessionTxCount().has_value());
 }
 }

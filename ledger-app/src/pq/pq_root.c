@@ -12,6 +12,8 @@
  *
  *   Review: the transaction part of the signing data goes through the app's own
  *   parser, so the screen shows the decoded fields, as for a classical signature.
+ *   The session policy and the never-blind rule of session transactions apply
+ *   as on the classical path (review_transaction, handle_packet_content).
  ********************************************************************************/
 
 #ifdef HAVE_PQ_ROOT
@@ -29,8 +31,11 @@
 #include "../apdu/global.h"
 #include "../apdu/messages/sign_transaction.h"
 #include "../globals.h"
+#include "../policy/session_policy.h"
 #include "../ui/other/blind_signing.h"
+#include "../ui/other/session_policy_refusal.h"
 #include "../ui/transaction/review_menu.h"
+#include "../xrp/signing_session.h"
 #include "../xrp/xrp_parse.h"
 
 /* Internal SDK function (lib_cxng/src/cx_mldsa_internal.h): deterministic key generation. */
@@ -53,6 +58,8 @@ cx_err_t MLDSA_internal_keygen(uint8_t *pk,
 #define SW_NO_SIGNATURE  0x6982
 #define SW_INTERNAL      0x6F00
 #define PQ_HASH_SIZE     32U
+/* Same answer as the classical path (sign_transaction.c, handle_packet_content). */
+#define SW_SESSION_BLIND_REFUSED (0x6800 | SESSION_BLIND_SIGN_REFUSED)
 
 /* SLIP-21 path: a leading 0x00 then the label (must match PATH_SLIP21_APP_LOAD_PARAMS). */
 static const char PQ_SLIP21_LABEL[] = "\0carbs ML-DSA-44";
@@ -179,9 +186,25 @@ static int review_signing_data(void) {
     parse_context.data = PQ->message + sizeof(PQ_SIGNING_PREFIX);
     parse_context.length = PQ->message_length - sizeof(PQ_SIGNING_PREFIX);
     int result = parse_tx(&parse_context);
-    if (result != 0 && result != BLIND_SIGN_REQUIRED) {
+    if (result != 0 && result != BLIND_SIGN_REQUIRED && result != SESSION_BLIND_SIGN_REFUSED) {
         PQ->message_length = 0;
         return io_send_sw(SW_WRONG_DATA);
+    }
+    /* As review_transaction() (transaction.c): the policy is checked before
+     * any review or refusal; the refusal screen answers 0x6986 and resets
+     * the context. */
+    session_policy_t policy = N_storage.session_policy;
+    session_policy_verdict_t verdict;
+    if (!session_policy_check_transaction(&policy, &verdict)) {
+        PQ->message_length = 0;
+        ui_session_policy_refusal(&verdict);
+        return 0;
+    }
+    if (result == SESSION_BLIND_SIGN_REFUSED) {
+        /* Never offered for blind signing, whatever the setting says. */
+        PQ->message_length = 0;
+        ui_error_session_blind_signing();
+        return io_send_sw(SW_SESSION_BLIND_REFUSED);
     }
     if (result == BLIND_SIGN_REQUIRED && N_storage.allow_blind_sign == BlindSignDisabled) {
         /* As review_transaction() (transaction.c): the error screen, whose

@@ -1,14 +1,18 @@
 /**
  * A SIMULATED device: it follows the contract of `docs/device-contract.md` APDU by APDU (chunking,
  * P1/P2, prefixes, answers, status words), parses what it is asked to sign with the node's
- * definitions, shows the review lines of `screen.ts` to an `approve` callback, and signs in
- * software. It is a test double of the XRP app, not the app: every result it produces is SIMULATED.
+ * definitions, applies the session rules of the app (a session transaction is never blind-signed,
+ * `0x6815`; the session policy is checked before any review, `0x6986`), shows the review lines of
+ * `screen.ts` to an `approve` callback, and signs in software. It is a test double of the XRP app,
+ * not the app: every result it produces is SIMULATED. It does not predict the review of a `Batch`,
+ * so a `Batch` holding a session transaction is refused as never blind-signed.
  */
 
 import {
   bytesToHex,
   classicSignerFromSeed,
   decodeTx,
+  kSessionTransactionTypes,
   kTxSignPrefix,
   mlDsaSignerFromSeed,
   type BytesSigner,
@@ -19,6 +23,7 @@ import { accountIdBytes } from "@carbs/sessions";
 import {
   kCla,
   kInsGetPublicKey,
+  kInsGetSessionPolicy,
   kInsPqGetPublicKey,
   kInsPqGetSignature,
   kInsPqSign,
@@ -39,6 +44,8 @@ import {
   type ApduTransport,
 } from "./apdu.js";
 import { reviewLines, type Review } from "./screen.js";
+import { encodeSessionPolicy, kSessionPolicyOff, type SessionPolicy } from "./session-policy.js";
+import { batchInnerTransactions, sessionPolicyRefusal } from "./session-policy-check.js";
 import { deviceMlDsaSeed } from "./slip21.js";
 
 export interface SimulatedDeviceOptions {
@@ -49,15 +56,34 @@ export interface SimulatedDeviceOptions {
   classicSeeds: { secp256k1: string; ed25519: string };
   /** The user's answer to a review; resolves `true` to sign. */
   approve: (review: Review, kind: "classic" | "ml-dsa") => Promise<boolean>;
+  /** The session policy set in the device settings; off by default, as on a fresh install. */
+  sessionPolicy?: SessionPolicy;
 }
 
 type SignState = "idle" | "waiting";
 
+/** The device's refusal screens (`ledger-app/src/ui/other/`). */
+export const kSessionBlindRefusalText = "Session transactions are never blind-signed";
+export const kSessionPolicyRefusalText = "Blocked by your session policy";
+
 const ok = (data: Uint8Array = new Uint8Array()): ApduResponse => ({ data, statusWord: kSw.ok });
 const sw = (statusWord: number): ApduResponse => ({ data: new Uint8Array(), statusWord });
 
+const isSessionType = (type: unknown): boolean =>
+  kSessionTransactionTypes.some((sessionType) => sessionType === type);
+
+/** A session transaction itself, or a `Batch` holding one. */
+function holdsSession(tx: Record<string, unknown>): boolean {
+  return (
+    isSessionType(tx["TransactionType"]) ||
+    batchInnerTransactions(tx).some((inner) => isSessionType(inner["TransactionType"]))
+  );
+}
+
 export class SimulatedDevice implements ApduTransport {
   readonly reviews: Review[] = [];
+  /** The refusal screens shown instead of a review, e.g. `Blocked by your session policy: …`. */
+  readonly refusals: string[] = [];
   readonly #options: SimulatedDeviceOptions;
   readonly #mlDsa: BytesSigner;
   readonly #classic: Record<"secp256k1" | "ed25519", BytesSigner>;
@@ -67,6 +93,7 @@ export class SimulatedDevice implements ApduTransport {
   #curve: "secp256k1" | "ed25519" = "secp256k1";
   #pqMessage: number[] = [];
   #pqSignature: Uint8Array | undefined;
+  #sessionPolicy: SessionPolicy = kSessionPolicyOff;
 
   constructor(options: SimulatedDeviceOptions) {
     this.#options = options;
@@ -75,11 +102,23 @@ export class SimulatedDevice implements ApduTransport {
       secp256k1: classicSignerFromSeed(options.classicSeeds.secp256k1),
       ed25519: classicSignerFromSeed(options.classicSeeds.ed25519),
     };
+    this.sessionPolicy = options.sessionPolicy ?? kSessionPolicyOff;
   }
 
   /** The ML-DSA-44 public key the device holds (for tests). */
   get mlDsaPublicKey(): Uint8Array {
     return this.#mlDsa.publicKey;
+  }
+
+  /** The session policy of the device settings (the host can only read it, with `INS 0x08`). */
+  get sessionPolicy(): SessionPolicy {
+    return this.#sessionPolicy;
+  }
+
+  /** As the user editing the device settings; throws `RangeError` on a limit the device cannot store. */
+  set sessionPolicy(policy: SessionPolicy) {
+    encodeSessionPolicy(policy);
+    this.#sessionPolicy = policy;
   }
 
   async exchange(apdu: Apdu): Promise<ApduResponse> {
@@ -103,6 +142,10 @@ export class SimulatedDevice implements ApduTransport {
         return this.#pqSign(apdu);
       case kInsPqGetSignature:
         return this.#pqSignature ? this.#chunk(this.#pqSignature, apdu.p1) : sw(kSw.noSignature);
+      case kInsGetSessionPolicy:
+        // `ledger-app/src/apdu/messages/get_session_policy.c`
+        if (apdu.p1 !== 0 || apdu.p2 !== 0) return sw(kSw.wrongP1P2);
+        return ok(encodeSessionPolicy(this.#sessionPolicy));
       default:
         return sw(kSw.insNotSupported);
     }
@@ -149,9 +192,9 @@ export class SimulatedDevice implements ApduTransport {
     }
     this.#signState = "idle";
     const fields = Uint8Array.from(this.#raw);
-    const review = this.#review(fields);
-    if (!review) return sw(0x6800);
-    if (!(await this.#options.approve(review, "classic"))) return sw(kSw.denied);
+    // A parse failure answers `0x6800 | code` on the classical path.
+    const status = await this.#reviewAndApprove(fields, "classic", 0x6800);
+    if (status !== kSw.ok) return sw(status);
     // The app prepends STX\0 itself (sign_transaction.c:251-263).
     const signingData = new Uint8Array([...kTxSignPrefix, ...fields]);
     return ok(await this.#classic[this.#curve].sign(signingData));
@@ -177,23 +220,48 @@ export class SimulatedDevice implements ApduTransport {
     ) {
       return sw(kSw.wrongData);
     }
-    const review = this.#review(message.subarray(kTxSignPrefix.length));
-    if (!review) return sw(kSw.wrongData);
-    if (!(await this.#options.approve(review, "ml-dsa"))) return sw(kSw.denied);
+    const status = await this.#reviewAndApprove(
+      message.subarray(kTxSignPrefix.length),
+      "ml-dsa",
+      kSw.wrongData,
+    );
+    if (status !== kSw.ok) return sw(status);
     this.#pqSignature = await this.#mlDsa.sign(message);
     const length = this.#pqSignature.length;
     return ok(Uint8Array.of(length >> 8, length & 0xff));
   }
 
-  #review(fields: Uint8Array): Review | undefined {
+  /**
+   * What both signing paths do before signing (`sign_transaction.c` and `review_transaction`,
+   * `review_signing_data` in `pq_root.c`): parse, refuse a session transaction that cannot be
+   * clear-signed (`0x6815`), check the session policy (`0x6986`), then show the review. Answers the
+   * status word, `0x9000` once the user approved.
+   */
+  async #reviewAndApprove(
+    fields: Uint8Array,
+    kind: "classic" | "ml-dsa",
+    parseFailure: number,
+  ): Promise<number> {
+    const { defs } = this.#options;
+    let tx: Record<string, unknown>;
+    let review: Review;
     try {
-      const tx = decodeTx(bytesToHex(fields), this.#options.defs);
-      const review = reviewLines(tx, this.#options.defs);
-      this.reviews.push(review);
-      return review;
+      tx = decodeTx(bytesToHex(fields), defs);
+      review = reviewLines(tx, defs);
     } catch {
-      return undefined;
+      return parseFailure;
     }
+    if (review.kind === "blind" && holdsSession(tx)) {
+      this.refusals.push(kSessionBlindRefusalText);
+      return kSw.sessionBlindRefused;
+    }
+    const reason = sessionPolicyRefusal(this.#sessionPolicy, tx, defs);
+    if (reason !== undefined) {
+      this.refusals.push(`${kSessionPolicyRefusalText}: ${reason}`);
+      return kSw.sessionPolicyRefused;
+    }
+    this.reviews.push(review);
+    return (await this.#options.approve(review, kind)) ? kSw.ok : kSw.denied;
   }
 
   #chunk(bytes: Uint8Array, index: number): ApduResponse {
