@@ -62,7 +62,6 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      defaultNetwork: "alphanet",
       // The header's Node before a visitor picks one: "local" or "team" (or "live", the former
       // name of "local") runs Account, Session, Actions and Attack on that node; "" on the simulation.
       backend: "",

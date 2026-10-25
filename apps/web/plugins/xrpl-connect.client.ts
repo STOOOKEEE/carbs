@@ -1,7 +1,7 @@
 import { createXrplConnect, useWallet } from "@xrpl-commons/xrpl-connect-vue";
 import { sharedAppContext } from "~/lib/app-context";
 import { WALLETS_KEY } from "~/lib/context";
-import { SIMULATED_NODE_NAME, createWalletAdapters } from "~/lib/wallets/adapters";
+import { createWalletAdapters, walletNetwork } from "~/lib/wallets/adapters";
 import { createWalletsApi } from "~/lib/wallets/api";
 import { browserPasskeySource } from "~/lib/wallets/passkey";
 
@@ -10,17 +10,12 @@ import { browserPasskeySource } from "~/lib/wallets/passkey";
 export default defineNuxtPlugin((nuxtApp) => {
   const { backend, demo, network } = sharedAppContext();
   const adapters = createWalletAdapters({ backend, demo, network }, browserPasskeySource());
-  const selected = network.selected();
 
   nuxtApp.vueApp.use(
     createXrplConnect({
       adapters,
-      network: {
-        id: selected.id,
-        name: backend.mode === "simulated" ? SIMULATED_NODE_NAME : selected.name,
-        wss: selected.wss,
-        rpc: selected.rpc,
-      },
+      // The node in effect; on the simulation, a network with no URL (no node is contacted).
+      network: walletNetwork({ backend, network }),
       // Every connection creates a fresh account, so a page reload never reconnects on its own.
       autoConnect: false,
       logger: { level: "warn" },

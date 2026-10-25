@@ -100,7 +100,7 @@ describe("node URL rules", () => {
     expect(checkNodeUrl("https://node.example.org", "https:").ok).toBe(true);
   });
 
-  it("over https accepts ws:// and http:// on the loopback, which browsers trust", () => {
+  it("over https accepts ws:// and http:// on the loopback, which Chrome and Firefox trust", () => {
     for (const url of [
       "ws://localhost:6006",
       "http://localhost:3005/accounts",

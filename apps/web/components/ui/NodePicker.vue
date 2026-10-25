@@ -52,7 +52,8 @@ const activeUrl = computed(() =>
 );
 
 function choose(event: Event): void {
-  const target = event.target as HTMLSelectElement;
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
   const value = target.value;
   // The select shows the node in effect until the new one is reached.
   target.value = status.active;

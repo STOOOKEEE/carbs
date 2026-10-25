@@ -51,8 +51,22 @@ export interface PasskeySource {
 
 type Listener = (data: unknown) => void;
 
-/** The network name a wallet reports while the screens run on the simulation. */
-export const SIMULATED_NODE_NAME = "Simulated node (SIMULATED)";
+/**
+ * The network a wallet reports while the screens run on the simulation: no URL, since no node
+ * is contacted, and not the local node's id.
+ */
+export const SIMULATED_NETWORK: NetworkInfo = {
+  id: "simulated",
+  name: "Simulated node (SIMULATED)",
+  wss: "",
+};
+
+/** The network a wallet reports for the node in effect. */
+export function walletNetwork(host: Pick<WalletHost, "backend" | "network">): NetworkInfo {
+  if (host.backend.mode === "simulated") return { ...SIMULATED_NETWORK };
+  const network = host.network.selected();
+  return { id: network.id, name: network.name, wss: network.wss, rpc: network.rpc };
+}
 
 const CAPABILITIES: WalletCapabilities = { sign: true, signAndSubmit: true, signMessage: false };
 
@@ -159,14 +173,7 @@ abstract class CarbsAdapter implements WalletAdapter {
   }
 
   private networkInfo(): NetworkInfo {
-    const network = this.host.network.selected();
-    const simulated = this.host.backend.mode === "simulated";
-    return {
-      id: network.id,
-      name: simulated ? SIMULATED_NODE_NAME : network.name,
-      wss: network.wss,
-      rpc: network.rpc,
-    };
+    return walletNetwork(this.host);
   }
 
   private accountInfo(): AccountInfo {

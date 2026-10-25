@@ -33,7 +33,7 @@ export const DEFAULT_LOCAL_FAUCET = "http://localhost:3005/accounts";
 export const DEFAULT_TEAM_WSS = "wss://debian-docker.tail8b5861.ts.net:9448";
 /** The faucet of the team's wallet server (`apps/passkey-wallet`, `/api/faucet`). */
 export const DEFAULT_TEAM_FAUCET = "https://debian-docker.tail8b5861.ts.net:9449/api/faucet";
-/** Hosts that browsers treat as potentially trustworthy over plain ws:// and http://. */
+/** Hosts that Chrome and Firefox treat as potentially trustworthy over plain ws:// and http:// (Safari not checked). */
 const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 
 export interface LocalEndpoints {
@@ -133,8 +133,9 @@ export function isLoopbackHost(hostname: string): boolean {
 /**
  * Whether a node URL can be used from a page served over `pageProtocol`. A page served over
  * https cannot call ws:// or http:// on another host (mixed content), so it accepts wss:// and
- * https:// there. The loopback (localhost, 127.0.0.1, [::1]) is potentially trustworthy for
- * browsers, so its ws:// and http:// URLs are allowed from an https page too. An http page
+ * https:// there. Chrome and Firefox treat the loopback (localhost, 127.0.0.1, [::1]) as
+ * potentially trustworthy, so its ws:// and http:// URLs are allowed from an https page too
+ * (Safari was not checked; it may block them and the dialog then shows why). An http page
  * accepts all four.
  */
 export function checkNodeUrl(raw: string, pageProtocol: string): UrlCheck {

@@ -39,10 +39,11 @@ const nodeUrl = computed(() =>
 );
 const faucetUrl = computed(() => network.nodeNetwork(props.choice).faucet ?? "none");
 
-const location = globalThis.location as Location | undefined;
-const command = demoCommand(location?.origin ?? null);
+const page: Location | undefined =
+  typeof globalThis.location === "undefined" ? undefined : globalThis.location;
+const command = demoCommand(page?.origin ?? null);
 // A page on another site asking for this machine: Chrome asks the person first.
-const remotePage = location !== undefined && !isLoopbackHost(location.hostname);
+const remotePage = page !== undefined && !isLoopbackHost(page.hostname);
 
 type Phase = "idle" | "connecting" | "connected" | "failed";
 const phase = ref<Phase>("idle");
@@ -96,7 +97,9 @@ function onKeydown(event: KeyboardEvent): void {
   }
   if (event.key !== "Tab") return;
   const focusable = [
-    ...(dialog.value?.querySelectorAll<HTMLElement>("a, button, input, summary") ?? []),
+    ...(dialog.value?.querySelectorAll<HTMLElement>(
+      'a[href], button, input, summary, [tabindex]:not([tabindex="-1"])',
+    ) ?? []),
   ].filter((element) => !element.hasAttribute("disabled"));
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
