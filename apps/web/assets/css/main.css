@@ -13,11 +13,15 @@
     font-family: var(--font-sans);
     font-size: 100%;
     line-height: var(--leading-body);
+    -webkit-font-smoothing: antialiased;
   }
 
   body {
     @apply bg-background text-foreground;
     font-size: var(--text-base);
+    transition:
+      background-color var(--motion-slow) var(--ease-out),
+      color var(--motion-slow) var(--ease-out);
   }
 
   h1,
@@ -26,7 +30,7 @@
     font-family: var(--font-display);
     font-weight: var(--weight-strong);
     line-height: var(--leading-tight);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
   }
 
   :focus-visible {
@@ -47,16 +51,30 @@
     font-size: var(--text-xs);
     letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
-    font-weight: var(--weight-strong);
-    color: var(--color-ink-muted);
+    font-weight: 700;
+    color: var(--color-accent);
   }
 
   .panel {
     background: var(--color-surface-raised);
-    border: var(--border-width) solid var(--color-line);
+    border: var(--border-width) solid var(--color-line-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-panel);
+    -webkit-backdrop-filter: blur(var(--panel-blur));
+    backdrop-filter: blur(var(--panel-blur));
     padding: var(--space-5);
+    transition:
+      background-color var(--motion-slow) var(--ease-out),
+      border-color var(--motion-slow) var(--ease-out);
+  }
+
+  /* Two offset layers behind a hero card, as in the Wave of Innovation deck. */
+  .panel-stack {
+    box-shadow:
+      var(--layer-offset) var(--layer-offset) 0 var(--layer-1),
+      calc(var(--layer-offset) * 2) calc(var(--layer-offset) * 2) 0 var(--layer-2);
+    margin-right: calc(var(--layer-offset) * 2);
+    margin-bottom: calc(var(--layer-offset) * 2);
   }
 
   .panel-title {
@@ -71,13 +89,14 @@
     justify-content: center;
     gap: var(--space-2);
     min-height: 2.5rem;
-    padding: 0 var(--space-4);
-    border-radius: var(--radius-md);
+    padding: 0 var(--space-5);
+    border-radius: var(--radius-pill);
     border: var(--border-width) solid var(--color-line-strong);
-    background: var(--color-surface-raised);
+    background: transparent;
     color: var(--color-ink);
-    font-size: var(--text-sm);
-    font-weight: var(--weight-strong);
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    font-weight: 500;
     cursor: pointer;
     transition:
       background var(--motion-fast) var(--ease-out),
@@ -86,6 +105,10 @@
 
   .btn:hover:not(:disabled) {
     background: var(--color-surface-sunken);
+  }
+
+  .btn:focus-visible {
+    outline-offset: 3px;
   }
 
   .btn:active:not(:disabled) {
@@ -125,10 +148,10 @@
 
   .input {
     min-height: 2.5rem;
-    padding: 0 var(--space-3);
+    padding: 0 var(--space-4);
     border-radius: var(--radius-md);
     border: var(--border-width) solid var(--color-line-strong);
-    background: var(--color-surface-sunken);
+    background: var(--color-surface-raised);
     color: var(--color-ink);
     font-size: var(--text-sm);
     width: 100%;
@@ -157,8 +180,8 @@
     gap: var(--space-1);
     padding: 0 var(--space-2);
     min-height: 1.5rem;
-    border-radius: 999px;
-    border: var(--border-width) solid var(--color-line-strong);
+    border-radius: var(--radius-pill);
+    border: var(--border-width-fine) solid var(--color-line-strong);
     font-family: var(--font-mono);
     font-size: var(--text-xs);
   }
@@ -186,7 +209,7 @@
     padding: 0 var(--space-2);
     min-height: 1.5rem;
     border-radius: var(--radius-sm);
-    border: var(--border-width) solid var(--color-sim);
+    border: var(--border-width-fine) solid var(--color-sim);
     background: repeating-linear-gradient(
       -45deg,
       var(--color-sim-wash),
@@ -202,7 +225,7 @@
   }
 
   .sim-frame {
-    border: var(--border-width) dashed var(--color-sim);
+    border: var(--border-width-fine) dashed var(--color-sim);
   }
 
   .fade-in {
