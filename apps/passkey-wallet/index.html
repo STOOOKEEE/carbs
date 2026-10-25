@@ -85,6 +85,41 @@
           >
           <button type="submit">Signer sur la Stax et envoyer</button>
         </form>
+        <fieldset id="ledger-migration">
+          <legend>Migrer vers la racine ML-DSA-44</legend>
+          <p class="muted">
+            Trois transactions, dans cet ordre : la clé ML-DSA-44 de la Stax devient la clé
+            régulière, elle prouve qu'elle signe pour le compte, puis la clé maître classique est
+            désactivée.
+            <strong
+              >Après l'étape 3, seule la clé ML-DSA-44 signe : la perdre bloque le compte pour
+              toujours.</strong
+            >
+            Avant l'étape 3, réinstallez l'app XRP sur la Stax et relisez la clé : elle doit être
+            identique (même seed, même clé).
+          </p>
+          <div id="ledger-migration-status" class="muted">Stax non connectée.</div>
+          <div class="actions">
+            <button id="ledger-migrate-regular-key" type="button">
+              1. SetRegularKey vers la clé ML-DSA (clé classique)
+            </button>
+            <button id="ledger-migrate-proof" type="button">
+              2. Preuve : AccountSet signé en ML-DSA-44
+            </button>
+          </div>
+          <div class="actions">
+            <button id="ledger-migrate-reread" type="button" class="secondary">
+              Relire la clé ML-DSA sur la Stax (après réinstallation de l'app)
+            </button>
+            <label class="inline"
+              ><input id="ledger-migrate-checked" type="checkbox" /> J'ai vérifié la clé ML-DSA
+              après réinstallation de l'app</label
+            >
+            <button id="ledger-migrate-disable-master" type="button">
+              3. Désactiver la clé maître (asfDisableMaster, clé classique)
+            </button>
+          </div>
+        </fieldset>
       </section>
 
       <section id="session-section">

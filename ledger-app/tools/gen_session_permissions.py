@@ -4,8 +4,8 @@
 A session in mode P carries XLS-75 permission values (FIANSO-SPEC 6.3, 7.3 f):
   - a delegable transaction type T is permission value T + 1;
   - a granular permission has its own value (>= 65537).
-The device must name every value it shows; any other value forces blind
-signing. The names are the rippled names, so the screen reads like the JSON.
+The device must name every value it shows; any other value gets the session
+refused. The names are the rippled names, so the screen reads like the JSON.
 
 Usage (from ledger-app/): python3 tools/gen_session_permissions.py
 """

@@ -404,9 +404,19 @@ static void format_signing_session_set_flags(uint32_t value,
     }
 }
 
+// The parser only clear-signs a Batch with exactly one mode set.
+static void format_batch_flags(uint32_t value, field_value_t* dst) {
+    const char* mode = resolve_batch_mode(value);
+    if (mode != NULL) {
+        append_item(dst, 0, mode);
+    }
+}
+
 void format_flags(field_t* field, field_value_t* dst) {
     uint32_t value = field->data.u32;
-    switch (parse_context.transaction_type) {
+    // An inner transaction of a Batch reads its flags by its own type.
+    uint16_t transaction_type = field_transaction_type(field);
+    switch (transaction_type) {
         case TRANSACTION_ACCOUNT_SET:
             format_account_set_flags(field, value, dst);
             break;
@@ -437,10 +447,12 @@ void format_flags(field_t* field, field_value_t* dst) {
         case TRANSACTION_SIGNING_SESSION_SET:
             format_signing_session_set_flags(value, dst);
             break;
+        case TRANSACTION_BATCH:
+            format_batch_flags(value, dst);
+            break;
         default:
             snprintf(dst->buf, sizeof(dst->buf),
-                     "No flags for transaction type %d",
-                     parse_context.transaction_type);
+                     "No flags for transaction type %d", transaction_type);
             return;
     }
 
@@ -495,6 +507,9 @@ bool has_unknown_flags(uint16_t transaction_type, uint32_t value) {
             break;
         case TRANSACTION_SIGNING_SESSION_DELETE:
             known |= SIGNING_SESSION_DELETE_KNOWN_FLAGS;
+            break;
+        case TRANSACTION_BATCH:
+            known |= BATCH_MODE_FLAGS;
             break;
         default:
             // No specific-flag formatter for this type: nothing to check.

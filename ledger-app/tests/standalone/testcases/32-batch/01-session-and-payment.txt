@@ -1,0 +1,19 @@
+Transaction Type; Batch
+Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
+Network ID; 24100
+Batch mode; All or nothing
+Fee; XRP 0.00004
+Tx 1/2; Open session
+Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
+Session key;   rEmnmhwxmkDk    j9jKiibNuXx     P25VYHJ5Euy   
+Agent ID; A1E8-094F
+Network ID; 24100
+Valid for; 10 minutes
+Max spend; XRP 20
+Allows; XRP payments only, fees included
+Note; Cannot change keys or signers
+Tx 2/2; Payment
+Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
+Network ID; 24100
+Amount; XRP 1.5
+Destination;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
