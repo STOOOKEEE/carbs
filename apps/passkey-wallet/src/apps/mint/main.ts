@@ -7,6 +7,7 @@ import { DeviceError, describeLedgerError } from "@carbs/ledger";
 import type { Connection } from "../../account.ts";
 import { agentIdOf } from "../../agent-id.ts";
 import { NODE_URL } from "../../config.ts";
+import { guarded } from "../../dom.ts";
 import { loadDefinitions } from "../../ledger.ts";
 import { NodeClient } from "../../rpc.ts";
 import { logDeviceRefusal, logInfo, logResult } from "./activity.ts";
@@ -23,7 +24,7 @@ import {
 } from "./mint-session.ts";
 import { type Owner, connectStaxOwner, macOwner } from "./owner.ts";
 import { EVENT_TAXON } from "./tickets.ts";
-import { type MessageTone, showMessage, ui } from "./ui.ts";
+import { showMessage, ui } from "./ui.ts";
 import { type PageState, render, secondsLeft, tickCountdown } from "./view.ts";
 
 const BURST_SIZE = 20;
@@ -123,19 +124,20 @@ function refresh(): Promise<void> {
  * A click handler: the action starts inside the click (WebHID's chooser needs its user
  * activation), its outcome goes to `target`, then the page reads the ledger again.
  */
-function run(target: HTMLElement, action: () => Promise<string>): () => void {
-  return () => {
-    busy = true;
-    updateButtons();
-    const done = (text: string, tone: MessageTone) => showMessage(target, text, tone);
-    action()
-      .then((text) => done(text, "ok"))
-      .catch((error: unknown) => done(describeLedgerError(error), "error"))
-      .finally(() => {
+function run(target: HTMLElement, action: () => Promise<string>): (event?: Event) => void {
+  return guarded(
+    async () => {
+      busy = true;
+      updateButtons();
+      try {
+        showMessage(target, await action(), "ok");
+      } finally {
         busy = false;
-        void refresh();
-      });
-  };
+      }
+    },
+    (error) => showMessage(target, describeLedgerError(error), "error"),
+    refresh,
+  );
 }
 
 /** The owner opens the minting session once; the desk's key is born here and stays in memory. */
