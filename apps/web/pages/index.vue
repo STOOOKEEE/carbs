@@ -26,6 +26,11 @@ const SCREENS = [
     body: "Replay what a stolen key could try. The refusals are the node's own codes.",
   },
   {
+    to: "/apps",
+    title: "Apps",
+    body: "Six live apps on the team's node, each opening one session with its own limits.",
+  },
+  {
     to: "/quantum",
     title: "Quantum",
     body: "Is an account's public key already on the ledger? Then migrate with the Ledger.",

@@ -60,6 +60,9 @@ export default defineNuxtConfig({
       localNodeUrl: "",
       // The dev faucet of the local node (started by `pnpm demo`).
       localFaucetUrl: "",
+      // The team's wallet server behind the Apps screen; "" is its tailnet host (lib/live-apps.ts).
+      // Only linked to, never fetched: it is not in connect-src.
+      appsUrl: "",
     },
   },
 

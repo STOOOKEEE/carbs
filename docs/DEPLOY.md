@@ -7,7 +7,7 @@
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter web generate              # apps/web/.output/public
-pnpm dlx serve apps/web/.output/public  # open the printed URL: all five screens, SIMULATED badge visible
+pnpm dlx serve apps/web/.output/public  # open the printed URL: the six screens, SIMULATED badge visible
 ```
 
 `node apps/web/scripts/check-static.mjs apps/web/.output/public` (run by CI after `generate`) fails if the built site has an inline script, a script or link to another origin, a `script-src` other than `'self'`, or a `connect-src` with a wildcard or a bare scheme.
@@ -70,11 +70,12 @@ A `<meta http-equiv="Content-Security-Policy">` fallback is added to the product
 
 ## Environment variables
 
-| Variable                       | Default                          | Meaning                                                                                                                                                                                                                     |
-| ------------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NUXT_PUBLIC_BACKEND`          | empty (simulated)                | `live` runs Session, Actions and Attack on the local node; the page falls back to the simulation, with the reason in the header, if the node cannot be used. A person can also pick it in the header (saved in the browser) |
-| `NUXT_PUBLIC_LOCAL_NODE_URL`   | `ws://localhost:6006`            | public WebSocket of the node behind the "Local node" network; `wss://` when the site is https                                                                                                                               |
-| `NUXT_PUBLIC_LOCAL_FAUCET_URL` | `http://localhost:3005/accounts` | the dev faucet that funds fresh accounts on the local node (started by `pnpm demo`; the browser never holds the genesis key)                                                                                                |
+| Variable                       | Default                                        | Meaning                                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_BACKEND`          | empty (simulated)                              | `live` runs Session, Actions and Attack on the local node; the page falls back to the simulation, with the reason in the header, if the node cannot be used. A person can also pick it in the header (saved in the browser)                                                                                       |
+| `NUXT_PUBLIC_LOCAL_NODE_URL`   | `ws://localhost:6006`                          | public WebSocket of the node behind the "Local node" network; `wss://` when the site is https                                                                                                                                                                                                                     |
+| `NUXT_PUBLIC_LOCAL_FAUCET_URL` | `http://localhost:3005/accounts`               | the dev faucet that funds fresh accounts on the local node (started by `pnpm demo`; the browser never holds the genesis key)                                                                                                                                                                                      |
+| `NUXT_PUBLIC_APPS_URL`         | `https://debian-docker.tail8b5861.ts.net:9449` | the team's wallet server (`apps/passkey-wallet`, port 9449 of `infra/compose.yaml`) whose pages the Apps screen links to, in a new tab; reachable on the team's tailnet only. Navigation only: nothing is fetched from it and it is not in `connect-src`. A value that is not a plain `http(s)` URL shows no link |
 
 The simulated backend needs nothing else. There is no API key anywhere.
 
@@ -84,6 +85,7 @@ The simulated backend needs nothing else. There is no API key anywhere.
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Quantum                           | works against the simulated history today; with the live backend it reads **mainnet read-only** and migrates on the **AlphaNet** with a fresh account |
 | Account, Session, Actions, Attack | need a node that carries the `SigningSessions` amendment; until one is hosted they run in **SIMULATED** mode and the badge stays visible              |
+| Apps                              | links only: the six apps run on the team's own node and wallet server (`NUXT_PUBLIC_APPS_URL`) and open only where that host is reachable             |
 
 ## Running the node and the app together (local)
 
