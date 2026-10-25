@@ -393,6 +393,113 @@ static void test_new_signing_data_drops_old_signature(void** state) {
                      SW_NO_SIGNATURE);
 }
 
+/* ------------------------------------------- what is approved is what is shown
+ */
+
+/* While the review of A is on screen, a host sends the whole of B as a new
+ * signing request. The app must refuse it (as the classical path does in
+ * PENDING_REVIEW) and the approval must sign A, never B. */
+static void test_review_refuses_new_signing_data(void** state) {
+    (void)state;
+    message_t a, b;
+    load_signing_data(PAYMENT_A, &a);
+    load_signing_data(PAYMENT_B, &b);
+
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    assert_int_equal(review_screens, 1);
+
+    assert_int_equal(send_signing_data(&b, 250), SW_WRONG_DATA);
+    assert_int_equal(review_screens, 1);
+
+    approve();
+    assert_int_equal(last_sw, SW_OK);
+    assert_int_equal(signatures, 1);
+    assert_int_equal(signed_length, a.length);
+    assert_memory_equal(signed_message, a.bytes, a.length);
+}
+
+/* Same, with chunks that do not end the request (P2 = 0): they must not
+ * reach the buffer under review either. */
+static void test_review_refuses_partial_chunks(void** state) {
+    (void)state;
+    message_t a, b;
+    load_signing_data(PAYMENT_A, &a);
+    load_signing_data(PAYMENT_B, &b);
+
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    assert_int_equal(apdu(INS_PQ_SIGN, 0, 0, b.bytes, b.length), SW_WRONG_DATA);
+    assert_int_equal(apdu(INS_PQ_SIGN, 1, 0, b.bytes, b.length), SW_WRONG_DATA);
+
+    approve();
+    assert_int_equal(signatures, 1);
+    assert_int_equal(signed_length, a.length);
+    assert_memory_equal(signed_message, a.bytes, a.length);
+}
+
+/* Another instruction during the review resets the context (entry.c): the
+ * pending request is gone, so the approval must sign nothing. */
+static void test_other_instruction_cancels_review(void** state) {
+    (void)state;
+    static const uint8_t other_ins[] = {
+        INS_PQ_GET_PUBLIC_KEY,
+        INS_GET_PUBLIC_KEY,
+        INS_GET_APP_CONFIG,
+        INS_PQ_GET_SIGNATURE,
+    };
+    for (size_t i = 0; i < sizeof(other_ins); i++) {
+        setup(NULL);
+        message_t a;
+        load_signing_data(PAYMENT_A, &a);
+        assert_int_equal(send_signing_data(&a, 250), NO_SW);
+
+        apdu(other_ins[i], 0, 0, NULL, 0);
+        int before = answers;
+        approve();
+        assert_int_equal(signatures, 0);
+        assert_int_equal(answers, before);
+        assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                         SW_NO_SIGNATURE);
+    }
+}
+
+/* Defence in depth: if the bytes under review change by any route, the
+ * approval refuses instead of signing them. */
+static void test_approval_checks_reviewed_bytes(void** state) {
+    (void)state;
+    message_t a;
+    load_signing_data(PAYMENT_A, &a);
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+
+    PQ->message[a.length - 1] ^= 0x01;
+    approve();
+    assert_int_equal(signatures, 0);
+    assert_int_equal(last_sw, SW_WRONG_DATA);
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                     SW_NO_SIGNATURE);
+}
+
+/* After the review ends (signed or rejected), the next request is served. */
+static void test_review_lock_ends_with_the_review(void** state) {
+    (void)state;
+    message_t a, b;
+    load_signing_data(PAYMENT_A, &a);
+    load_signing_data(PAYMENT_B, &b);
+
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    reject();
+    assert_int_equal(last_sw, SW_DENY);
+
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    approve();
+    assert_int_equal(last_sw, SW_OK);
+
+    assert_int_equal(send_signing_data(&b, 250), NO_SW);
+    assert_int_equal(review_screens, 3);
+    approve();
+    assert_int_equal(signatures, 2);
+    assert_memory_equal(signed_message, b.bytes, b.length);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_public_key_chunks, setup),
@@ -404,6 +511,11 @@ int main(void) {
         cmocka_unit_test_setup(test_reject_answers_deny, setup),
         cmocka_unit_test_setup(test_new_signing_data_drops_old_signature,
                                setup),
+        cmocka_unit_test_setup(test_review_refuses_new_signing_data, setup),
+        cmocka_unit_test_setup(test_review_refuses_partial_chunks, setup),
+        cmocka_unit_test_setup(test_other_instruction_cancels_review, setup),
+        cmocka_unit_test_setup(test_approval_checks_reviewed_bytes, setup),
+        cmocka_unit_test_setup(test_review_lock_ends_with_the_review, setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
