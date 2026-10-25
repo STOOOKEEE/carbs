@@ -13,6 +13,7 @@
     "session-demo": "node scripts/session-demo.ts",
     "rotation-demo": "node scripts/rotation-demo.ts",
     "pq-passkey-demo": "tsx scripts/pq-passkey-demo.ts",
+    "stax-pq-passkey": "tsx scripts/stax-pq-passkey.ts",
     "agent": "node scripts/agent/agent.ts",
     "merchant": "node scripts/agent/merchant.ts"
   },
