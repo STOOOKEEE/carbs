@@ -193,6 +193,19 @@ A Mac account is not post-quantum: its master key, passkey and session keys are 
 Ledger account never gets a passkey, because a passkey keeps full authority and this base cannot
 remove one (defect P6, [below](#what-building-it-made-visible)).
 
+The test wallet also has a **post-quantum Touch ID account** (`apps/passkey-wallet`, #106): Touch ID
+releases a per-credential secret through the WebAuthn PRF extension, which decrypts an ML-DSA-44
+key kept in the browser (HKDF-SHA256, then AES-256-GCM with the account as associated data). That
+key is the account's `RegularKey`, a temporary classical key that set it up is disabled once an
+ML-DSA-44 proof transaction succeeds, and no P-256 key ever reaches the ledger. It ran end to end
+on a local node with a virtual authenticator that has PRF, not with a real Touch ID.
+
+**Key rotation on every payment** (#105) keeps even the classical exposure to one key per payment:
+with the master key disabled, each payment is an all-or-nothing `Batch` signed by the current
+`RegularKey` that carries the payment and a `SetRegularKey` to the next key, so a payment reveals
+only the key it retires. The suite `KeyRotationBatch` checks it on the ledger state, and a script
+runs it on a live node with an `account_tx` audit.
+
 **3. A quantum exposure check.** `checkExposure` (in `@carbs/sessions`) answers `exposed`,
 `no-exposure-found` or `unknown` for any account, with the transaction that first revealed each
 key. It tells the master key from the regular key and the other authorities, reports separately
@@ -429,16 +442,16 @@ authority that survives `asfDisableMaster` (a signer list, a delegate, a benefic
 session key's type is a client policy that neither the ledger nor the device enforces. Section 16
 of the specification gives the reason and the code behind each limit:
 
-| Limit                                                                                           | Bounded today by                                                                    | Roadmap                                                            |
-| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Mac accounts are classical: P-256 master key, passkey and session keys                          | the session rules; Mac accounts are called non-post-quantum everywhere              | ML-DSA-44 session keys there too, once they can be non-extractible |
-| ML-DSA-44 session keys live in page memory: WebCrypto has no ML-DSA                             | the ledger-side bounds, a fresh key per session, CSP `script-src 'self'`            | a non-extractible ML-DSA key from the platform                     |
-| A Ledger-account transaction carries a 1,312-byte key and a 2,420-byte signature                | the base fee is unchanged; the device signs at most 2,048 bytes                     | measure the largest transactions                                   |
-| A passkey list can be neither replaced nor removed (P6)                                         | a Ledger account starts fresh and never gets a passkey                              | a protocol fix upstream                                            |
-| `PasskeySignature.PasskeyID` is neither signed nor checked: a relay can change it, and the hash | the client finds a transaction by account and sequence; the apps still poll by hash | bind it under `fixP256StrictDer`, or report it upstream            |
-| The P5 and P-256 fixes exist on our node only                                                   | `fixPasskeyChallenge` and `fixP256StrictDer` there; the public AlphaNet has neither | offer both upstream                                                |
-| Ledger's v1 ML-DSA on the device has no side-channel countermeasures                            | stated wherever the root key is described                                           | Ledger's hardened ML-DSA                                           |
-| A `Batch` cannot migrate keys atomically                                                        | three transactions with a proof step in between                                     | none needed                                                        |
+| Limit                                                                                           | Bounded today by                                                                                          | Roadmap                                                            |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Mac accounts are classical: P-256 master key, passkey and session keys                          | the session rules; the test wallet's post-quantum Touch ID account puts no P-256 key on the ledger (#106) | ML-DSA-44 session keys there too, once they can be non-extractible |
+| ML-DSA-44 session keys live in page memory: WebCrypto has no ML-DSA                             | the ledger-side bounds, a fresh key per session, CSP `script-src 'self'`                                  | a non-extractible ML-DSA key from the platform                     |
+| A Ledger-account transaction carries a 1,312-byte key and a 2,420-byte signature                | the base fee is unchanged; the device signs at most 2,048 bytes                                           | measure the largest transactions                                   |
+| A passkey list can be neither replaced nor removed (P6)                                         | a Ledger account starts fresh and never gets a passkey                                                    | a protocol fix upstream                                            |
+| `PasskeySignature.PasskeyID` is neither signed nor checked: a relay can change it, and the hash | the client finds a transaction by account and sequence; the apps still poll by hash                       | bind it under `fixP256StrictDer`, or report it upstream            |
+| The P5 and P-256 fixes exist on our node only                                                   | `fixPasskeyChallenge` and `fixP256StrictDer` there; the public AlphaNet has neither                       | offer both upstream                                                |
+| Ledger's v1 ML-DSA on the device has no side-channel countermeasures                            | stated wherever the root key is described                                                                 | Ledger's hardened ML-DSA                                           |
+| A `Batch` cannot migrate keys atomically                                                        | three transactions with a proof step in between                                                           | none needed                                                        |
 
 ## Tech stack
 
