@@ -504,14 +504,21 @@ constexpr std::size_t kPermissionMaxSize = 10;
 constexpr std::uint32_t kMaxSessionDuration = 600;
 
 /**
+ * The most transactions a signing session may sign (SessionMaxTxCount).
+ */
+constexpr std::uint32_t kMaxSessionTxCount = 100000;
+
+/**
  * How many base fee units a session-signed transaction may pay on top of
- * the fee its type requires.
+ * the fee its type requires. The session's own close gets no margin.
  */
 constexpr std::uint32_t kSessionFeeMultiple = 1000;
 
 /**
  * How far ahead of the current ledger a session-signed transaction's
- * LastLedgerSequence may be.
+ * LastLedgerSequence may be. It bounds that distance only, checked against
+ * the ledger the transaction is applied to: a transaction refused now can
+ * apply later, and 256 ledgers can outlast a session (see checkSession).
  */
 constexpr std::uint32_t kSessionMaxLedgerWindow = 256;
 

@@ -127,6 +127,14 @@ SigningSessionSet::preflight(PreflightContext const& ctx)
         }
     }
 
+    // A transaction count bound, in any mode.
+    if (auto const maxTxCount = tx[~sfSessionMaxTxCount];
+        maxTxCount && (*maxTxCount == 0 || *maxTxCount > kMaxSessionTxCount))
+    {
+        JLOG(ctx.j.trace()) << "SigningSessionSet: SessionMaxTxCount is out of range";
+        return temMALFORMED;
+    }
+
     // The witness is a third party: neither the account nor the session key.
     if (auto const witness = tx[~sfSessionWitness];
         witness && (*witness == tx[sfAccount] || *witness == tx[sfSessionKey]))
@@ -232,6 +240,12 @@ SigningSessionSet::doApply()
 
     if (auto const maxPerTx = ctx_.tx[~sfSessionMaxPerTx])
         (*sle)[sfSessionMaxPerTx] = *maxPerTx;
+
+    if (auto const maxTxCount = ctx_.tx[~sfSessionMaxTxCount])
+    {
+        (*sle)[sfSessionMaxTxCount] = *maxTxCount;
+        (*sle)[sfSessionTxCount] = 0;
+    }
 
     if (auto const witness = ctx_.tx[~sfSessionWitness])
         (*sle)[sfSessionWitness] = *witness;

@@ -21,6 +21,7 @@
 #include <test/jtx/pay.h>
 #include <test/jtx/regkey.h>
 #include <test/jtx/sendmax.h>
+#include <test/jtx/seq.h>
 #include <test/jtx/session.h>
 #include <test/jtx/sig.h>
 #include <test/jtx/sponsor.h>
@@ -68,6 +69,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -126,6 +128,21 @@ class SigningSessions_test : public beast::unit_test::Suite
             env.close();
             BEAST_EXPECT(!sessionEntry(env, alice, key));
             env.require(Owners(alice, 0));
+        }
+
+        // The witness co-signature, on any transaction, needs the amendment:
+        // before it, no transaction makes the node verify one.
+        {
+            Env env{*this, features - featureSigningSessions};
+            Account const alice{"alice"}, bob{"bob"}, witness{"witness"};
+            env.fund(XRP(10000), alice, bob, witness);
+            env.close();
+
+            auto const balance = env.balance(alice);
+            env(pay(alice, bob, XRP(1)), Sig(sfWitnessSignature, witness), Ter(temDISABLED));
+            env.close();
+            BEAST_EXPECT(env.balance(alice) == balance);
+            env(pay(alice, bob, XRP(1)));
         }
     }
 
@@ -373,6 +390,48 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         env.require(Owners(alice, 0));
         BEAST_EXPECT(!sessionEntry(env, alice, key));
+    }
+
+    // A session-signed transaction may not use a ticket, the own close
+    // excepted: the tickets stay for the owner, who can revoke by ticket
+    // while the key holds the sequence, and for multi-signed transactions.
+    void
+    testSessionTickets(FeatureBitset features)
+    {
+        testcase("tickets and session-signed transactions");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+        env(ticket::create(alice, 2));
+        env.close();
+        auto const first = env.seq(alice) - 2;
+        env.require(Owners(alice, 3), tickets(alice, 2));
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)),
+            ticket::Use(first),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(ticket::create(alice, 1),
+            ticket::Use(first),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        env.require(Owners(alice, 3), tickets(alice, 2));
+
+        // The own close may use one.
+        env(session::del(alice, key), ticket::Use(first), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+        env.require(Owners(alice, 1), tickets(alice, 1));
     }
 
     // Case 19: sessions are not obligations, AccountDelete removes them.
@@ -854,8 +913,8 @@ class SigningSessions_test : public beast::unit_test::Suite
     }
 
     // Case 13, the fee ceiling: Fee <= base fee of the type + 1000 base fee
-    // units, in every mode, the own close included; a refused transaction
-    // claims no fee.
+    // units, in every mode; the own close's ceiling is its base fee alone; a
+    // refused transaction claims no fee.
     void
     testFeeCeiling(FeatureBitset features)
     {
@@ -897,15 +956,42 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(env.balance(alice) == balance);
 
-        // The own close keeps the ceiling.
+        // The own close gets no margin: its ceiling is the base fee, so past
+        // the cap or the expiry it costs one base fee at most.
+        auto const closeFee = env.current()->fees().base;
         env(session::del(alice, keyA),
             Sig(keyA),
-            Fee(ceiling + drops(1)),
+            Fee(closeFee + drops(1)),
             lls(),
             Ter(tefSESSION_LIMIT));
-        env(session::del(alice, keyA), Sig(keyA), Fee(ceiling), lls());
+        env(session::del(alice, keyA), Sig(keyA), Fee(ceiling), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        env(session::del(alice, keyA), Sig(keyA), Fee(closeFee), lls());
         env.close();
         BEAST_EXPECT(!sessionEntry(env, alice, keyA));
+        BEAST_EXPECT(env.balance(alice) == balance - closeFee);
+
+        // In mode C with the cap used up, the own close above the base fee is
+        // refused, and at the base fee it applies: the account loses the cap
+        // and one base fee, nothing more.
+        Account const keyC{"keyC"};
+        env(session::set(alice, keyC, 600), session::Cap(XRP(1) + base));
+        env.close();
+        env(pay(alice, bob, XRP(1)), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, keyC) == XRP(1) + base);
+        auto const spentOut = env.balance(alice);
+        env(session::del(alice, keyC), Sig(keyC), Fee(ceiling), lls(), Ter(tefSESSION_LIMIT));
+        env(session::del(alice, keyC),
+            Sig(keyC),
+            Fee(closeFee + drops(1)),
+            lls(),
+            Ter(tefSESSION_LIMIT));
+        env(session::del(alice, keyC), Sig(keyC), Fee(closeFee), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, keyC));
+        BEAST_EXPECT(env.balance(alice) == spentOut - closeFee);
     }
 
     // Case 13: types whose required fee is the owner reserve increment pass
@@ -1245,7 +1331,7 @@ class SigningSessions_test : public beast::unit_test::Suite
     }
 
     // Case 23 and 13: every path that claims a fee counts it, the amount only
-    // on success; a payment by ticket applies.
+    // on success; a payment by ticket is refused.
     void
     testModeCAccounting(FeatureBitset features)
     {
@@ -1256,10 +1342,12 @@ class SigningSessions_test : public beast::unit_test::Suite
         Account const alice{"alice"}, bob{"bob"}, carol{"carol"}, key{"key"};
         env.fund(XRP(10000), alice, bob);
         env.close();
-        env(session::set(alice, key, 600), session::Cap(XRP(100000)));
+        // The bound on the count of transactions follows the same accounting.
+        env(session::set(alice, key, 600), session::Cap(XRP(100000)), session::MaxTxCount(10));
         env.close();
         auto const fee = env.current()->fees().base;
         auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        auto const txCount = [&] { return (*sessionEntry(env, alice, key))[sfSessionTxCount]; };
 
         // A tec from preclaim: a new account below the reserve.
         env(pay(alice, carol, XRP(1)), Sig(key), lls(), Ter(tecNO_DST_INSUF_XRP));
@@ -1271,15 +1359,21 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 2);
 
-        // A payment by ticket applies and consumes the ticket.
+        // A payment by ticket is refused, claims nothing and leaves the
+        // ticket: the tickets of the account are not the session's.
         env(ticket::create(alice, 1));
         env.close();
         auto const ticketSeq = env.seq(alice) - 1;
         env.require(Owners(alice, 2));
-        env(pay(alice, bob, XRP(1)), ticket::Use(ticketSeq), Sig(key), lls());
+        env(pay(alice, bob, XRP(1)),
+            ticket::Use(ticketSeq),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
         env.close();
-        env.require(Owners(alice, 1));
-        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 3 + XRP(1));
+        env.require(Owners(alice, 2), tickets(alice, 1));
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 2);
+        BEAST_EXPECT(txCount() == 2);
 
         // The fee-claim reset: the destination holds more XRP than exists, so
         // the first invariant pass fails; after the reset only the fee
@@ -1297,7 +1391,8 @@ class SigningSessions_test : public beast::unit_test::Suite
         auto const before = env.balance(alice);
         env(pay(alice, bob, XRP(1)), Sig(key), lls(), Ter(tecINVARIANT_FAILED));
         BEAST_EXPECT(env.balance(alice) == before - fee);
-        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 4 + XRP(1));
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 3);
+        BEAST_EXPECT(txCount() == 3);
     }
 
     // Case 17: a session key later made the RegularKey stays bounded until its
@@ -1796,6 +1891,35 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(queuedFor(alice) == 0);
         env.close();
         BEAST_EXPECT(env.balance(alice) == before - deleteFee);
+
+        // Revocation: the owner's close of a third session waits in the queue
+        // on the account's next sequence. The session key cannot displace it
+        // with a payment on that sequence, neither through the queue with a
+        // fee above the replacement threshold nor straight into the open
+        // ledger with the highest fee its ceiling allows.
+        Account const key3{"key3"};
+        env(session::set(alice, key3, 600), Txflags(tfAllTransactions));
+        env.close();
+        fillOpenLedger();
+        auto const seq = env.seq(alice);
+        auto const bobBefore = env.balance(bob);
+        env(session::del(alice, key3), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        auto const base = env.current()->fees().base;
+        for (auto const fee : {base * 2, base + base * kSessionFeeMultiple})
+        {
+            env(pay(alice, bob, XRP(1)),
+                Sig(key3),
+                Seq(seq),
+                Fee(fee),
+                LastLedgerSeq(env.current()->seq() + 10),
+                Ter(telCAN_NOT_QUEUE_FEE));
+        }
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key3));
+        BEAST_EXPECT(env.balance(bob) == bobBefore);
     }
 
     // Case 24: a session cannot sign for a pseudo-account (the refusal of
@@ -2020,6 +2144,104 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
+    // SessionMaxTxCount: in any mode, 1..kMaxSessionTxCount; SessionTxCount
+    // counts each session-signed transaction applied, tes or tec, the own
+    // close excepted; at the bound the next one is refused with no fee, and
+    // the own close still passes.
+    void
+    testMaxTxCount(FeatureBitset features)
+    {
+        testcase("SessionMaxTxCount");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, gw{"gw"}, ghost{"ghost"};
+        Account const keyC{"keyC"}, keyP{"keyP"}, keyA{"keyA"};
+        env.fund(XRP(10000), alice, bob, gw);
+        env.close();
+
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        auto const txCount = [&](Account const& key) -> std::optional<std::uint32_t> {
+            auto const sle = sessionEntry(env, alice, key);
+            if (!sle)
+                return std::nullopt;
+            return (*sle)[~sfSessionTxCount];
+        };
+
+        // In range, in every mode.
+        env(session::set(alice, keyC, 600),
+            session::Cap(XRP(30)),
+            session::MaxTxCount(0),
+            Ter(temMALFORMED));
+        env(session::set(alice, keyC, 600),
+            session::Cap(XRP(30)),
+            session::MaxTxCount(kMaxSessionTxCount + 1),
+            Ter(temMALFORMED));
+        env(session::set(alice, keyA, 600),
+            Txflags(tfAllTransactions),
+            session::MaxTxCount(kMaxSessionTxCount));
+        env(session::set(alice, keyC, 600), session::Cap(XRP(30)), session::MaxTxCount(2));
+        env(session::set(alice, keyP, 600),
+            session::Permissions({"OfferCreate"}),
+            session::MaxTxCount(2));
+        env.close();
+        for (auto const& key : {keyA, keyC, keyP})
+        {
+            auto const sle = sessionEntry(env, alice, key);
+            if (!BEAST_EXPECT(sle))
+                return;
+            BEAST_EXPECT((*sle)[sfSessionTxCount] == 0);
+        }
+        BEAST_EXPECT((*sessionEntry(env, alice, keyC))[sfSessionMaxTxCount] == 2);
+        BEAST_EXPECT((*sessionEntry(env, alice, keyA))[sfSessionMaxTxCount] == kMaxSessionTxCount);
+
+        // Mode A: a tec counts.
+        env(pay(alice, ghost, XRP(1)), Sig(keyA), lls(), Ter(tecNO_DST_INSUF_XRP));
+        env.close();
+        BEAST_EXPECT(txCount(keyA) == 1);
+
+        // Mode C: a tes and a tec count, the third is refused with no fee.
+        auto const fee = env.current()->fees().base;
+        env(pay(alice, bob, XRP(1)), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(txCount(keyC) == 1);
+        env(pay(alice, ghost, XRP(1)), Sig(keyC), lls(), Ter(tecNO_DST_INSUF_XRP));
+        env.close();
+        BEAST_EXPECT(txCount(keyC) == 2);
+        BEAST_EXPECT(sessionSpent(env, alice, keyC) == XRP(1) + fee + fee);
+
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)), Sig(keyC), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(txCount(keyC) == 2);
+
+        // The own close is exempt from the bound.
+        env(session::del(alice, keyC), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, keyC));
+
+        // Mode P: a tec (an offer killed) and a tes count, then refused.
+        auto const usd = gw["USD"];
+        env(offer(alice, usd(10), XRP(10)),
+            Txflags(tfImmediateOrCancel),
+            Sig(keyP),
+            lls(),
+            Ter(tecKILLED));
+        env.close();
+        BEAST_EXPECT(txCount(keyP) == 1);
+        env(offer(alice, usd(10), XRP(10)), Sig(keyP), lls());
+        env.close();
+        BEAST_EXPECT(txCount(keyP) == 2);
+        env(offer(alice, usd(10), XRP(10)), Sig(keyP), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(txCount(keyP) == 2);
+
+        env(session::del(alice, keyP), Sig(keyP), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, keyP));
+    }
+
 public:
     void
     run() override
@@ -2033,6 +2255,7 @@ public:
         testDelete(all);
         testMptCap(all);
         testByTicket(all);
+        testSessionTickets(all);
         testAccountDelete(all);
         testRpc(all);
         testSponsorship(all);
@@ -2067,6 +2290,7 @@ public:
         testMlDsaLedgerAccount(all);
         testMaxPerTx(all);
         testWitness(all);
+        testMaxTxCount(all);
     }
 };
 

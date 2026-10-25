@@ -300,6 +300,11 @@ Transactor::preflight1(PreflightContext const& ctx, std::uint32_t flagMask)
     if (ctx.tx.isFlag(tfInnerBatchTxn) != ctx.parentBatchId.has_value())
         return temINVALID_INNER_BATCH;
 
+    // The witness co-signature of a session belongs to SigningSessions: before
+    // the amendment, no transaction may make the node verify it.
+    if (ctx.tx.isFieldPresent(sfWitnessSignature) && !ctx.rules.enabled(featureSigningSessions))
+        return temDISABLED;
+
     if (auto const ter = preflight1Sponsor(ctx); !isTesSuccess(ter))
         return ter;
 
@@ -1078,6 +1083,13 @@ Transactor::checkSession(
         if (overridesCheckSign)
             return tefSESSION_TX_NOT_ALLOWED;
 
+        // No ticket: the tickets of the account stay for the owner, who may
+        // close the session by ticket while the key holds the sequence, and
+        // for multi-signed transactions (ADR 0010, the rule for a session
+        // without a ticket range). The own close may still use one.
+        if (ctx.tx.getSeqProxy().isTicket())
+            return tefSESSION_TX_NOT_ALLOWED;
+
         if (session->isFlag(lsfAllTransactions))
         {
             if (!isSessionEligibleType(type, ctx.view.rules()))
@@ -1113,7 +1125,13 @@ Transactor::checkSession(
     }
 
     // 2. A rejected transaction held and retried must not land under a later
-    // session opened with the same key.
+    // session opened with the same key. The window bounds only the distance
+    // between LastLedgerSequence and the current ledger: it does not stop a
+    // transaction post-dated by up to kSessionMaxLedgerWindow ledgers, and 256
+    // ledgers can outlast a session of kMaxSessionDuration. A transaction
+    // refused under one session can therefore still apply under a later one
+    // opened for the same key while its sequence or ticket is free; the
+    // defence is a fresh key per session, not this rule.
     auto const lastLedger = ctx.tx[~sfLastLedgerSequence];
     if (!lastLedger || *lastLedger > ctx.view.seq() + kSessionMaxLedgerWindow)
         return tefSESSION_TX_NOT_ALLOWED;
@@ -1122,10 +1140,12 @@ Transactor::checkSession(
     if (!ownClose && isSessionExpired(ctx.view, *session))
         return tefSESSION_EXPIRED;
 
-    // 4. Fee ceiling, the own close included: what the type requires, plus a
-    // bounded margin.
+    // 4. Fee ceiling: what the type requires, plus a bounded margin. The own
+    // close, which escapes the expiry, the caps and the witness and is never
+    // counted, gets no margin: past the cap it costs one base fee at most.
     auto const fee = ctx.tx[sfFee].xrp();
-    if (fee > baseFee() + ctx.view.fees().base * kSessionFeeMultiple)
+    auto const margin = ownClose ? XRPAmount{0} : ctx.view.fees().base * kSessionFeeMultiple;
+    if (fee > baseFee() + margin)
         return tefSESSION_LIMIT;
 
     // 5. The caps, in mode C, except for the own close: what the transaction
@@ -1143,7 +1163,12 @@ Transactor::checkSession(
             return tefSESSION_LIMIT;
     }
 
-    // 6. The witness, except for the own close: its signature was verified
+    // 6. The transaction count, in any mode, except for the own close.
+    if (auto const maxTxCount = (*session)[~sfSessionMaxTxCount];
+        maxTxCount && !ownClose && (*session)[sfSessionTxCount] >= *maxTxCount)
+        return tefSESSION_LIMIT;
+
+    // 7. The witness, except for the own close: its signature was verified
     // with the transaction's (STTx::checkSign); here it must come from a key
     // of the session's witness.
     if (auto const witness = (*session)[~sfSessionWitness];
@@ -1159,17 +1184,30 @@ Transactor::chargeSession(TER result, XRPAmount fee)
     if (!sessionKeylet_ || sessionOwnClose_)
         return;
 
-    // Only a session with a cap counts; it may have been deleted.
+    // A session counts when it has a cap or a transaction count; it may have
+    // been deleted.
     auto const sle = view().peek(*sessionKeylet_);
-    if (!sle || !sle->isFieldPresent(sfSessionCap))
+    if (!sle)
         return;
 
-    auto charge = fee;
-    if (isTesSuccess(result) && ctx_.tx.getTxnType() == ttPAYMENT)
-        charge += ctx_.tx[sfAmount].xrp();
+    bool const hasCap = sle->isFieldPresent(sfSessionCap);
+    bool const hasTxCount = sle->isFieldPresent(sfSessionMaxTxCount);
+    if (!hasCap && !hasTxCount)
+        return;
 
-    sle->setFieldAmount(
-        sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
+    if (hasCap)
+    {
+        auto charge = fee;
+        if (isTesSuccess(result) && ctx_.tx.getTxnType() == ttPAYMENT)
+            charge += ctx_.tx[sfAmount].xrp();
+
+        sle->setFieldAmount(
+            sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
+    }
+
+    if (hasTxCount)
+        sle->setFieldU32(sfSessionTxCount, sle->getFieldU32(sfSessionTxCount) + 1);
+
     view().update(sle);
 }
 
