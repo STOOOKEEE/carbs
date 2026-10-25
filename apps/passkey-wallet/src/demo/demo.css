@@ -74,8 +74,10 @@ p {
   color: var(--color-ink-muted);
 }
 
+/* Capped: the root-key claim in the title matters more on stage than the node URL. */
 .status {
   flex: 0 1 auto;
+  max-width: 22%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -314,14 +316,36 @@ p {
   color: var(--color-ink);
 }
 
+/* The session key's algorithm: accent for ML-DSA-44 (post-quantum), muted for secp256k1. */
+.key-badge {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: var(--border-width) solid var(--color-ink-muted);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-ink-muted);
+}
+
+.key-badge.post-quantum {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.key-badge[hidden] {
+  display: none;
+}
+
 .hint {
   font-size: 18px;
   color: var(--color-ink-muted);
 }
 
+/* Sized to the column: "6.00003 / 20 XRP" must fit about 360px at 1440. */
 .spent {
   font-family: var(--font-display);
-  font-size: 46px;
+  font-size: clamp(28px, 2.5vw, 46px);
   font-weight: 600;
   white-space: nowrap;
 }

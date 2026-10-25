@@ -5,13 +5,13 @@
  * waits. Nothing here is simulated.
  */
 import type { Definitions } from "@carbs/sessions";
-import type { ApduTransport, LedgerDevice } from "@carbs/ledger";
+import type { LedgerDevice, XrpTransport } from "@carbs/ledger";
 import type { DevicePort } from "../ports";
 import { createContractDevice, toDeviceError } from "./contract-device";
 
 export const LEDGER_STAX_USB_MODEL = "Ledger Stax (USB)";
 
-export function createLedgerDevicePort(defs: Definitions, transport: ApduTransport): DevicePort {
+export function createLedgerDevicePort(defs: Definitions, transport: XrpTransport): DevicePort {
   return createContractDevice({
     defs,
     mode: "live",

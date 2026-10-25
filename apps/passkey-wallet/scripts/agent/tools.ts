@@ -1,6 +1,7 @@
-// What the agent can do. It holds only the session key seed: every payment it signs is a
-// mode C session payment, and the ledger alone enforces the budget. Above its limits it can
-// only ask the human, whose own key (on the Ledger Stax) signs the escalated payment.
+// What the agent can do. It holds only the session key (an ML-DSA-44 seed by default, a
+// secp256k1 one for comparison): every payment it signs is a mode C session payment, and the
+// ledger alone enforces the budget. Above its limits it can only ask the human, whose own key
+// (on the Ledger Stax) signs the escalated payment.
 
 import type { XrplDefinitions } from "ripple-binary-codec";
 import { isValidClassicAddress } from "ripple-address-codec";
@@ -15,6 +16,7 @@ import {
   signWithSeed,
   submitAndWait,
 } from "../../src/ledger.ts";
+import { signTxMlDsa } from "../../src/pq-passkey/vault.ts";
 import { type NodeClient, RpcError, type RpcResult } from "../../src/rpc.ts";
 import { report } from "./timeline.ts";
 import { DECISION_TIMEOUT_MS, createRequest, waitForDecision } from "./wallet-client.ts";
@@ -91,13 +93,18 @@ export interface Injection {
   source: string;
 }
 
-/** Everything the agent holds: no owner seed, only the session key seed. */
+/** The session key's secret, in memory only: a 32-byte ML-DSA-44 seed or a family seed. */
+export type SessionSecret =
+  { algorithm: "ml-dsa-44"; seed: Uint8Array } | { algorithm: "secp256k1"; seed: string };
+
+/** Everything the agent holds: no owner seed, only the session key's secret. */
 export interface AgentContext {
   node: NodeClient;
   defs: XrplDefinitions;
   owner: string;
+  /** The session key's AccountID. */
   sessionKey: string;
-  sessionSeed: string;
+  sessionSecret: SessionSecret;
   merchantUrl: string;
   walletUrl: string;
   /** "XXXX-XXXX": the first 4 bytes of the session key's AccountID, as the Stax shows it. */
@@ -164,10 +171,17 @@ export function paymentTx(
   };
 }
 
+/** Signs with the session key: ML-DSA-44 (1312-byte key, 2420-byte signature) or secp256k1. */
+function signAsSession(defs: XrplDefinitions, tx: TxJson, secret: SessionSecret): TxJson {
+  return secret.algorithm === "ml-dsa-44"
+    ? signTxMlDsa(defs, tx, secret.seed)
+    : signWithSeed(defs, tx, secret.seed);
+}
+
 /** Session key signature only, no human prompt. */
 export async function submitAsSession(context: AgentContext, tx: TxJson): Promise<SubmittedTx> {
   const filled = await autofill(context.node, context.defs, tx);
-  const signed = signWithSeed(context.defs, filled, context.sessionSeed);
+  const signed = signAsSession(context.defs, filled, context.sessionSecret);
   return submitAndWait(context.node, context.defs, signed);
 }
 

@@ -20,8 +20,8 @@ import {
   kDefaultXrpPath,
   kSw,
   reviewLines,
-  type ApduTransport,
   type Review,
+  type XrpTransport,
 } from "@carbs/ledger";
 import {
   DeviceRejectedError,
@@ -70,7 +70,7 @@ export interface ContractDeviceOptions {
   /** The review is shown by the page's simulated Stax screen (true) or by the Stax itself. */
   simulated: boolean;
   /** The device the next APDU goes to. */
-  transport: () => ApduTransport;
+  transport: () => XrpTransport;
   /** Called by `reset()` before the keys are read again. */
   onReset?: () => void;
 }

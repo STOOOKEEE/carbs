@@ -74,7 +74,11 @@ function loadCredential(path: string): SavedCredential {
     if (typeof value !== "string") throw new Error(`${path}: no ${name}`);
     return value;
   };
-  return { rpId: field("rpId"), credentialId: field("credentialId"), publicKey: field("publicKey") };
+  return {
+    rpId: field("rpId"),
+    credentialId: field("credentialId"),
+    publicKey: field("publicKey"),
+  };
 }
 
 /** A CTAP2 getAssertion on the Stax, through the host script (approve it on the device). */
