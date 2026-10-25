@@ -749,7 +749,9 @@ class SigningSessions_test : public beast::unit_test::Suite
             env.close();
         }
         BEAST_EXPECT(signedBefore > 0);
-        BEAST_EXPECT(parentCloseTime(env) >= expiration);
+        // Close times move in steps of 10 seconds and the duration is 30, so
+        // the refusal below is at Expiration exactly.
+        BEAST_EXPECT(parentCloseTime(env) == expiration);
         env(pay(alice, bob, XRP(1)), Sig(key), lls(), Ter(tefSESSION_EXPIRED));
 
         // The own close is not refused for expiry.
@@ -757,6 +759,41 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(!sessionEntry(env, alice, key));
         env.require(Owners(alice, 0));
+    }
+
+    // Spec 6.5: when two rules fail, the earlier one answers. Eligibility and
+    // LastLedgerSequence come before expiry, expiry before the fee ceiling;
+    // the own close skips expiry but not the ceiling.
+    void
+    testRuleOrder(FeatureBitset features)
+    {
+        testcase("rule order");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 10), Txflags(tfAllTransactions));
+        env.close();
+        auto const expiration = (*sessionEntry(env, alice, key))[sfExpiration];
+        while (parentCloseTime(env) < expiration)
+            env.close();
+        auto const base = env.current()->fees().base;
+        auto const tooMuch = Fee(base + base * kSessionFeeMultiple + drops(1));
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        // Not eligible and expired: not allowed.
+        env(fset(alice, asfRequireDest), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        // No LastLedgerSequence and expired: not allowed.
+        env(pay(alice, bob, XRP(1)), Sig(key), Ter(tefSESSION_TX_NOT_ALLOWED));
+        // Expired and over the ceiling: expired.
+        env(pay(alice, bob, XRP(1)), Sig(key), tooMuch, lls(), Ter(tefSESSION_EXPIRED));
+        // The own close, expired and over the ceiling: the ceiling.
+        env(session::del(alice, key), Sig(key), tooMuch, lls(), Ter(tefSESSION_LIMIT));
+        env(session::del(alice, key), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
     // Case 13, the fee ceiling: Fee <= base fee of the type + 1000 base fee
@@ -1337,6 +1374,18 @@ class SigningSessions_test : public beast::unit_test::Suite
             env.close();
             auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
             env(pay(alice, bob, XRP(1)), Sig(key), lls());
+
+            // Spec 6.14, item 3: the fee ceiling is the same whatever the key
+            // type (case 13).
+            auto const base = env.current()->fees().base;
+            auto const ceiling = base + base * kSessionFeeMultiple;
+            env(pay(alice, bob, XRP(1)), Sig(key), Fee(ceiling), lls());
+            env(pay(alice, bob, XRP(1)),
+                Sig(key),
+                Fee(ceiling + drops(1)),
+                lls(),
+                Ter(tefSESSION_LIMIT));
+
             env(session::del(alice, key), Sig(key), lls());
             env.close();
             BEAST_EXPECT(!sessionEntry(env, alice, key));
@@ -1815,6 +1864,7 @@ public:
         testCap(all);
         testModeA(all);
         testExpiry(all);
+        testRuleOrder(all);
         testFeeCeiling(all);
         testFeeCeilingReserveTypes(all);
         testNotSessionShapes(all);
