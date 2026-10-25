@@ -560,6 +560,11 @@ verifySigObject(
 
         if (*keyType == KeyType::P256 && sigObject.isFieldPresent(sfPasskeySignature))
         {
+            // The PasskeySignature alone is checked; with fixP256StrictDer a
+            // TxnSignature next to it, which would only change the ID, is
+            // refused.
+            if (strictP256Der && sigObject.isFieldPresent(sfTxnSignature))
+                return false;
             auto const& passkeySig =
                 static_cast<STObject const&>(sigObject.peekAtField(sfPasskeySignature));
             return verifyPasskeySignature(

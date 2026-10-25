@@ -291,6 +291,40 @@ class P256StrictDer_test : public beast::unit_test::Suite
         }
     }
 
+    // A transaction signed through WebAuthn is checked through its
+    // PasskeySignature only: a TxnSignature next to it is ignored, so before
+    // the fix anyone can add one and give the transaction a new ID.
+    void
+    testTxnSignatureNextToPasskey(FeatureBitset features, bool strict)
+    {
+        testcase(
+            std::string("TxnSignature next to a PasskeySignature, ") +
+            (strict ? "with" : "without") + " the fix");
+        using namespace test::jtx;
+
+        Env env{*this, envconfig(), strict ? features : features - fixP256StrictDer};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const passkey{"passkey", KeyType::P256};
+        env.fund(XRP(1000), alice, bob);
+        env.close();
+        env(passkeyListSet(alice, passkey, kPasskeyId));
+        env.close();
+
+        auto const jt = env.jt(pay(alice, bob, XRP(10)), WebAuthnSig(passkey, kPasskeyId));
+        auto const variant =
+            edited(jt, [](json::Value& jv) { jv[sfTxnSignature.jsonName] = "3006020101020101"; });
+        if (!BEAST_EXPECT(jt.stx && variant.stx))
+            return;
+        BEAST_EXPECT(variant.stx->getTransactionID() != jt.stx->getTransactionID());
+        auto& router = env.app().getHashRouter();
+        auto const rules = env.current()->rules();
+        BEAST_EXPECT(
+            checkValidity(router, *variant.stx, rules).first ==
+            (strict ? Validity::SigBad : Validity::Valid));
+        BEAST_EXPECT(checkValidity(router, *jt.stx, rules).first == Validity::Valid);
+    }
+
     // No verdict on a P-256 signature crosses the activation, in either
     // direction; a secp256k1 signature is cached as before.
     void
@@ -342,6 +376,7 @@ public:
             testWebAuthn(all, strict);
             testMultiSign(all, strict);
             testPasskeySignatureWithoutP256(all, strict);
+            testTxnSignatureNextToPasskey(all, strict);
         }
         testCacheAcrossTheFix(all);
     }
