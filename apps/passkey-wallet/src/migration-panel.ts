@@ -1,4 +1,4 @@
-// « Migrer vers la racine ML-DSA-44 », in the Ledger Stax section: the three steps of
+// "Migrate to the ML-DSA-44 root", in the Ledger Stax section: the three steps of
 // pq-migration.ts on the connected Stax, each logged with its result code. The proof and the
 // reference key come from the ledger (account_tx, RegularKey), so a reload loses nothing;
 // step 3 stays off until the guard of pq-migration.ts has no reason left.
@@ -117,27 +117,27 @@ export async function refreshMigrationPanel(connection: Connection | undefined):
   const stax = connectedStax();
   disableAll();
   if (stax === undefined || connection === undefined) {
-    ui.status.textContent = "Stax non connectée.";
+    ui.status.textContent = "Stax not connected.";
     return;
   }
   const state = await accountState(connection, stax.account.address);
   if (state === undefined) {
-    ui.status.textContent = "Compte Stax pas encore financé.";
+    ui.status.textContent = "Stax account not funded yet.";
     return;
   }
   if (isPostQuantumRoot(stax, state)) {
-    ui.status.textContent = `Compte migré : seule la clé ML-DSA-44 ${stax.pqKey.address} signe (clé maître désactivée).`;
+    ui.status.textContent = `Account migrated: only the ML-DSA-44 key ${stax.pqKey.address} signs (master key disabled).`;
     return;
   }
   if (state.masterDisabled) {
     ui.status.textContent =
-      "La clé maître est déjà désactivée, mais la clé régulière n'est pas la clé ML-DSA-44 de cette Stax.";
+      "The master key is already disabled, but the regular key is not this Stax's ML-DSA-44 key.";
     return;
   }
   const regularKeyIsMlDsa = state.regularKey === stax.pqKey.address;
   ui.regularKey.disabled = regularKeyIsMlDsa;
   if (!regularKeyIsMlDsa) {
-    ui.status.textContent = "Étape 1 à faire : la clé régulière n'est pas encore la clé ML-DSA-44.";
+    ui.status.textContent = "Step 1 to do: the regular key is not the ML-DSA-44 key yet.";
     return;
   }
   const guard = await guardOf(connection, stax, state);
@@ -147,17 +147,15 @@ export async function refreshMigrationPanel(connection: Connection | undefined):
   ui.checked.disabled = false;
   ui.disableMaster.disabled = refusals.length > 0;
   const proof =
-    guard.proofHash === undefined
-      ? ""
-      : `Preuve sur le ledger : ${guard.proofHash.slice(0, 12)}…. `;
+    guard.proofHash === undefined ? "" : `Proof on the ledger: ${guard.proofHash.slice(0, 12)}…. `;
   ui.status.textContent =
     refusals.length === 0
-      ? `${proof}Étape 3 possible : après elle, seule la clé ML-DSA-44 signe pour ce compte.`
-      : `${proof}Étape 3 bloquée : ${refusals.join(" ; ")}.`;
+      ? `${proof}Step 3 available: after it, only the ML-DSA-44 key signs for this account.`
+      : `${proof}Step 3 blocked: ${refusals.join("; ")}.`;
 }
 
 function logStep(label: string, submitted: SubmittedTx): void {
-  log(`Migration, ${label} :`, submitted);
+  log(`Migration, ${label}:`, submitted);
 }
 
 export function setupMigrationPanel(
@@ -176,12 +174,12 @@ export function setupMigrationPanel(
   ui.regularKey.addEventListener(
     "click",
     run(async () => {
-      log("Clic : migration, étape 1.");
+      log("Click: migration, step 1.");
       const { connection, stax, current } = ready();
       current.firstRead = stax.pqKey.publicKey;
       log(MIGRATION_PREVIEWS.regularKey);
       logStep(
-        "étape 1 (SetRegularKey, clé classique)",
+        "step 1 (SetRegularKey, classical key)",
         await signAndSubmitWithStax(
           connection,
           regularKeyTx(stax.account.address, stax.pqKey.address),
@@ -194,7 +192,7 @@ export function setupMigrationPanel(
   ui.proof.addEventListener(
     "click",
     run(async () => {
-      log("Clic : migration, étape 2.");
+      log("Click: migration, step 2.");
       const { connection, stax, current } = ready();
       current.firstRead ??= stax.pqKey.publicKey;
       log(MIGRATION_PREVIEWS.proof);
@@ -203,16 +201,16 @@ export function setupMigrationPanel(
         proofTx(stax.account.address),
         true,
       );
-      logStep("étape 2 (preuve AccountSet, ML-DSA-44)", submitted);
+      logStep("step 2 (AccountSet proof, ML-DSA-44)", submitted);
       if (submitted.result !== SUCCESS)
-        log(`Migration arrêtée : la preuve ML-DSA-44 a échoué (${submitted.result}).`);
+        log(`Migration stopped: the ML-DSA-44 proof failed (${submitted.result}).`);
     }),
   );
 
   ui.reread.addEventListener(
     "click",
     run(async () => {
-      log("Clic : relecture de la clé ML-DSA-44 sur la Stax.");
+      log("Click: reading the ML-DSA-44 key on the Stax again.");
       const { current } = ready();
       // No await before this call: a reconnection may need this click's user activation.
       const reread = await rereadMlDsaKey();
@@ -220,29 +218,29 @@ export function setupMigrationPanel(
         throw new Error(`this Stax answers ${reread.account}, not ${current.account}`);
       current.secondRead = { publicKey: reread.pqKey.publicKey, address: reread.pqKey.address };
       log(
-        `Clé ML-DSA-44 relue : adresse ${reread.pqKey.address} (comparée à la clé régulière du ledger).`,
+        `ML-DSA-44 key read again: address ${reread.pqKey.address} (compared with the ledger's regular key).`,
       );
     }),
   );
 
   ui.checked.addEventListener("change", () => {
-    log(`Case « clé vérifiée » ${ui.checked.checked ? "cochée" : "décochée"}.`);
+    log(`"Key checked" box ${ui.checked.checked ? "ticked" : "unticked"}.`);
     void refreshMigrationPanel(getConnection()).catch(logError);
   });
 
   ui.disableMaster.addEventListener(
     "click",
     run(async () => {
-      log("Clic : migration, étape 3.");
+      log("Click: migration, step 3.");
       const { connection, stax } = ready();
       const state = await accountState(connection, stax.account.address);
       const guard = await guardOf(connection, stax, state);
       const refusals = disableMasterRefusals(guard);
       if (refusals.length > 0) throw new Error(`step 3 refused: ${refusals.join("; ")}`);
-      log(`Preuve retenue : ${guard.proofHash ?? "?"}.`);
+      log(`Proof used: ${guard.proofHash ?? "?"}.`);
       log(MIGRATION_PREVIEWS.disableMaster);
       logStep(
-        "étape 3 (asfDisableMaster, clé classique)",
+        "step 3 (asfDisableMaster, classical key)",
         await signAndSubmitWithStax(connection, disableMasterTx(stax.account.address), false),
       );
     }),

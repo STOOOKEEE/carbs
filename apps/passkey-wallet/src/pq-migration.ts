@@ -32,11 +32,11 @@ export const MIGRATION_MEMOS = {
 /** One line logged before each step: what the Stax will show, and why. */
 export const MIGRATION_PREVIEWS = {
   regularKey:
-    "Étape 1 : la Stax affiche SetRegularKey vers l'adresse de sa clé ML-DSA-44 et le mémo « 1/3 », signé avec la clé classique (seule la clé maître peut désigner la nouvelle clé).",
+    "Step 1: the Stax shows SetRegularKey to the address of its ML-DSA-44 key and the memo '1/3', signed with the classical key (only the master key can designate the new key).",
   proof:
-    "Étape 2 : la Stax affiche un AccountSet qui ne change rien, mémo « 2/3 », signé par la racine ML-DSA-44 : le ledger prouve qu'elle signe bien pour le compte.",
+    "Step 2: the Stax shows an AccountSet that changes nothing, memo '2/3', signed by the ML-DSA-44 root: the ledger proves it does sign for the account.",
   disableMaster:
-    "Étape 3 : la Stax affiche AccountSet Set Flag 4 (asfDisableMaster), mémo « 3/3 », signé avec la clé classique : après elle, seule la clé ML-DSA-44 signe.",
+    "Step 3: the Stax shows AccountSet Set Flag 4 (asfDisableMaster), memo '3/3', signed with the classical key: after it, only the ML-DSA-44 key signs.",
 } as const;
 
 export function regularKeyTx(account: string, mlDsaAddress: string): TxJson {
@@ -76,7 +76,7 @@ export interface DisableMasterGuard {
   firstRead: string | undefined;
   /** The ML-DSA-44 key read again on the Stax (public key hex, and its address). */
   secondRead: { publicKey: string; address: string } | undefined;
-  /** "J'ai vérifié la clé ML-DSA après réinstallation de l'app" is ticked. */
+  /** "I checked the ML-DSA key after reinstalling the app" is ticked. */
   keyChecked: boolean;
 }
 
@@ -84,20 +84,20 @@ export interface DisableMasterGuard {
 export function disableMasterRefusals(guard: DisableMasterGuard): string[] {
   const reasons: string[] = [];
   if (guard.regularKey !== guard.mlDsaAddress)
-    reasons.push("la clé régulière n'est pas la clé ML-DSA-44 (étape 1)");
+    reasons.push("the regular key is not the ML-DSA-44 key (step 1)");
   if (guard.proofHash === undefined)
-    reasons.push("preuve ML-DSA-44 en tesSUCCESS introuvable sur le ledger (étape 2)");
-  if (guard.secondRead === undefined) reasons.push("clé ML-DSA-44 pas encore relue sur la Stax");
+    reasons.push("no tesSUCCESS ML-DSA-44 proof found on the ledger (step 2)");
+  if (guard.secondRead === undefined) reasons.push("ML-DSA-44 key not read again on the Stax yet");
   else if (guard.secondRead.address !== guard.regularKey)
     reasons.push(
-      "la clé relue ne correspond pas à la clé régulière du ledger : ne désactivez pas la clé maître",
+      "the key read again does not match the ledger's regular key: do not disable the master key",
     );
   else if (
     guard.firstRead !== undefined &&
     guard.firstRead.toUpperCase() !== guard.secondRead.publicKey.toUpperCase()
   )
-    reasons.push("la clé relue diffère de la première lecture : ne désactivez pas la clé maître");
-  if (!guard.keyChecked) reasons.push("case de vérification non cochée");
+    reasons.push("the key read again differs from the first read: do not disable the master key");
+  if (!guard.keyChecked) reasons.push("check box not ticked");
   return reasons;
 }
 

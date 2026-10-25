@@ -35,8 +35,8 @@ The section "Passkey post-quantique (Ledger Stax)" (`src/pq-stax-panel.ts`, flow
 
 The section lists every node answer: the `engine_result` of `submit` and its message, then the validated result and ledger, with the hash linked to the explorer. An error gets one of two labels:
 
-- "Cette étape n'a rien envoyé au nœud": the error was thrown before the step's submit (a missing input, a refused node, the browser or the authenticator, or the client's own check of the assertion);
-- "État inconnu … vérifiez le hash ou le compte sur le nœud": anything else (the faucet, the connection, the wait for validation), after which the node may have received the step.
+- "This step sent nothing to the node": the error was thrown before the step's submit (a missing input, a refused node, the browser or the authenticator, or the client's own check of the assertion);
+- "Unknown state … check the hash or the account on the node": anything else (the faucet, the connection, the wait for validation), after which the node may have received the step.
 
 **Test node only:** the account's classical master seed is kept in clear in `localStorage` until the account is locked. The section says so and refuses to create an account unless the node is `localhost`, `127.0.0.1`, `[::1]` or a host listed in `VITE_TEST_NODE_HOSTS` (comma-separated, at build time). If the browser storage is lost, the `PasskeyID` and the key can be read back from the account's `passkey_list` in `account_objects`.
 

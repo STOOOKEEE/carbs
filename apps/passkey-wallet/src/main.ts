@@ -53,9 +53,9 @@ async function refreshPasskeyWallet(): Promise<void> {
   }
 
   if (wallet === undefined) {
-    ui.accountInfo.textContent = "Aucun compte dans ce navigateur.";
+    ui.accountInfo.textContent = "No account in this browser.";
   } else {
-    let balance = "pas encore financé";
+    let balance = "not funded yet";
     if (connection !== undefined) {
       const drops = read(await accountInfo(connection.node, wallet.address), [
         "account_data",
@@ -63,9 +63,7 @@ async function refreshPasskeyWallet(): Promise<void> {
       ]);
       if (typeof drops === "string") balance = `${Number(drops) / DROPS_PER_XRP} XRP`;
     }
-    const mode = wallet.passkeyOnly
-      ? "passkey uniquement (clé maître désactivée)"
-      : "clé maître + passkey";
+    const mode = wallet.passkeyOnly ? "passkey only (master key disabled)" : "master key + passkey";
     ui.accountInfo.innerHTML = "";
     ui.accountInfo.append(
       explorerLink(`accounts/${wallet.address}`, wallet.address),
@@ -74,8 +72,8 @@ async function refreshPasskeyWallet(): Promise<void> {
   }
   ui.passkeyInfo.textContent =
     wallet?.passkey === undefined
-      ? "Pas de passkey."
-      : `PasskeyID ${wallet.passkey.id.slice(0, 16)}… · clé publique P-256 ${wallet.passkey.publicKey.slice(0, 12)}…`;
+      ? "No passkey."
+      : `PasskeyID ${wallet.passkey.id.slice(0, 16)}… · P-256 public key ${wallet.passkey.publicKey.slice(0, 12)}…`;
 }
 
 async function refresh(): Promise<void> {
@@ -99,17 +97,17 @@ function store(next: StoredWallet | undefined): void {
 ui.openAccount.addEventListener(
   "click",
   run(async () => {
-    log("Création du compte et financement par le faucet…");
+    log("Creating the account and funding it from the faucet…");
     const opened = await openAccount();
     store(opened);
-    log(`Compte ${opened.address} créé.`);
+    log(`Account ${opened.address} created.`);
   }),
 );
 
 ui.forgetAccount.addEventListener("click", () => {
   if (
     confirm(
-      "Oublier ce compte dans ce navigateur ? Sans la passkey ni la clé maître, il sera inaccessible.",
+      "Forget this account in this browser? Without the passkey or the master key, it will be inaccessible.",
     )
   ) {
     store(undefined);
@@ -121,9 +119,9 @@ ui.registerPasskey.addEventListener(
   "click",
   run(async () => {
     if (connection === undefined || wallet === undefined) return;
-    log("Création de la passkey (Touch ID)…");
+    log("Creating the passkey (Touch ID)…");
     const { passkey, tx } = await registerPasskey(connection, wallet);
-    log("PasskeyListSet signé par la clé maître :", tx);
+    log("PasskeyListSet signed by the master key:", tx);
     if (tx.result === "tesSUCCESS") store({ ...wallet, passkey });
   }),
 );
@@ -133,11 +131,11 @@ ui.lockAccount.addEventListener(
   run(async () => {
     if (connection === undefined || wallet === undefined) return;
     const results = await lockToPasskey(connection, wallet);
-    for (const tx of results) log("Verrouillage :", tx);
+    for (const tx of results) log("Locking:", tx);
     if (results.length === 2 && results.every((tx) => tx.result === "tesSUCCESS")) {
       const { masterSeed: _discarded, ...rest } = wallet;
       store({ ...rest, passkeyOnly: true });
-      log("La clé maître est désactivée et oubliée : seule la passkey signe désormais.");
+      log("The master key is disabled and forgotten: only the passkey signs from now on.");
     }
   }),
 );
@@ -147,9 +145,9 @@ ui.payForm.addEventListener(
   run(async () => {
     if (connection === undefined || wallet === undefined) return;
     const amount = Number(ui.payAmount.value);
-    log(`Paiement de ${amount} XRP : validez avec Touch ID…`);
+    log(`Payment of ${amount} XRP: approve with Touch ID…`);
     const tx = await payWithPasskey(connection, wallet, ui.payDestination.value.trim(), amount);
-    log(`Paiement signé par la passkey (${amount} XRP) :`, tx);
+    log(`Payment signed by the passkey (${amount} XRP):`, tx);
   }),
 );
 
@@ -169,12 +167,12 @@ async function start(): Promise<void> {
   const defs = await loadDefinitions(node);
   connection = { node, defs };
   const server = await node.request("server_info");
-  ui.nodeStatus.textContent = `Nœud : ${NODE_URL} · ${String(read(server, ["info", "build_version"]))} · ledger ${String(read(server, ["info", "validated_ledger", "seq"]))}`;
+  ui.nodeStatus.textContent = `Node: ${NODE_URL} · ${String(read(server, ["info", "build_version"]))} · ledger ${String(read(server, ["info", "validated_ledger", "seq"]))}`;
 }
 
 start()
   .catch((error: unknown) => {
-    ui.nodeStatus.textContent = `Nœud : injoignable (${NODE_URL})`;
+    ui.nodeStatus.textContent = `Node: unreachable (${NODE_URL})`;
     logError(error);
   })
   .finally(() => void refresh().catch(logError));

@@ -2,16 +2,16 @@
 // After a Touch ID, the PRF extension returns a per-credential 32-byte secret,
 // HMAC(credential secret, salt), that unlocks the ML-DSA-44 seed (see vault.ts).
 //
-// PRF support (état connu, à confirmer sur la machine cible) :
-// - Safari 18+ / macOS 15+ avec passkeys iCloud Keychain : supporté.
-// - Chrome récent (≥ 116 pour le PRF ; passkeys iCloud Keychain sur macOS depuis ~Chrome 132) :
-//   supporté — non vérifié pour la combinaison Chrome + iCloud Keychain.
-// - Gestionnaire de mots de passe Google, clés de sécurité FIDO2 avec hmac-secret : supporté.
-// - Firefox récent (≥ 135 ?) : non vérifié.
-// - Tests automatisés : authentificateur virtuel CDP (WebAuthn.addVirtualAuthenticator,
+// PRF support (known state, to be confirmed on the target machine):
+// - Safari 18+ / macOS 15+ with iCloud Keychain passkeys: supported.
+// - Recent Chrome (≥ 116 for PRF; iCloud Keychain passkeys on macOS since ~Chrome 132):
+//   supported — not verified for the Chrome + iCloud Keychain combination.
+// - Google Password Manager, FIDO2 security keys with hmac-secret: supported.
+// - Recent Firefox (≥ 135?): not verified.
+// - Automated tests: CDP virtual authenticator (WebAuthn.addVirtualAuthenticator,
 //   protocol "ctap2", hasPrf: true, hasUserVerification: true, isUserVerified: true).
-// Certaines plateformes (iCloud Keychain notamment) renvoient `prf.enabled: true` à la
-// création sans résultats : le secret n'est alors disponible qu'à get(), d'où evaluatePrf.
+// Some platforms (iCloud Keychain in particular) return `prf.enabled: true` at creation
+// without results: the secret is then only available at get(), hence evaluatePrf.
 
 import {
   credentialResponse,
@@ -39,7 +39,7 @@ export interface PrfPasskey {
 
 export class PrfUnsupportedError extends Error {
   constructor(
-    message = "Ce navigateur ou cet authentificateur ne prend pas en charge l'extension PRF des passkeys.",
+    message = "This browser or authenticator does not support the passkey PRF extension.",
   ) {
     super(message);
     this.name = "PrfUnsupportedError";
@@ -55,20 +55,19 @@ function bytesToBase64url(bytes: Uint8Array): string {
 const BASE64_BLOCK = 4;
 
 function base64urlToBytes(text: string): Uint8Array<ArrayBuffer> {
-  if (/[^A-Za-z0-9_-]/.test(text))
-    throw new Error("identifiant de passkey invalide (base64url attendu)");
+  if (/[^A-Za-z0-9_-]/.test(text)) throw new Error("invalid passkey id (base64url expected)");
   const base64 = text.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64.padEnd(Math.ceil(base64.length / BASE64_BLOCK) * BASE64_BLOCK, "="));
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
-/** Runs a WebAuthn ceremony, turning a cancel / timeout into a clear French error. */
+/** Runs a WebAuthn ceremony, turning a cancel / timeout into a clear error. */
 async function ceremony(run: () => Promise<Credential | null>): Promise<Credential | null> {
   try {
     return await run();
   } catch (error) {
     if (error instanceof DOMException && error.name === NOT_ALLOWED_ERROR) {
-      throw new Error("Touch ID annulé, refusé ou expiré : la passkey n'a pas répondu.", {
+      throw new Error("Touch ID cancelled, refused or timed out: the passkey did not answer.", {
         cause: error,
       });
     }
@@ -112,7 +111,7 @@ export async function createPrfPasskey(accountName: string): Promise<PrfPasskey>
   );
   if (created.getClientExtensionResults().prf?.enabled !== true) {
     throw new PrfUnsupportedError(
-      "La passkey a été créée mais l'authentificateur n'active pas l'extension PRF : impossible d'y protéger la clé post-quantique.",
+      "The passkey was created but the authenticator does not enable the PRF extension: the post-quantum key cannot be protected with it.",
     );
   }
   return { credentialId: bytesToBase64url(new Uint8Array(created.rawId)) };
@@ -137,9 +136,7 @@ export async function evaluatePrf(passkey: PrfPasskey, salt: Uint8Array): Promis
   );
   const first = asserted.getClientExtensionResults().prf?.results?.first;
   if (first === undefined) {
-    throw new PrfUnsupportedError(
-      "La passkey n'a pas renvoyé de secret PRF : déverrouillage impossible.",
-    );
+    throw new PrfUnsupportedError("The passkey returned no PRF secret: cannot unlock.");
   }
   const secret =
     first instanceof ArrayBuffer
@@ -148,7 +145,7 @@ export async function evaluatePrf(passkey: PrfPasskey, salt: Uint8Array): Promis
   if (secret.length !== PRF_SECRET_LENGTH) {
     secret.fill(0);
     throw new PrfUnsupportedError(
-      `Secret PRF de taille inattendue (${secret.length} octets au lieu de ${PRF_SECRET_LENGTH}).`,
+      `PRF secret of unexpected size (${secret.length} bytes instead of ${PRF_SECRET_LENGTH}).`,
     );
   }
   return secret;

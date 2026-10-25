@@ -43,14 +43,14 @@ export function logOutcome(message: string, tx: SubmittedTx, expected: boolean):
 /** One line per inner transaction of a Batch: its own result, or that the node discarded it. */
 export function logInnerResults(inner: readonly InnerResult[]): void {
   for (const [index, tx] of inner.entries()) {
-    const label = `  ↳ interne ${index + 1}/${inner.length} : ${tx.transactionType} (séquence ${tx.sequence})`;
+    const label = `  ↳ inner ${index + 1}/${inner.length}: ${tx.transactionType} (sequence ${tx.sequence})`;
     if (tx.applied === undefined) {
       const item = document.createElement("li");
       item.className = "error";
-      item.textContent = `${label} : non appliquée, écartée par le nœud`;
+      item.textContent = `${label}: not applied, discarded by the node`;
       journal().prepend(item);
     } else {
-      log(`${label} :`, tx.applied);
+      log(`${label}:`, tx.applied);
     }
   }
 }

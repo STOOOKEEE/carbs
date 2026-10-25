@@ -118,8 +118,8 @@ function dataset(): unknown {
   return {
     name: "Paris premium travel dataset",
     hotels: [
-      { name: "Hôtel des Arts", district: "9e", nightEur: 180, rating: 4.6 },
-      { name: "Le Marais Lodge", district: "3e", nightEur: 240, rating: 4.8 },
+      { name: "Hotel des Arts", district: "9th", nightEur: 180, rating: 4.6 },
+      { name: "Le Marais Lodge", district: "3rd", nightEur: 240, rating: 4.8 },
     ],
     events: ["Salon du Chocolat (Paris Expo)", "Nuit Blanche"],
     transit: "Navigo Easy card, 2.15 EUR per metro ticket",

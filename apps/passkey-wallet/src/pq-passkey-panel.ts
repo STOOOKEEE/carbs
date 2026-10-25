@@ -53,8 +53,8 @@ const SESSION_RULES = {
   maxTxCount: 50,
 } satisfies SessionRules;
 const PRF_UNSUPPORTED_MESSAGE =
-  "Ce navigateur ne fournit pas l'extension PRF de WebAuthn : utilisez Safari 18 ou plus récent (macOS 15 Sequoia) ou un Chrome récent avec une passkey du trousseau iCloud.";
-const AUTHORITY_VERIFIED = `Sur le ledger : aucune clé P-256, autorité = ML-DSA-44 (${ML_DSA_44_PUBLIC_KEY_BYTES} octets)`;
+  "This browser does not provide the WebAuthn PRF extension: use Safari 18 or later (macOS 15 Sequoia) or a recent Chrome with an iCloud Keychain passkey.";
+const AUTHORITY_VERIFIED = `On the ledger: no P-256 key, authority = ML-DSA-44 (${ML_DSA_44_PUBLIC_KEY_BYTES} bytes)`;
 
 const ui = {
   prfStatus: element("pq-prf-status", HTMLElement),
@@ -83,30 +83,30 @@ function onError(error: unknown): void {
 }
 
 function requireSuccess(step: string, tx: SubmittedTx): void {
-  if (tx.result !== SUCCESS) throw new Error(`${step} a échoué (${tx.result}) : création arrêtée`);
+  if (tx.result !== SUCCESS) throw new Error(`${step} failed (${tx.result}): creation stopped`);
 }
 
 function destination(): string {
   const value = ui.payDestination.value.trim();
-  if (value === "") throw new Error("renseignez une destination");
+  if (value === "") throw new Error("fill in a destination");
   return value;
 }
 
 function amountXrp(): number {
   const value = Number(ui.payAmount.value);
   if (!Number.isFinite(value) || value <= 0)
-    throw new Error("le montant doit être un nombre de XRP positif");
+    throw new Error("the amount must be a positive number of XRP");
   return value;
 }
 
 function requireVault(): PqVault {
-  if (vault === undefined) throw new Error("créez d'abord le compte post-quantique");
+  if (vault === undefined) throw new Error("create the post-quantum account first");
   return vault;
 }
 
 /** Touch ID, then the PRF secret opens the ML-DSA-44 seed; the secret is wiped at once. */
 async function unlockSeed(current: PqVault): Promise<Uint8Array> {
-  log("Validez avec Touch ID (la passkey libère la clé ML-DSA-44)…");
+  log("Approve with Touch ID (the passkey releases the ML-DSA-44 key)…");
   const secret = await evaluatePrf(
     { credentialId: current.credentialId },
     hexToBytes(current.salt),
@@ -155,10 +155,10 @@ async function createAccount(connection: Connection): Promise<void> {
   // Touch ID first, while the click's user activation lasts.
   const bootstrapSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
   const account = addressOfSeed(bootstrapSeed);
-  log("Création de la passkey PRF (Touch ID)…");
+  log("Creating the PRF passkey (Touch ID)…");
   const passkey = await createPrfPasskey(`carbs PQ ${account.slice(0, 8)}`);
   const salt = crypto.getRandomValues(new Uint8Array(PRF_SALT_BYTES));
-  log("Dérivation du secret PRF : validez à nouveau avec Touch ID…");
+  log("Deriving the PRF secret: approve with Touch ID again…");
   const secret = await evaluatePrf(passkey, salt);
 
   const seed = generateMlDsaSeed();
@@ -174,28 +174,28 @@ async function createAccount(connection: Connection): Promise<void> {
       secret.fill(0);
     }
     const mlDsaAddress = sealed.mlDsaAddress;
-    log(`Clé ML-DSA-44 générée (adresse ${mlDsaAddress}), scellée par le secret PRF.`);
+    log(`ML-DSA-44 key generated (address ${mlDsaAddress}), sealed with the PRF secret.`);
 
-    log(`Financement du compte d'amorçage ${account} par le faucet…`);
+    log(`Funding the bootstrap account ${account} from the faucet…`);
     await requestFunding(account);
 
     const master: SigningKey = { masterSeed: bootstrapSeed };
     const regularKey = await submitSigned(connection, master, regularKeyTx(account, mlDsaAddress));
-    log("1/3 SetRegularKey vers la clé ML-DSA-44 (clé maître d'amorçage) :", regularKey);
+    log("1/3 SetRegularKey to the ML-DSA-44 key (bootstrap master key):", regularKey);
     requireSuccess("SetRegularKey", regularKey);
 
     const proof = await submitSigned(connection, { mlDsaSeed: seed }, proofTx(account));
-    log("2/3 Preuve AccountSet signée en ML-DSA-44 :", proof);
-    requireSuccess("La preuve ML-DSA-44", proof);
+    log("2/3 AccountSet proof signed with ML-DSA-44:", proof);
+    requireSuccess("The ML-DSA-44 proof", proof);
 
     const disableMaster = await submitSigned(connection, master, disableMasterTx(account));
-    log("3/3 AccountSet asfDisableMaster (clé maître d'amorçage) :", disableMaster);
-    requireSuccess("La désactivation de la clé maître", disableMaster);
+    log("3/3 AccountSet asfDisableMaster (bootstrap master key):", disableMaster);
+    requireSuccess("Disabling the master key", disableMaster);
 
     saveVault(sealed);
     vault = sealed;
     log(
-      `Compte ${account} créé : clé maître désactivée et oubliée, seule la clé ML-DSA-44 signe, débloquée par Touch ID.`,
+      `Account ${account} created: master key disabled and forgotten, only the ML-DSA-44 key signs, unlocked by Touch ID.`,
     );
     await logPasskeyLists(connection, account);
   } finally {
@@ -219,8 +219,8 @@ async function logPasskeyLists(connection: Connection, account: string): Promise
   const count = await passkeyListCount(connection, account);
   log(
     count === 0
-      ? "account_objects type passkey_list : vide, aucune passkey sur le ledger."
-      : `account_objects type passkey_list : ${count} entrée(s), inattendu.`,
+      ? "account_objects type passkey_list: empty, no passkey on the ledger."
+      : `account_objects type passkey_list: ${count} entry(ies), unexpected.`,
   );
 }
 
@@ -228,7 +228,7 @@ async function pay(connection: Connection): Promise<void> {
   const to = destination();
   const amount = amountXrp();
   const tx = await submitWithVault(connection, paymentTx(requireVault().account, to, amount));
-  log(`Paiement de ${amount} XRP signé en ML-DSA-44 :`, tx);
+  log(`Payment of ${amount} XRP signed with ML-DSA-44:`, tx);
 }
 
 /** Opens a mode C session signed by the ML-DSA-44 key, then pays once with the session key. */
@@ -246,7 +246,7 @@ async function openSessionAndPay(connection: Connection): Promise<void> {
       openSessionTx(owner, sessionKey, SESSION_RULES),
     );
     log(
-      `Session (mode C : ${SESSION_RULES.capXrp} XRP, ${SESSION_RULES.maxPerTxXrp} par paiement, ${SESSION_RULES.durationSeconds} s, ${SESSION_RULES.maxTxCount} transactions) pour la clé ML-DSA-44 ${sessionKey}, signée par la clé du compte :`,
+      `Session (mode C: ${SESSION_RULES.capXrp} XRP, ${SESSION_RULES.maxPerTxXrp} per payment, ${SESSION_RULES.durationSeconds} s, ${SESSION_RULES.maxTxCount} transactions) for the ML-DSA-44 key ${sessionKey}, signed by the account key:`,
       opened,
     );
     if (opened.result !== SUCCESS) return;
@@ -255,22 +255,22 @@ async function openSessionAndPay(connection: Connection): Promise<void> {
       { mlDsaSeed: sessionSeed },
       paymentTx(owner, to, amount),
     );
-    log(`Paiement de ${amount} XRP signé par la clé de session (sans Touch ID) :`, paid);
+    log(`Payment of ${amount} XRP signed by the session key (no Touch ID):`, paid);
   } finally {
     sessionSeed.fill(0);
   }
-  log("Clé de session effacée de la page ; la session expire d'elle-même.");
+  log("Session key wiped from the page; the session expires on its own.");
 }
 
 function forget(): void {
   if (
     confirm(
-      "Oublier ce compte ? La graine ML-DSA-44 chiffrée est effacée de ce navigateur : sans elle, le compte est inaccessible.",
+      "Forget this account? The encrypted ML-DSA-44 seed is deleted from this browser: without it, the account is inaccessible.",
     )
   ) {
     clearVault();
     vault = undefined;
-    log("Compte post-quantique oublié dans ce navigateur.");
+    log("Post-quantum account forgotten in this browser.");
   }
 }
 
@@ -282,7 +282,7 @@ export function setupPqPasskeyPanel(
     guarded(
       async () => {
         const ready = connection();
-        if (ready === undefined) throw new Error("nœud non connecté");
+        if (ready === undefined) throw new Error("node not connected");
         await action(ready);
       },
       onError,
@@ -299,7 +299,7 @@ export function setupPqPasskeyPanel(
 
   prfAvailable()
     .then((available) => {
-      if (available) ui.prfStatus.textContent = "Extension PRF de WebAuthn disponible.";
+      if (available) ui.prfStatus.textContent = "WebAuthn PRF extension available.";
       else showPrfUnsupported();
     })
     .catch(logError)
@@ -310,8 +310,8 @@ export function setupPqPasskeyPanel(
 async function showLedgerState(connection: Connection, current: PqVault): Promise<void> {
   const info = await accountInfo(connection.node, current.account);
   if (info === undefined) {
-    ui.accountInfo.append(" · introuvable sur ce nœud");
-    ui.authority.textContent = "Sur le ledger : compte introuvable.";
+    ui.accountInfo.append(" · not found on this node");
+    ui.authority.textContent = "On the ledger: account not found.";
     ui.authority.className = "error";
     return;
   }
@@ -329,10 +329,10 @@ async function showLedgerState(connection: Connection, current: PqVault): Promis
     return;
   }
   const gaps: string[] = [];
-  if (!authorityIsMlDsa) gaps.push("la clé régulière n'est pas la clé ML-DSA-44");
-  if (!masterDisabled) gaps.push("la clé maître n'est pas désactivée");
-  if (passkeyLists !== 0) gaps.push(`${passkeyLists} liste(s) de passkeys sur le compte`);
-  ui.authority.textContent = `Sur le ledger : ${gaps.join(" ; ")}.`;
+  if (!authorityIsMlDsa) gaps.push("the regular key is not the ML-DSA-44 key");
+  if (!masterDisabled) gaps.push("the master key is not disabled");
+  if (passkeyLists !== 0) gaps.push(`${passkeyLists} passkey list(s) on the account`);
+  ui.authority.textContent = `On the ledger: ${gaps.join("; ")}.`;
   ui.authority.className = "error";
 }
 
@@ -347,15 +347,15 @@ export async function refreshPqPasskeyPanel(connection: Connection | undefined):
 
   ui.authority.className = "muted";
   if (vault === undefined) {
-    ui.accountInfo.textContent = "Aucun compte post-quantique dans ce navigateur.";
+    ui.accountInfo.textContent = "No post-quantum account in this browser.";
     ui.authority.textContent = "";
     return;
   }
   ui.accountInfo.innerHTML = "";
   ui.accountInfo.append(
-    "Compte ",
+    "Account ",
     explorerLink(`accounts/${vault.account}`, vault.account),
-    ` · clé ML-DSA-44 ${vault.mlDsaAddress}`,
+    ` · ML-DSA-44 key ${vault.mlDsaAddress}`,
   );
   if (connection === undefined) {
     ui.authority.textContent = "";
