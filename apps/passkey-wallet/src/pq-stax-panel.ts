@@ -3,11 +3,19 @@
 // Security Key app of PR #109, registered on the ledger by PasskeyListSet, then used to pay and
 // to open a signing session. Every node answer is shown as the node gave it.
 // Unlike the PRF account above, this passkey IS on the ledger: its 1 312-byte ML-DSA-44 key.
+//
+// Test node only: the account's classical master seed stays in this browser's localStorage, in
+// clear, until the account is locked to the passkey. The panel refuses to create one unless the
+// node is local or listed in VITE_TEST_NODE_HOSTS.
 
 import {
   type Definitions,
   type PasskeyCredential,
   type PasskeySigner,
+  EncodeError,
+  KeyError,
+  SessionParamsError,
+  SessionSignError,
   WebSocketClient,
   addressFromPublicKey,
   browserAuthenticator,
@@ -17,6 +25,7 @@ import {
   createSessionKey,
   generateClassicSeed,
   hexToBytes,
+  isClassicAddress,
   loadDefinitions,
 } from "@carbs/sessions";
 
@@ -51,6 +60,23 @@ const SIGNER_LABEL: Record<PqStep["signer"], string> = {
   passkey: "passkey Stax",
   session: "clé de session",
 };
+/** Nodes this panel accepts to keep a master seed in clear for: the local ones, plus the list. */
+const LOCAL_NODE_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
+const TEST_NODE_HOSTS = [
+  ...LOCAL_NODE_HOSTS,
+  ...String(import.meta.env["VITE_TEST_NODE_HOSTS"] ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter((host) => host !== ""),
+];
+/** WebAuthn errors a browser or an authenticator gives when it does not do -48 (or the user stops). */
+const UNSUPPORTED_CEREMONY_ERRORS = new Set(["NotSupportedError", "NotAllowedError"]);
+const HEX_PATTERN = /^[0-9A-Fa-f]+$/;
+
+/** A refusal of the page itself (a missing input, a wrong node): nothing was sent. */
+class InputError extends Error {
+  override readonly name = "InputError";
+}
 
 interface StoredPqStax {
   rpId: string;
@@ -59,29 +85,51 @@ interface StoredPqStax {
   /** Hex of the 1 312-byte ML-DSA-44 key (the COSE AKP `pub`). */
   publicKey: string;
   account?: string;
-  /** Classical master key of the account, deleted once the account is locked to the passkey. */
+  /** Classical master seed of the account, IN CLEAR, deleted once the account is locked. */
   masterSeed?: string;
   registered: boolean;
   locked: boolean;
 }
 
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
 function isStored(value: unknown): value is StoredPqStax {
+  if (typeof value !== "object" || value === null) return false;
+  const get = (name: string): unknown => Reflect.get(value, name);
+  const credentialId = get("credentialId");
+  const publicKey = get("publicKey");
+  const account = get("account");
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof Reflect.get(value, "credentialId") === "string" &&
-    typeof Reflect.get(value, "publicKey") === "string" &&
-    typeof Reflect.get(value, "rpId") === "string" &&
-    typeof Reflect.get(value, "registered") === "boolean" &&
-    typeof Reflect.get(value, "locked") === "boolean"
+    typeof credentialId === "string" &&
+    HEX_PATTERN.test(credentialId) &&
+    typeof publicKey === "string" &&
+    HEX_PATTERN.test(publicKey) &&
+    typeof get("rpId") === "string" &&
+    typeof get("registered") === "boolean" &&
+    typeof get("locked") === "boolean" &&
+    optionalString(account) &&
+    (account === undefined || isClassicAddress(String(account))) &&
+    optionalString(get("masterSeed"))
   );
 }
 
 function load(): StoredPqStax | undefined {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw === null) return undefined;
-  const parsed: unknown = JSON.parse(raw);
-  return isStored(parsed) ? parsed : undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    logError(new Error(`${STORAGE_KEY} : contenu illisible dans ce navigateur, ignoré`));
+    return undefined;
+  }
+  if (!isStored(parsed)) {
+    logError(new Error(`${STORAGE_KEY} : contenu inattendu dans ce navigateur, ignoré`));
+    return undefined;
+  }
+  return parsed;
 }
 
 function save(next: StoredPqStax | undefined): void {
@@ -118,6 +166,10 @@ function connectLibrary(): Promise<{ node: WebSocketClient; defs: Definitions }>
   return library;
 }
 
+function isTestNode(url: string): boolean {
+  return TEST_NODE_HOSTS.includes(new URL(url).hostname);
+}
+
 function credentialOf(current: StoredPqStax): PasskeyCredential {
   return {
     credentialId: hexToBytes(current.credentialId),
@@ -138,7 +190,7 @@ function signerOf(current: StoredPqStax): PasskeySigner {
 
 function requireAccount(current: StoredPqStax | undefined): StoredPqStax & { account: string } {
   if (current?.account === undefined || !current.registered) {
-    throw new Error("enregistrez d'abord la passkey (PasskeyListSet)");
+    throw new InputError("enregistrez d'abord la passkey (PasskeyListSet)");
   }
   return { ...current, account: current.account };
 }
@@ -163,17 +215,42 @@ function showStep(step: PqStep): void {
   });
 }
 
-/** A refusal before anything reached the node (browser, authenticator, or the client's check). */
-function showClientError(error: unknown): void {
+/**
+ * Errors thrown before the failing step's transaction was submitted: the page's own checks, the
+ * browser or the authenticator (a DOMException from WebAuthn or WebCrypto), and the library's
+ * checks before signing or before submitting (KeyError, EncodeError, the session builders).
+ * Anything else (the faucet, the connection, submitAndWait while it polls) may come after the
+ * node received something.
+ */
+function thrownBeforeSubmit(error: unknown): boolean {
+  return (
+    error instanceof InputError ||
+    error instanceof DOMException ||
+    error instanceof KeyError ||
+    error instanceof EncodeError ||
+    error instanceof SessionParamsError ||
+    error instanceof SessionSignError
+  );
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof DOMException && UNSUPPORTED_CEREMONY_ERRORS.has(error.name)) {
+    return `-48 non pris en charge par ce navigateur ou cet authentificateur, ou cérémonie annulée ou expirée (${error.name}: ${error.message})`;
+  }
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+
+function showError(error: unknown): void {
   const item = document.createElement("li");
   item.className = "error";
-  const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-  item.textContent = `Rien n'a été envoyé au nœud · ${text}`;
+  item.textContent = thrownBeforeSubmit(error)
+    ? `Cette étape n'a rien envoyé au nœud · ${describeError(error)}`
+    : `État inconnu : le nœud a peut-être reçu cette étape, vérifiez le hash ou le compte sur le nœud · ${describeError(error)}`;
   ui.results.prepend(item);
 }
 
 function onError(error: unknown): void {
-  showClientError(error);
+  showError(error);
   logError(error);
 }
 
@@ -187,6 +264,7 @@ async function createCredential(): Promise<void> {
     rpName: RELYING_PARTY_NAME,
     userName: `carbs PQ ${new Date().toISOString().slice(0, 16)}`,
     timeoutMs: CEREMONY_TIMEOUT_MS,
+    excludeCredentialIds: stored === undefined ? [] : [hexToBytes(stored.credentialId)],
   });
   save({
     rpId: location.hostname,
@@ -202,12 +280,17 @@ async function createCredential(): Promise<void> {
 
 async function register(): Promise<void> {
   const current = stored;
-  if (current === undefined) throw new Error("créez d'abord la passkey sur la Stax");
+  if (current === undefined) throw new InputError("créez d'abord la passkey sur la Stax");
+  if (!isTestNode(NODE_URL)) {
+    throw new InputError(
+      `nœud ${new URL(NODE_URL).host} refusé : la graine de la clé maître serait gardée en clair dans ce navigateur, ce qui n'est acceptable que sur un nœud de test (local, ou listé dans VITE_TEST_NODE_HOSTS)`,
+    );
+  }
   const { node, defs } = await connectLibrary();
   let { account, masterSeed } = current;
   if (account === undefined || masterSeed === undefined) {
-    // A fresh classical account whose master key signs the PasskeyListSet; kept in this browser
-    // until the account is locked to the passkey (test node only).
+    // A fresh classical account whose master key signs the PasskeyListSet; kept in clear in this
+    // browser until the account is locked to the passkey (test node only, checked above).
     masterSeed = generateClassicSeed();
     account = addressFromPublicKey(classicSignerFromSeed(masterSeed).publicKey);
     save({ ...current, account, masterSeed });
@@ -224,14 +307,14 @@ async function register(): Promise<void> {
 function amountDrops(): bigint {
   const value = Number(ui.payAmount.value);
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error("le montant doit être un nombre de XRP positif");
+    throw new InputError("le montant doit être un nombre de XRP positif");
   }
   return BigInt(Math.round(value * DROPS_PER_XRP));
 }
 
 function destination(): string {
   const value = ui.payDestination.value.trim();
-  if (value === "") throw new Error("renseignez une destination");
+  if (!isClassicAddress(value)) throw new InputError("la destination n'est pas une adresse r…");
   return value;
 }
 
@@ -272,8 +355,16 @@ async function openSessionAndPay(): Promise<void> {
 
 async function lock(): Promise<void> {
   const current = requireAccount(stored);
-  if (current.masterSeed === undefined)
-    throw new Error("la clé maître n'est plus dans ce navigateur");
+  if (current.masterSeed === undefined) {
+    throw new InputError("la clé maître n'est plus dans ce navigateur");
+  }
+  if (
+    !confirm(
+      "Désactiver la clé maître ? Ensuite seule la passkey ML-DSA-44 de la Stax signe pour ce compte, et la liste de passkeys ne peut être ni remplacée ni supprimée : perdre la Stax (ou ses 24 mots) rend le compte inaccessible.",
+    )
+  ) {
+    return;
+  }
   const { node, defs } = await connectLibrary();
   const steps = await lockToPqPasskey(
     node,
@@ -292,9 +383,15 @@ async function lock(): Promise<void> {
 }
 
 function forget(): void {
+  const current = stored;
+  if (current === undefined) return;
+  const seedWarning =
+    current.masterSeed === undefined
+      ? ""
+      : " ATTENTION : le compte n'est pas verrouillé et sa clé maître n'existe que dans ce navigateur : la graine sera perdue, et seule la passkey de la Stax (si elle est enregistrée) pourra encore signer.";
   if (
     confirm(
-      "Oublier cette passkey post-quantique dans ce navigateur ? Le compte reste sur le ledger ; sans la clé maître, seule la Stax peut encore signer pour lui.",
+      `Oublier cette passkey post-quantique dans ce navigateur ? Le compte reste sur le ledger ; son PasskeyID et sa clé se relisent dans account_objects (type passkey_list).${seedWarning}`,
     )
   ) {
     save(undefined);
@@ -346,7 +443,7 @@ export function refreshPqStaxPanel(nodeReady: boolean): void {
     stored.locked
       ? " · passkey PQ uniquement (clé maître désactivée)"
       : stored.registered
-        ? " · clé maître + passkey PQ"
+        ? " · clé maître + passkey PQ (graine de la clé maître en clair dans ce navigateur)"
         : " · PasskeyListSet pas encore accepté",
   );
 }

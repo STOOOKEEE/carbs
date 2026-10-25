@@ -783,7 +783,7 @@ Owner request: the web app follows the XRPL Commons look (an XRPL showcase app w
 - **Unit tests** (`cbor.test.ts`, `keys/pq-passkey.test.ts`, 17 new cases), covering:
   - the RFC 8949 vectors;
   - the AKP header bytes `A3 01 07 03 38 2F 20 59 05 20`;
-  - `packed` (ES256 statement, as PR #109's Stax returns) and `none` attestations;
+  - `packed` (a synthetic ES256 statement, the shape PR #109's Stax returns) and `none` attestations;
   - a challenge equal to `STX\0 ‖ fields` (1.4 KB, base64url without padding);
   - the signature verified with `@noble/post-quantum`, failing with a context, over the bare signing data, or with another key;
   - a `PasskeyID` equal to the listed id;
@@ -809,13 +809,28 @@ Owner request: the web app follows the XRPL Commons look (an XRPL showcase app w
 
   The validated payment holds a `SigningPubKey` of 1,312 bytes, no `TxnSignature`, a 2,420-byte `Signature`, and a 1,395-byte challenge of type `webauthn.get`. This is the first time a node of ours accepted a WebAuthn ML-DSA-44 assertion built by `@noble/post-quantum` (an open point of `docs/XLS-PQ-Passkeys.md` §6).
 
-- **Not done:**
-  - Nothing has been run with the Stax or in a browser. The section is built (`vite build`) and typechecked only.
-  - **UNVERIFIED:** whether Chrome forwards `alg: -48` to a USB authenticator, accepts the AKP credential and passes a 1.4 KB challenge, and whether PR #109's Security Key app returns what the parser expects.
-  - The owner's steps are in the pull request.
+- **Not done when this entry was written:** nothing ran with the Stax or in a browser. The next entry records the Stax run; what it proves and what it leaves open is listed there.
 
 ## 2026-10-25: a real Ledger Stax signs XRPL transactions with a post-quantum passkey
 
-- **What ran:** `apps/passkey-wallet/scripts/stax-pq-passkey.ts` against a local standalone node built from #113 (`2fe8bd8`'s tree; `PasskeyMLDSA`, `Passkey`, `Quantum`, `fixP256StrictDer` enabled), with the owner's Stax running the Security Key app of #109 (application hash `8d68de44…`). The credential is the one made on the device earlier (`mldsa_passkey_test.py make`: 1,312-byte ML-DSA-44 key, COSE AKP alg -48). Each assertion is a real CTAP2 getAssertion approved on the device, with the XRPL signing data as challenge; python-fido2 stands in for the browser (the Chrome ceremony is still untested).
+- **What ran:** `apps/passkey-wallet/scripts/stax-pq-passkey.ts` against a local standalone node built from #113 (`2fe8bd8`'s tree; `PasskeyMLDSA`, `Passkey`, `Quantum`, `fixP256StrictDer` enabled), with the owner's Stax running the Security Key app of #109 (application hash `8d68de44…`). The credential is the one made on the device earlier (`mldsa_passkey_test.py make`: 1,312-byte ML-DSA-44 key, COSE AKP alg -48). Each assertion is a real CTAP2 getAssertion approved on the device, with the XRPL signing data as challenge; python-fido2 stands in for the browser (the Chrome ceremony is still untested). python-fido2, not the Device Management Kit: the Security Key app speaks FIDO2 (CTAP2 over CTAPHID), which is not Ledger app access; the DMK drives Ledger apps over their APDUs, not FIDO.
 - **Node answers:** `PasskeyListSet` with the Stax key (master key) `tesSUCCESS` (`DE46B0D8…F3EC`); a 5 XRP `Payment` signed by the Stax passkey `tesSUCCESS` (`D7AE42A4…6319`), on the ledger with a 1,312-byte `SigningPubKey`, no `TxnSignature` and a 2,420-byte `PasskeySignature.Signature`, challenge 1,395 bytes; a mode C `SigningSessionSet` signed by the Stax passkey `tesSUCCESS` (`E4BBB04F…2B90`), challenge 1,403 bytes.
 - **Timings on the device:** 6.2 s and 4.2 s per assertion, approval included.
+- **What this proves:** real CTAP2 ML-DSA-44 assertions from the Stax are accepted by a node with `PasskeyMLDSA` (registration, payment, session opening), and the client's own check (`mlDsaAssertionProblem`, which `signWithMlDsaPasskey` runs before returning) passed on those real signatures.
+- **What it does not prove:**
+  - the browser ceremony: Chrome forwarding `alg: -48` to the Stax over USB, accepting the AKP credential, and passing a 1.4 KB challenge (the wallet section is still untested in a browser);
+  - the TypeScript registration parser (`mlDsaPasskeyFromAttestation`, the CBOR and COSE code) has never read real device bytes: the Stax credential came from `mldsa_passkey_test.py`, which python-fido2 parsed. `mldsa_passkey_test.py make --dump-attestation packages/core/src/keys/fixtures/stax-attestation.json` now records the device's `attestationObject` and `rawId`, and `keys/pq-passkey.test.ts` parses that file when it exists (skipped, with a message, until it is recorded).
+
+### After the review gate of #116
+
+- **Error labels in the wallet section:** "Cette étape n'a rien envoyé au nœud" only for errors thrown before the step's submit (the page's own checks, a `DOMException` from WebAuthn or WebCrypto, the library's `KeyError`, `EncodeError` and session builder errors). Any other error (the faucet, the connection, `submitAndWait` while it polls) reads "État inconnu : … vérifiez le hash ou le compte sur le nœud". `NotSupportedError` and `NotAllowedError` from WebAuthn are shown as "-48 non pris en charge par ce navigateur ou cet authentificateur, ou cérémonie annulée ou expirée", with the raw name and message.
+- **Master seed in clear:** the section says "Nœud de test uniquement, graine en clair" and refuses to create an account unless the node is `localhost`, `127.0.0.1`, `[::1]` or a host listed in `VITE_TEST_NODE_HOSTS`. Locking asks for confirmation; forgetting an unlocked account warns that the seed is lost, and says the `PasskeyID` and key can be read back from `account_objects`.
+- **Library:**
+  - `verify: false` and `passkeyId` moved to `signWithMlDsaPasskeyForTests` (`@carbs/sessions/testing`); `signWithMlDsaPasskey` always checks and always writes the credential's own id.
+  - CBOR tags are refused; non-canonical lengths are read as written, documented.
+  - Credential ids above 1,023 bytes are refused (WebAuthn's limit); a CBOR error in the extensions is a `KeyError`.
+  - `browserCreateMlDsaPasskey` takes `excludeCredentialIds`.
+  - The `mlDsaAssertionProblem` docstring says it is a mirror of the node's checks, not the node.
+- **Tests added:** the depth limit (16 accepted, 17 refused), huge declared lengths (2^53 − 1 and 2^32 − 1 arrays, maps and strings refused in under 100 ms), non-canonical lengths read, tags refused; the UP-flag refusal, empty and 1,024-byte credential ids (1,023 accepted), unreadable extensions and COSE key as `KeyError`; the public `signWithMlDsaPasskey` writes the credential's own id; the fixture test above.
+- **SIMULATED interop check of the dump:** `dump_attestation` fed with a python-fido2 encoding of a -48 registration (dilithium-py key, synthetic packed statement, no device) wrote a file that the fixture test parsed, with the same key as python-fido2's reading; the temporary fixture was then deleted.
+- **`stax-pq-passkey.ts`:** each expected result name is checked with `defs.resultCode`, and its temporary directory is deleted at the end.

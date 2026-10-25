@@ -31,7 +31,7 @@ describe("CBOR (RFC 8949 subset)", () => {
     }
   });
 
-  it("decodes maps with integer and text keys, and tags", () => {
+  it("decodes maps with integer and text keys, and refuses tags", () => {
     const map = decodeCbor(hexToBytes("a201020304"));
     expect(map).toEqual(
       new Map([
@@ -39,7 +39,7 @@ describe("CBOR (RFC 8949 subset)", () => {
         [3, 4],
       ]),
     );
-    expect(decodeCbor(hexToBytes("c11a514b67b0"))).toEqual({ tag: 1, value: 1363896240 });
+    expect(() => decodeCbor(hexToBytes("c11a514b67b0"))).toThrow(/tag 1/);
     const nested = new Map<string | number, CborValue>([
       ["fmt", "packed"],
       ["attStmt", new Map<string, CborValue>([["x5c", [Uint8Array.of(9)]]])],
@@ -84,5 +84,34 @@ describe("CBOR (RFC 8949 subset)", () => {
     ]) {
       expect(() => decodeCbor(hexToBytes(hex)), hex).toThrow(CborError);
     }
+  });
+
+  it("accepts nesting to depth 16 and refuses depth 17", () => {
+    const nested = (depth: number) => hexToBytes("81".repeat(depth) + "00");
+    expect(() => decodeCbor(nested(16))).not.toThrow();
+    expect(() => decodeCbor(nested(17))).toThrow(/nested too deeply/);
+    // A deep map nesting is refused the same way.
+    expect(() => decodeCbor(hexToBytes("a101".repeat(17) + "00"))).toThrow(/nested too deeply/);
+  });
+
+  it("refuses huge declared lengths quickly, without allocating them", () => {
+    for (const hex of [
+      "9b001fffffffffffff", // array of 2^53 - 1 items, none present
+      "bb001fffffffffffff", // map of 2^53 - 1 entries
+      "5b001fffffffffffff", // byte string of 2^53 - 1 bytes
+      "7b001fffffffffffff", // text string of 2^53 - 1 bytes
+      "5affffffff", // byte string of 2^32 - 1 bytes
+      "9affffffff01", // array of 2^32 - 1 items, one present
+      "5bffffffffffffffff", // 2^64 - 1: beyond a safe integer
+    ]) {
+      const started = Date.now();
+      expect(() => decodeCbor(hexToBytes(hex)), hex).toThrow(CborError);
+      expect(Date.now() - started, hex).toBeLessThan(100);
+    }
+  });
+
+  it("reads a non-canonical length as written (documented: canonical form is not required)", () => {
+    expect(decodeCbor(hexToBytes("1817"))).toBe(23);
+    expect(decodeCbor(hexToBytes("5900020102"))).toEqual(Uint8Array.of(1, 2));
   });
 });

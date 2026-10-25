@@ -96,6 +96,11 @@
           et vérifiée par le nœud à chaque signature (amendement PasskeyMLDSA). Chrome, Stax
           branchée en USB, app Security Key ouverte.
         </p>
+        <p class="error">
+          Nœud de test uniquement, graine en clair : la graine de la clé maître du compte est gardée
+          en clair dans ce navigateur jusqu'au verrouillage. La section refuse de créer un compte si
+          le nœud n'est pas local ou listé dans VITE_TEST_NODE_HOSTS.
+        </p>
         <div id="pq-stax-info" class="muted">Pas de passkey post-quantique dans ce navigateur.</div>
         <div class="actions">
           <button id="pq-stax-create" type="button">

@@ -69,13 +69,17 @@ const signed = await signWithPasskey(
 2. passes `encodeForSigning(tx)` (`STX\0 ‖ fields`, about 1.4 KB) as the raw WebAuthn challenge;
 3. writes `PasskeySignature {PasskeyID, AuthenticatorData, ClientDataJSON, Signature}` with the 2,420 raw signature bytes, with no DER and no low-S rewriting.
 
-Before it returns, `mlDsaAssertionProblem` runs the node's stateless checks: `clientDataJSON` is an object, `type` is `webauthn.get`, `challenge` decodes byte for byte to the signing data, and the signature is pure ML-DSA-44 with an empty context over `authenticatorData ‖ SHA-256(clientDataJSON)`. A faulty authenticator is therefore reported in the client, not as the node's bare "Invalid signature.". `verify: false` and `passkeyId` exist only to build transactions the node must refuse. P-256 passkeys take the same path as before.
+Before it returns, `mlDsaAssertionProblem` mirrors the node's stateless checks: `clientDataJSON` is an object, `type` is `webauthn.get`, `challenge` decodes byte for byte to the signing data, and the signature is pure ML-DSA-44 with an empty context over `authenticatorData ‖ SHA-256(clientDataJSON)`. A faulty authenticator is therefore reported in the client, not as the node's bare "Invalid signature.". It is a mirror, not the node (its JSON parser and base64url decoder are not the node's), so the node's answer stays the proof. Transactions the node must refuse are built with `signWithMlDsaPasskeyForTests` (`@carbs/sessions/testing`: `verify: false`, another `passkeyId`). P-256 passkeys take the same path as before.
+
+The CBOR decoder reads CTAP2's canonical form but does not require it (a longer-than-needed length is read as written); it refuses tags, floats, indefinite lengths, integers above 2^53 and nesting deeper than 16. Credential ids are at most 1,023 bytes. If the page loses its storage, the `PasskeyID` and the key can be read back from the account's `passkey_list` (`account_objects`).
 
 **Tested** (`keys/pq-passkey.test.ts`, `cbor.test.ts`, SIMULATED authenticator):
 
 - COSE parsing and the exact AKP header bytes;
 - the refusal of ES256, ML-DSA-65, a wrong size or a private part;
-- `packed` and `none` attestations, extensions after the key, a mismatched `rawId` or relying party;
+- synthetic `packed` and `none` attestations, extensions after the key, a mismatched `rawId` or relying party, no user presence, an empty or over-long credential id;
+- CBOR depth, huge declared lengths, tags;
+- the real Stax `attestationObject`, from `keys/fixtures/stax-attestation.json` when it is recorded (`security-key-app/carbs/mldsa_passkey_test.py make --dump-attestation <file>`); skipped with a message until then;
 - the challenge equal to the signing data, with no padding;
 - the signature verified with `@noble/post-quantum` (and failing with a context, over the bare signing data or with another key);
 - `PasskeyID` equal to the listed id;
@@ -84,4 +88,9 @@ Before it returns, `mlDsaAssertionProblem` runs the node's stateless checks: `cl
 
 Mutations of the alg check, the `rawId` check, the challenge comparison and the `PasskeyID` each fail a test. Against a live node, `apps/passkey-wallet/scripts/pq-passkey-demo.ts` runs registration, payment, three forged assertions, a session and the lock.
 
-**Not verified:** whether a browser forwards `alg: -48` to a roaming authenticator and accepts the credential, and whether a 1.4 KB challenge passes every browser. The software authenticator stands in for the device in every test. The Ledger Stax path (PR #109's Security Key app) has not been run.
+**On the real Stax** (PR #109's Security Key app, `apps/passkey-wallet/scripts/stax-pq-passkey.ts`, `docs/DEVLOG.md`): real CTAP2 ML-DSA-44 assertions from the device were accepted by a node with `PasskeyMLDSA` (`PasskeyListSet`, a payment, a session opening, all `tesSUCCESS`), and `mlDsaAssertionProblem` passed on those real signatures. python-fido2 stood in for the browser.
+
+**Not verified:**
+
+- the browser ceremony: whether a browser forwards `alg: -48` to a roaming authenticator, accepts the credential, and passes a 1.4 KB challenge;
+- the registration parser on real device bytes: the Stax credential used so far came from `mldsa_passkey_test.py` (python-fido2 parsed it), so the TypeScript `attestationObject`, CBOR and COSE code has only read software and synthetic registrations until the fixture above is recorded.

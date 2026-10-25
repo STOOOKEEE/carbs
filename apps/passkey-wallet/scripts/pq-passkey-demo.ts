@@ -26,10 +26,9 @@ import {
   loadDefinitions,
   mlDsaPasskeyFromAttestation,
   signTransaction,
-  signWithMlDsaPasskey,
   submitSignedAndWait,
 } from "@carbs/sessions";
-import { SoftwareMlDsaAuthenticator } from "@carbs/sessions/testing";
+import { SoftwareMlDsaAuthenticator, signWithMlDsaPasskeyForTests } from "@carbs/sessions/testing";
 
 import {
   type PqStep,
@@ -203,10 +202,17 @@ try {
           },
         }
       : signer.authenticator;
-    const signed = await signWithMlDsaPasskey(payment, signer.credential, used, RP_ID, defs, {
-      verify: false,
-      ...(options.passkeyId === undefined ? {} : { passkeyId: options.passkeyId }),
-    });
+    const signed = await signWithMlDsaPasskeyForTests(
+      payment,
+      signer.credential,
+      used,
+      RP_ID,
+      defs,
+      {
+        verify: false,
+        ...(options.passkeyId === undefined ? {} : { passkeyId: options.passkeyId }),
+      },
+    );
     report(
       label,
       "passkey",

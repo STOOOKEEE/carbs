@@ -1,23 +1,23 @@
 /**
  * The subset of CBOR (RFC 8949) WebAuthn needs: the `attestationObject` of a registration and the
  * COSE key in its `authenticatorData`. Definite lengths only (CTAP2 canonical CBOR has no
- * indefinite lengths); unsigned and negative integers, byte and text strings, arrays, maps, tags,
- * `false`, `true`, `null` and `undefined`. Floats and integers beyond 2^53 are refused.
+ * indefinite lengths); unsigned and negative integers, byte and text strings, arrays, maps,
+ * `false`, `true`, `null` and `undefined`. Floats, integers beyond 2^53 and tags (WebAuthn and
+ * COSE keys use none) are refused, and so is nesting deeper than 16.
+ *
+ * The decoder does not insist on canonical form: a length written longer than needed, or map keys
+ * out of canonical order, are read as they are. Nothing here depends on a canonical encoding (the
+ * client reads the key; it never re-encodes nor compares the CBOR).
  *
  * The encoder is for the software authenticator of the tests: it writes CTAP2's canonical form
  * (shortest lengths, map keys in the order given, which the caller keeps canonical).
  */
 
 export type CborValue =
-  number | Uint8Array | string | boolean | null | undefined | CborValue[] | CborMap | CborTag;
+  number | Uint8Array | string | boolean | null | undefined | CborValue[] | CborMap;
 
 /** A CBOR map; keys are integers or text strings (all that WebAuthn and COSE use). */
 export type CborMap = Map<number | string, CborValue>;
-
-export interface CborTag {
-  tag: number;
-  value: CborValue;
-}
 
 export class CborError extends Error {
   override readonly name = "CborError";
@@ -153,7 +153,7 @@ class Reader {
         return out;
       }
       case kMajorTag:
-        return { tag: argument, value: this.item(depth + 1) };
+        throw new CborError(`CBOR tag ${argument}: tags are not used by WebAuthn`);
       default:
         throw new CborError("unknown CBOR major type");
     }
@@ -230,10 +230,7 @@ export function encodeCbor(value: CborValue): Uint8Array {
   if (Array.isArray(value)) {
     return join([head(kMajorArray, value.length), ...value.map((v) => encodeCbor(v))]);
   }
-  if (value instanceof Map) {
-    const parts = [head(kMajorMap, value.size)];
-    for (const [k, v] of value) parts.push(encodeCbor(k), encodeCbor(v));
-    return join(parts);
-  }
-  return join([head(kMajorTag, value.tag), encodeCbor(value.value)]);
+  const parts = [head(kMajorMap, value.size)];
+  for (const [k, v] of value) parts.push(encodeCbor(k), encodeCbor(v));
+  return join(parts);
 }

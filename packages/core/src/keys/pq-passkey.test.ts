@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
 import { describe, expect, it } from "vitest";
@@ -12,6 +13,7 @@ import {
 import { decodeCbor, encodeCbor, isCborMap, type CborValue } from "../cbor.js";
 import { decodeTx, encodeForSigning, encodeTx, type TxJson } from "../encode.js";
 import { standaloneDefinitions } from "../testing/simulated-definitions.js";
+import { KeyError } from "./classic.js";
 import { generateMlDsaSeed, mlDsaKeyPairFromSeed } from "./mldsa.js";
 import {
   buildPasskeyListSet,
@@ -29,6 +31,7 @@ import {
   signWithMlDsaPasskey,
   SoftwareMlDsaAuthenticator,
 } from "./pq-passkey.js";
+import { signWithMlDsaPasskeyForTests } from "../testing/index.js";
 
 // The node's own recorded definitions (not SIMULATED); PasskeyMLDSA adds no field.
 const defs = standaloneDefinitions();
@@ -168,7 +171,9 @@ describe("registration: attestationObject → PasskeyListSet", () => {
     expect(decoded).toMatchObject({ Passkeys: tx["Passkeys"] });
   });
 
-  it("parses a packed attestation with an ES256 statement, as the Stax returns (PR #109)", () => {
+  // Synthetic: the shape PR #109's Security Key app returns (packed, ES256 statement, x5c), built
+  // here around a software authData; the real device bytes are the fixture test below.
+  it("parses a synthetic packed attestation with an ES256 statement (the Stax's shape)", () => {
     const authenticator = new SoftwareMlDsaAuthenticator(origin);
     const none = parseAttestationObject(
       authenticator.makeCredential(new Uint8Array(32), rpId).attestationObject,
@@ -216,6 +221,76 @@ describe("registration: attestationObject → PasskeyListSet", () => {
     );
     expect(() => parseAuthenticatorData(authData.subarray(0, 36))).toThrow(/37/);
   });
+
+  it("refuses no user presence, an empty or over-long credential id, unreadable extensions", () => {
+    const authenticator = new SoftwareMlDsaAuthenticator(origin);
+    const { authData } = parseAttestationObject(
+      authenticator.makeCredential(new Uint8Array(32), rpId).attestationObject,
+    );
+    const wrap = (data: Uint8Array) =>
+      encodeCbor(
+        new Map<string, CborValue>([
+          ["fmt", "none"],
+          ["attStmt", new Map()],
+          ["authData", data],
+        ]),
+      );
+    const noUp = authData.slice();
+    noUp[32] = (noUp[32] ?? 0) & ~0x01;
+    expect(() => mlDsaPasskeyFromAttestation(wrap(noUp))).toThrow(/UP flag/);
+
+    // rpIdHash 32 ‖ flags 1 ‖ counter 4 ‖ AAGUID 16 ‖ id length 2 (offset 53) ‖ id ‖ COSE key.
+    const head = authData.subarray(0, 53);
+    const cose = authenticator.coseKey();
+    const withId = (length: number) =>
+      concatBytes(head, Uint8Array.of(length >> 8, length & 0xff), new Uint8Array(length), cose);
+    expect(() => parseAuthenticatorData(withId(0))).toThrow(/credential id length 0/);
+    expect(() => parseAuthenticatorData(withId(1024))).toThrow(/credential id length 1024/);
+    expect(parseAuthenticatorData(withId(1023)).attestedCredential?.credentialId.length).toBe(1023);
+
+    const badExtensions = concatBytes(authData, Uint8Array.of(0xa1));
+    badExtensions[32] = (badExtensions[32] ?? 0) | 0x80;
+    expect(() => parseAuthenticatorData(badExtensions)).toThrow(KeyError);
+    expect(() => parseAuthenticatorData(badExtensions)).toThrow(/unreadable extensions/);
+    const badKey = concatBytes(head, Uint8Array.of(0, 1, 7), Uint8Array.of(0x5b, 0xff));
+    expect(() => parseAuthenticatorData(badKey)).toThrow(KeyError);
+  });
+
+  // The real device's bytes: `security-key-app/carbs/mldsa_passkey_test.py make --dump-attestation
+  // packages/core/src/keys/fixtures/stax-attestation.json` on the Stax. Until that file is recorded,
+  // the TypeScript parser has never read a real attestationObject, and this test says so.
+  const staxFixture = new URL("./fixtures/stax-attestation.json", import.meta.url);
+  it.skipIf(!existsSync(staxFixture))(
+    "parses the real Stax attestationObject recorded with mldsa_passkey_test.py (fixture)",
+    () => {
+      const recorded: unknown = JSON.parse(readFileSync(staxFixture, "utf8"));
+      const field = (name: string): string => {
+        const value: unknown =
+          typeof recorded === "object" && recorded !== null
+            ? Reflect.get(recorded, name)
+            : undefined;
+        if (typeof value !== "string") throw new Error(`fixture: no ${name}`);
+        return value;
+      };
+      const attestationObject = hexToBytes(field("attestationObject"));
+      const rawId = hexToBytes(field("rawId"));
+      const { fmt } = parseAttestationObject(attestationObject);
+      expect(fmt).toBe("packed");
+      const passkey = mlDsaPasskeyFromAttestation(attestationObject, {
+        rawId,
+        rpId: field("rpId"),
+      });
+      expect(passkey.publicKey.length).toBe(1312);
+      // python-fido2's reading of the same bytes, recorded next to them.
+      expect(bytesToHex(passkey.publicKey)).toBe(field("publicKey").toUpperCase());
+      expect(bytesToHex(passkey.credentialId)).toBe(field("rawId").toUpperCase());
+    },
+  );
+  if (!existsSync(staxFixture)) {
+    console.info(
+      "pq-passkey.test.ts: no fixtures/stax-attestation.json, so no real device attestation was parsed (record it with mldsa_passkey_test.py make --dump-attestation)",
+    );
+  }
 
   it("reads the extensions after the COSE key when the ED flag is set", () => {
     const authenticator = new SoftwareMlDsaAuthenticator(origin);
@@ -362,8 +437,8 @@ describe("signing: PasskeySignature with an ML-DSA-44 assertion (SIMULATED authe
     await expect(signWithMlDsaPasskey(payment, credential, faulty, rpId, defs)).rejects.toThrow(
       /node would refuse.*does not verify/,
     );
-    // verify: false builds it anyway (negative tests against a node).
-    const unchecked = await signWithMlDsaPasskey(payment, credential, faulty, rpId, defs, {
+    // verify: false (tests only) builds it anyway, for negative tests against a node.
+    const unchecked = await signWithMlDsaPasskeyForTests(payment, credential, faulty, rpId, defs, {
       verify: false,
     });
     expect(unchecked.tx["PasskeySignature"]).toBeDefined();
@@ -372,15 +447,24 @@ describe("signing: PasskeySignature with an ML-DSA-44 assertion (SIMULATED authe
   it("writes another PasskeyID only when asked, and refuses a P-256 credential or Signers", async () => {
     const authenticator = new SoftwareMlDsaAuthenticator(origin);
     const otherId = Uint8Array.of(1, 2, 3);
-    const signed = await signWithMlDsaPasskey(
+    const signed = await signWithMlDsaPasskeyForTests(
       payment,
       authenticator.credential,
       authenticator,
       rpId,
       defs,
-      {
-        passkeyId: otherId,
-      },
+      { passkeyId: otherId },
+    );
+    // The public entry point always writes the credential's own id.
+    const own = await signWithMlDsaPasskey(
+      payment,
+      authenticator.credential,
+      authenticator,
+      rpId,
+      defs,
+    );
+    expect((own.tx["PasskeySignature"] as Record<string, string>)["PasskeyID"]).toBe(
+      bytesToHex(authenticator.credential.credentialId),
     );
     expect((signed.tx["PasskeySignature"] as Record<string, string>)["PasskeyID"]).toBe("010203");
     const p256 = new SoftwareAuthenticator(origin);

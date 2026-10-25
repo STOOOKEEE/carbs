@@ -187,7 +187,39 @@ def cmd_make(args):
             indent=2,
         )
     print("saved", args.credential)
+    if args.dump_attestation:
+        dump_attestation(args.dump_attestation, att, args.rp, credential_id, public_key)
     run_assert(ctap, args.rp, credential_id, public_key, args)
+
+
+def dump_attestation(path, att, rp_id, credential_id, public_key):
+    """The registration as a browser hands it to the page, for the TypeScript parser's fixture.
+
+    `attestationObject` is the WebAuthn form `{"fmt", "attStmt", "authData"}` (text keys), which a
+    browser builds from the CTAP2 response's members 1, 3 and 2: `authData` is the device's own
+    bytes, unchanged; `fmt` and `attStmt` are re-encoded here (canonical CBOR, python-fido2), as a
+    browser re-encodes them. `rawId` is the credential id. `publicKey` is python-fido2's reading of
+    the COSE key, for the test to compare with its own.
+    """
+    from fido2 import cbor
+
+    attestation_object = cbor.encode(
+        {"fmt": att.fmt, "attStmt": att.att_stmt, "authData": bytes(att.auth_data)}
+    )
+    with open(path, "w") as out:
+        json.dump(
+            {
+                "source": "Ledger Stax, Security Key app of carbs PR #109, mldsa_passkey_test.py make",
+                "rpId": rp_id,
+                "rawId": credential_id.hex(),
+                "attestationObject": attestation_object.hex(),
+                "publicKey": public_key.hex(),
+            },
+            out,
+            indent=2,
+        )
+        out.write("\n")
+    print("attestation dumped to", path)
 
 
 def check_attestation(att, cdh):
@@ -300,6 +332,11 @@ def main():
     parser.add_argument("--challenge-hex", help="challenge bytes in hex (e.g. XRPL signing data)")
     parser.add_argument("--out", help="also write the PasskeySignature JSON to this file")
     parser.add_argument("--pin", help="the Security Key app's FIDO2 PIN, if one is set")
+    parser.add_argument(
+        "--dump-attestation",
+        metavar="FILE",
+        help="make: also write the raw attestationObject and rawId as hex JSON (TypeScript fixture)",
+    )
     args = parser.parse_args()
     {"make": cmd_make, "assert": cmd_assert, "selftest": cmd_selftest}[args.command](args)
 

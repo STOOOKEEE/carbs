@@ -8,7 +8,7 @@
 //   PYTHON=…/venv/bin/python pnpm --filter @carbs/passkey-wallet stax-pq-passkey
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,6 +91,11 @@ class StaxAuthenticator implements Authenticator {
     this.#credentialFile = credentialFile;
   }
 
+  /** Delete the host script's answers (public assertion data, but no reason to leave them). */
+  cleanup(): void {
+    rmSync(this.#workDir, { recursive: true, force: true });
+  }
+
   async getAssertion(request: AssertionRequest): Promise<WebAuthnAssertion> {
     const out = join(this.#workDir, `assertion-${++this.#count}.json`);
     console.log(
@@ -131,6 +136,8 @@ const defs: Definitions = await loadDefinitions(node);
 let failed = false;
 
 function report(label: string, result: FinalResult, expected: string): void {
+  // A name the node serves (throws otherwise), never a hand-copied number.
+  defs.resultCode(expected);
   const got = result.validated ? result.result : result.submit.engineResult;
   const ok = got === expected && (expected !== "tesSUCCESS" || accepted(result));
   console.log(
@@ -152,6 +159,7 @@ function step(prefix: string, s: PqStep): void {
   report(`${prefix} ${s.label} (${s.signer})`, s.result, "tesSUCCESS");
 }
 
+const stax = new StaxAuthenticator(CREDENTIAL_FILE);
 try {
   const saved = loadCredential(CREDENTIAL_FILE);
   const credential = {
@@ -161,11 +169,7 @@ try {
   console.log(
     `Node ${NODE_WS}. Stax credential: PasskeyID ${saved.credentialId.slice(0, 16)}…, ML-DSA-44 key ${credential.publicKey.length} bytes\n`,
   );
-  const passkey: PasskeySigner = {
-    credential,
-    authenticator: new StaxAuthenticator(CREDENTIAL_FILE),
-    rpId: saved.rpId,
-  };
+  const passkey: PasskeySigner = { credential, authenticator: stax, rpId: saved.rpId };
 
   const genesis = classicSignerFromSeed(GENESIS_SEED);
   const genesisAddress = addressFromPublicKey(genesis.publicKey);
@@ -205,6 +209,7 @@ try {
   failed = true;
   console.error(error instanceof Error ? error.message : String(error));
 } finally {
+  stax.cleanup();
   node.close();
 }
 process.exit(failed ? 1 : 0);
