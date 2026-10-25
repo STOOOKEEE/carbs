@@ -138,16 +138,16 @@ ui.lockAccount.addEventListener(
   }),
 );
 
-ui.payForm.addEventListener("submit", (event) => {
-  event.preventDefault();
+ui.payForm.addEventListener(
+  "submit",
   run(async () => {
     if (connection === undefined || wallet === undefined) return;
     const amount = Number(ui.payAmount.value);
     log(`Paiement de ${amount} XRP : validez avec Touch ID…`);
     const tx = await payWithPasskey(connection, wallet, ui.payDestination.value.trim(), amount);
     log(`Paiement signé par la passkey (${amount} XRP) :`, tx);
-  })();
-});
+  }),
+);
 
 setupLedgerPanel(() => connection, refresh);
 setupMigrationPanel(() => connection, refresh);
