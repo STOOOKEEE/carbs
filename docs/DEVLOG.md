@@ -569,6 +569,13 @@ From the read-only review of the session guardrails on `develop` at `98f358b` (f
 - **Runs** (Mac, Debug): `SigningSessions,SigningSessionsBatch,InvariantsSigningSession,TxQPosNegFlows,TxQMetaInfo,Batch,STTx` (`--unittest-jobs=6`): 7 suites, 160 cases, 16 428 tests, 0 failures. `Delegate`: 27 cases, 6093 tests, 1 failure, `MPToken`: 150 cases, 41 475 tests, 1 failure, the base ones. `xrpl_tests --gtest_filter='*SigningSession*'`: 15 tests passed.
 - **Not changed:** `FIANSO-SPEC.md`, `docs/XLS-Sessions.md` and the simulated node of the web app do not describe the bound yet.
 
+## 2026-10-25: web app, no double submission; the old classical key refused on screen
+
+- **Bug:** a double click on migration step 3 sent the same `AccountSet` twice: `tesSUCCESS`, then `tefPAST_SEQ` for the second copy (same `Sequence`). Every signing button ran its action once per click.
+- **Change:** `guarded` (`apps/passkey-wallet/src/dom.ts`), already the click wrapper of the test page, now runs one action at a time: the pressed button (or the form's submitter) is disabled from the click until the action and the page refresh end, and clicks in between are ignored. It also takes the `submit` event itself (`preventDefault`), so the three forms pass it instead of calling a fresh wrapper per submit (which had no memory of the running one). The mint and stream pages' own wrappers now build on it; the game's auto-clicker start goes through it without its click so the same button can still stop it. Agent approvals ignore a second decision on a request already being decided.
+- **Path:** the button is re-enabled before the refresh, which then sets its real state; restoring it afterwards would undo the refresh (step 3 must stay off once done). Refreshes that re-enable it mid-flight are harmless: the running flag drops the click.
+- **Ledger Stax section:** « signer en ML-DSA-44 » is never chosen by hand (checked and disabled once migrated). Once migrated, « Essayer avec l'ancienne clé classique » signs a 1 XRP payment with the classical key on the Stax; `tefMASTER_DISABLED` is logged green (`logOutcome`), anything else red.
+
 ## 2026-10-25: audit 24.10, section B3 (`SigningSessionDelete` is a queue blocker)
 
 From the read-only audit of `develop` at `ce2c7cb`, section B item 3: `SigningSessionSet` and `SigningSessionDelete` used `ConsequencesFactoryType::Normal`, while `SetRegularKey` and `SetPasskeyList` are `Blocker` (`rippled/include/xrpl/tx/transactors/account/SetRegularKey.h:17`, `SetPasskeyList.h:16`).
