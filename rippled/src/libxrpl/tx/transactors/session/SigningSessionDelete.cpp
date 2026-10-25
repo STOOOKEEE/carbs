@@ -16,6 +16,7 @@
 #include <xrpl/protocol/XRPAmount.h>
 #include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
+#include <xrpl/tx/applySteps.h>
 
 #include <cstdint>
 

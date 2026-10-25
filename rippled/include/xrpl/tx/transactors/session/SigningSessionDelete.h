@@ -21,7 +21,7 @@ public:
     // sessions: once that close applies, what the session key signed loses
     // its authority, so the queue must hold nothing of the account behind it.
     // A third party's cleanup of an expired session (with Owner) removes no
-    // authority from its own account, and stays an ordinary transaction.
+    // authority from its own account, and is an ordinary transaction.
     static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Custom;
 
     explicit SigningSessionDelete(ApplyContext& ctx) : Transactor(ctx)
