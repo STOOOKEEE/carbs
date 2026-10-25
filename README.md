@@ -119,17 +119,21 @@ sheet:
 - **Things Ledger does not support yet.** ML-DSA-44 signing of XRPL transactions on the Stax, with a
   clear-signed review, validated on the public AlphaNet; a session policy and per-app profiles
   (agent, game, trading, streaming, minting) that the device enforces before any review.
-- **The Device Management Kit, and its gaps.** The client reaches the device through the Device
-  Management Kit only (WebHID), with its own commands for the post-quantum root, the session policy
-  and the Agent ID: the pre-release `device-signer-kit-xrp` covers addresses, classical signing and
-  app configuration, nothing more. The gaps we hit are in
+- **The Device Management Kit, and Ledger's XRP signer kit extended.** The client reaches the device
+  through the Device Management Kit only (WebHID), and through Ledger's official
+  `device-signer-kit-xrp`, imported unmodified into `packages/signer-kit-xrp` and extended in its
+  own style (commands, tasks, device actions, use cases, `SignerXrp` methods): `getPqPublicKey`,
+  `signTransactionPq` and `getSessionPolicy` next to its addresses, classical signing and app
+  configuration, and the app's session refusals (`0x6815`, `0x6986`) in its error mapping. Its 106
+  upstream tests run unedited next to ours, and the extension is drafted as an upstream pull request
+  ([`UPSTREAM-PR.md`](./packages/signer-kit-xrp/UPSTREAM-PR.md), not sent). The gaps we hit are in
   [`docs/ledger-dx-feedback.md`](./docs/ledger-dx-feedback.md).
 - **Ledger-secured flows.** The trading (order book offers), minting (NFTs) and streaming apps open
   their session on the Stax with a profile the device checks; the session key then signs alone,
   inside limits the ledger enforces.
 - **A real device.** The ML-DSA-44 payments above were signed by our Stax; the agent demo ran end to
   end on a real Stax against the standalone node (reported in #83).
-- **Developer feedback**, weighed by the track as much as the code: 48 entries in
+- **Developer feedback**, weighed by the track as much as the code: 54 entries in
   [`docs/ledger-dx-feedback.md`](./docs/ledger-dx-feedback.md).
 
 ## How it works
@@ -449,7 +453,7 @@ of the specification gives the reason and the code behind each limit:
 - **Client**: TypeScript 5.9 strict. `ripple-binary-codec` 2.11.0 with the node's own
   `server_definitions` (xrpl.js rejects the new types), `@noble/post-quantum` 0.7.1 for ML-DSA-44,
   non-extractible WebCrypto P-256 keys, WebAuthn, and the Ledger Device Management Kit 1.11.0 over
-  WebHID: no legacy ledgerjs package.
+  WebHID with Ledger's XRP signer kit 0.3.0, extended: no legacy ledgerjs package.
 - **Web app**: Nuxt 3, Vue 3 and Tailwind, generated from XRPL Commons' `create-xrp` 0.5.0; a
   wallet entry on the `xrpl-connect` 1.0.0 `WalletAdapter` interface; CSP `script-src 'self'` and no
   third-party script; a static build on Vercel.
@@ -471,6 +475,7 @@ ledger-app/             LedgerHQ/app-xrp, imported unmodified, then clear signin
   src/policy/           the session policy and its profiles
 packages/core/          @carbs/sessions: definitions, encoding, session keys, node client, quantum exposure check
 packages/ledger/        @carbs/ledger: the device contract over the Device Management Kit, and a software double
+packages/signer-kit-xrp/  Ledger's XRP signer kit, imported unmodified, then the ML-DSA-44 root and the session policy
 apps/web/               the web app: six screens (Apps links to the stage demos), the wallet entry, a static build
 apps/passkey-wallet/    the test wallet and the stage demos: agent, game, DEX, stream, mint
   scripts/agent/        the AI agent on a budget, the mock x402 merchant and the run sheet
