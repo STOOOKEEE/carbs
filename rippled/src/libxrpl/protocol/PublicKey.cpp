@@ -380,6 +380,61 @@ parseDERSignature(Slice const& derSig) noexcept
     return result;
 }
 
+// n and floor(n / 2), n the order of the P-256 group, big-endian.
+static constexpr std::array<std::uint8_t, 32> kP256Order = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xBC, 0xE6, 0xFA, 0xAD, 0xA7, 0x17, 0x9E, 0x84, 0xF3, 0xB9, 0xCA, 0xC2, 0xFC, 0x63, 0x25, 0x51,
+};
+static constexpr std::array<std::uint8_t, 32> kP256HalfOrder = {
+    0x7F, 0xFF, 0xFF, 0xFF, 0x80, 0x00, 0x00, 0x00, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xDE, 0x73, 0x7D, 0x56, 0xD3, 0x8B, 0xCF, 0x42, 0x79, 0xDC, 0xE5, 0x61, 0x7E, 0x31, 0x92, 0xA8,
+};
+
+// A minimal DER integer (sigPart checked its tag, its length and its leading
+// byte) as 32 big-endian bytes, if it fits in 32 bytes.
+static std::optional<std::array<std::uint8_t, 32>>
+p256Scalar(Slice number) noexcept
+{
+    // sigPart only allows a leading zero before a byte with its top bit set.
+    if (number.size() == 33 && number[0] == 0)
+        number += 1;
+    if (number.size() > 32)
+        return std::nullopt;
+    std::array<std::uint8_t, 32> value{};
+    std::memcpy(value.data() + (32 - number.size()), number.data(), number.size());
+    return value;
+}
+
+/**
+ * Parse a P-256 signature under fixP256StrictDer, as ecdsaCanonicality does
+ * for secp256k1: <30> <len> <02> <lenR> <R> <02> <lenS> <S>, with len the
+ * size of everything after it, minimal integers, nothing after S,
+ * 0 < R < n, and 0 < S <= n / 2 (a low S). Any other form would be a second
+ * valid encoding of the same signature, and a new transaction ID.
+ */
+static std::optional<ECDSASignature>
+parseStrictDERSignature(Slice const& sig) noexcept
+{
+    if (sig.size() < 8 || sig.size() > 72)
+        return std::nullopt;
+    if (sig[0] != 0x30 || sig[1] != sig.size() - 2)
+        return std::nullopt;
+
+    Slice p = sig + 2;
+    auto const r = sigPart(p);
+    auto const s = sigPart(p);
+    if (!r || !s || !p.empty())
+        return std::nullopt;
+
+    // sigPart also refuses zero.
+    auto const rValue = p256Scalar(*r);
+    auto const sValue = p256Scalar(*s);
+    if (!rValue || !sValue || *rValue >= kP256Order || *sValue > kP256HalfOrder)
+        return std::nullopt;
+
+    return ECDSASignature{*rValue, *sValue};
+}
+
 static bool
 verifyP256ECDSA(
     uint8_t const* hash,
@@ -451,7 +506,7 @@ verifyP256ECDSA(
 }
 
 bool
-verify(PublicKey const& publicKey, Slice const& m, Slice const& sig) noexcept
+verify(PublicKey const& publicKey, Slice const& m, Slice const& sig, bool strictP256Der) noexcept
 {
     if (auto const type = publicKeyType(publicKey))
     {
@@ -481,7 +536,7 @@ verify(PublicKey const& publicKey, Slice const& m, Slice const& sig) noexcept
         if (*type == KeyType::P256)
         {
             // Parse DER signature to extract r and s values
-            auto parsedSig = parseDERSignature(sig);
+            auto parsedSig = strictP256Der ? parseStrictDERSignature(sig) : parseDERSignature(sig);
             if (!parsedSig)
                 return false;
 
