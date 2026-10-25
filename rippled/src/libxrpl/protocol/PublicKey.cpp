@@ -362,7 +362,10 @@ parseDERSignature(Slice const& derSig) noexcept
     std::memcpy(result.r.data() + (32 - rCopyLen), data + offset + rStart, rCopyLen);
     offset += rLen;
 
-    // Parse S
+    // Parse S. Its tag and its length byte must both be in the buffer: the
+    // check on R above only guarantees the tag.
+    if (offset + 2 > derSig.size())
+        return std::nullopt;
     if (data[offset++] != 0x02)
         return std::nullopt;
     uint8_t sLen = data[offset++];
