@@ -1689,8 +1689,11 @@ class SigningSessions_test : public beast::unit_test::Suite
         testcase("session key types need their amendment");
         using namespace jtx;
 
+        // P-256 needs fixP256StrictDer too: before it, anyone could re-encode
+        // a P-256 signature and change the transaction's ID.
         for (auto const& [type, feature] :
              {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::P256, fixP256StrictDer},
               std::pair{KeyType::Dilithium, featureQuantum}})
         {
             for (bool const enabled : {false, true})
@@ -2575,6 +2578,7 @@ class SigningSessions_test : public beast::unit_test::Suite
 
         for (auto const& [type, feature] :
              {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::P256, fixP256StrictDer},
               std::pair{KeyType::Dilithium, featureQuantum}})
         {
             for (bool const enabled : {false, true})

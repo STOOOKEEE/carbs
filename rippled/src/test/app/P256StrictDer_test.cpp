@@ -376,7 +376,8 @@ class P256StrictDer_test : public beast::unit_test::Suite
     }
 
     // A session's witness co-signs through STTx::checkSign, in its own role:
-    // its high-S form verifies only without the fix.
+    // its high-S form verifies only without the fix, and without the fix a
+    // P-256 witness is not accepted by the ledger anyway.
     void
     testSessionWitness(FeatureBitset features, bool strict)
     {
@@ -412,10 +413,16 @@ class P256StrictDer_test : public beast::unit_test::Suite
             checkValidity(router, *highS.stx, rules).first ==
             (strict ? Validity::SigBad : Validity::Valid));
 
+        // Without the fix a P-256 witness does not co-sign at all
+        // (isSessionKeyTypeEnabled): the ledger refuses it before the form of
+        // its signature matters.
         auto const before = env.balance(bob);
-        env.submit(jt);
+        auto original = jt;
+        if (!strict)
+            original.ter = tefSESSION_NO_WITNESS;
+        env.submit(original);
         env.close();
-        BEAST_EXPECT(env.balance(bob) == before + XRP(10));
+        BEAST_EXPECT(env.balance(bob) == before + (strict ? XRP(10) : XRP(0)));
     }
 
     // A payment channel claim signed by a P-256 channel key: the claim's

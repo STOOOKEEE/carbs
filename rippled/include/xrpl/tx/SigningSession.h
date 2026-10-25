@@ -2,6 +2,7 @@
 
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/protocol/AccountID.h>
+#include <xrpl/protocol/KeyType.h>
 #include <xrpl/protocol/Keylet.h>
 #include <xrpl/protocol/Rules.h>
 #include <xrpl/protocol/STLedgerEntry.h>
@@ -95,6 +96,15 @@ isSessionCapPayment(STTx const& tx);
  */
 [[nodiscard]] bool
 isSessionExpired(ReadView const& view, SLE const& session);
+
+/**
+ * Whether a key of `type` may sign under a session, as the session key or as
+ * its witness: P-256 needs Passkey and fixP256StrictDer (before the fix anyone
+ * could re-encode a P-256 signature and change the transaction's ID),
+ * ML-DSA-44 needs Quantum, and secp256k1 and Ed25519 need nothing.
+ */
+[[nodiscard]] bool
+isSessionKeyTypeEnabled(Rules const& rules, KeyType type);
 
 /**
  * Whether `tx` carries a WitnessSignature made by a key of `witness`: its

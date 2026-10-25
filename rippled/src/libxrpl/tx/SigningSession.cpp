@@ -146,6 +146,16 @@ isSessionExpired(ReadView const& view, SLE const& session)
 }
 
 bool
+isSessionKeyTypeEnabled(Rules const& rules, KeyType type)
+{
+    if (type == KeyType::P256)
+        return rules.enabled(featurePasskey) && rules.enabled(fixP256StrictDer);
+    if (type == KeyType::Dilithium)
+        return rules.enabled(featureQuantum);
+    return true;
+}
+
+bool
 isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witness)
 {
     if (!tx.isFieldPresent(sfWitnessSignature))
@@ -156,10 +166,9 @@ isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witnes
     if (!keyType)
         return false;
 
-    // A key of a type whose amendment is not enabled never co-signs, as it
+    // A key of a type that may not sign under a session never co-signs, as it
     // never signs as a session key (Transactor::checkSession).
-    if ((*keyType == KeyType::P256 && !view.rules().enabled(featurePasskey)) ||
-        (*keyType == KeyType::Dilithium && !view.rules().enabled(featureQuantum)))
+    if (!isSessionKeyTypeEnabled(view.rules(), *keyType))
         return false;
 
     auto const sle = view.read(keylet::account(witness));

@@ -35,6 +35,7 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 ### Changes
 
 - `submit`: A transaction carrying `WitnessSignature` while the `SigningSessions` amendment is disabled is refused with `temDISABLED`.
+- `submit`: A P-256 session key or witness key signs only when both `Passkey` and `fixP256StrictDer` are enabled (else `tefSESSION_TX_NOT_ALLOWED` for a session key, `tefSESSION_NO_WITNESS` for a witness), so a session signature is never in the lax DER form.
 - `submit`: A `WitnessSignature` on a transaction that needs no witness (one that is not session-signed, one signed under a session without a `SessionWitness`, or the session's own close) is refused with `tefBAD_SIGNATURE`; on a Batch inner transaction, the Batch is refused with `temBAD_SIGNATURE`. A witness key of a type whose amendment is not enabled (P-256 without `Passkey`, ML-DSA-44 without `Quantum`) does not co-sign: `tefSESSION_NO_WITNESS`.
 - `submit`: A session-signed transaction that uses `TicketSequence` is refused with `tefSESSION_TX_NOT_ALLOWED`, except the session's own close (`SigningSessionDelete` without `Owner`, signed by the session key).
 - `submit`: The session's own close, signed by the session key, may pay at most the base fee of its type; a higher `Fee` is refused with `tefSESSION_LIMIT` (other session-signed transactions keep the margin of 1000 base fee units).
