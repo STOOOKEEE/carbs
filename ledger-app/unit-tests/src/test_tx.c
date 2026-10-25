@@ -158,6 +158,9 @@ static const char* testcases[] = {
     "../../tests/standalone/testcases/32-batch/02-three-session-deletes.raw",
     // carbs: the Agent ID row, and the SessionMaxPerTx / SessionWitness rows.
     "../../tests/standalone/testcases/34-session-agent-id/01-agent-id.raw",
+    // carbs: the SessionMaxTxCount row and a carbs-profile memo, policy off.
+    "../../tests/standalone/testcases/33-session-policy/04-profile-game.raw",
+    "../../tests/standalone/testcases/33-session-policy/07-profile-trading.raw",
     NULL,
 };
 
@@ -409,6 +412,12 @@ static const char* session_refused_testcases[] = {
     // SessionKey carried twice: the Agent ID would follow only one.
     "../../tests/standalone/testcases/34-session-agent-id/"
     "05-duplicate-session-key.raw",
+    // A signed field claiming the id of the app's own "Profile" row.
+    "../../tests/standalone/testcases/33-session-policy/"
+    "11-spoofed-profile.raw",
+    // SessionMaxTxCount carried twice (300, then 10).
+    "../../tests/standalone/testcases/33-session-policy/"
+    "12-duplicate-tx-count.raw",
     NULL,
 };
 

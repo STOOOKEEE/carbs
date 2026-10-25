@@ -16,7 +16,7 @@
 
 #define DROPS_PER_XRP      1000000ULL
 #define SECONDS_PER_MINUTE 60U
-#define BAR_TEXT_SIZE      40
+#define BAR_TEXT_SIZE      SETTINGS_BAR_TEXT_SIZE
 
 // Presets a tap on a limit cycles through, "no limit" first
 static const uint64_t MAX_CAP_PRESETS[] = {
@@ -153,7 +153,7 @@ static void set_switch(uint8_t idx,
     G_policy_switches[idx].initState = stored ? ON_STATE : OFF_STATE;
 }
 
-static void format_xrp_limit(const char *name, uint64_t drops, char *out) {
+void settings_format_xrp_limit(const char *name, uint64_t drops, char *out) {
     char amount[BAR_TEXT_SIZE];
     if (drops == SESSION_POLICY_NO_LIMIT) {
         snprintf(out, BAR_TEXT_SIZE, "%s: no limit", name);
@@ -165,7 +165,7 @@ static void format_xrp_limit(const char *name, uint64_t drops, char *out) {
     }
 }
 
-static void format_duration_limit(uint32_t seconds, char *out) {
+void settings_format_duration_limit(uint32_t seconds, char *out) {
     if (seconds == SESSION_POLICY_NO_LIMIT) {
         snprintf(out, BAR_TEXT_SIZE, "Max duration: no limit");
     } else {
@@ -198,9 +198,11 @@ void session_policy_menu_prepare(nbgl_contentSwitch_t *switches, nbgl_content_t 
                POLICY_REQUIRE_WITNESS_TOKEN,
                policy.require_witness);
 
-    format_xrp_limit("Max spend", policy.max_cap, G_bar_buffers[POLICY_MAX_CAP_IDX]);
-    format_xrp_limit("Max per payment", policy.max_per_tx, G_bar_buffers[POLICY_MAX_PER_TX_IDX]);
-    format_duration_limit(policy.max_duration, G_bar_buffers[POLICY_MAX_DURATION_IDX]);
+    settings_format_xrp_limit("Max spend", policy.max_cap, G_bar_buffers[POLICY_MAX_CAP_IDX]);
+    settings_format_xrp_limit("Max per payment",
+                              policy.max_per_tx,
+                              G_bar_buffers[POLICY_MAX_PER_TX_IDX]);
+    settings_format_duration_limit(policy.max_duration, G_bar_buffers[POLICY_MAX_DURATION_IDX]);
     for (uint8_t i = 0; i < POLICY_BARS_NB; i++) {
         G_bar_texts[i] = G_bar_buffers[i];
     }
