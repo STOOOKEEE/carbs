@@ -193,8 +193,8 @@ export function setupLedgerPanel(
     }),
   );
 
-  ui.payForm.addEventListener("submit", (event) => {
-    event.preventDefault();
+  ui.payForm.addEventListener(
+    "submit",
     run(async () => {
       const connection = getConnection();
       if (connection === undefined) return;
@@ -210,6 +210,6 @@ export function setupLedgerPanel(
         },
         ui.payPq.checked,
       );
-    })();
-  });
+    }),
+  );
 }
