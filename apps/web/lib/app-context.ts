@@ -1,6 +1,7 @@
 import { createSimBackend, type SimBackend } from "./backend";
 import type { Backend } from "./ports";
 import { createLiveClients, type ClientFactory } from "./live/clients";
+import { createDeviceSelection, type DeviceSelection } from "./live/device-selection";
 import { LiveExposure } from "./live/exposure";
 import { createLiveMigration } from "./live/migration";
 import { createDemo, type Demo } from "./demo";
@@ -19,8 +20,10 @@ export interface AppContext {
   network: NetworkStore;
   /** Real reads of mainnet and the AlphaNet (the Quantum screen's live source). */
   liveExposure: LiveExposure;
-  /** The AlphaNet migration on a fresh account; the device in it is SIMULATED, the node is real. */
+  /** The AlphaNet migration on a fresh account, on the chosen device; the node is real. */
   liveMigration: Migration;
+  /** The device of the live parts: the simulated double (default) or a real Stax over USB. */
+  deviceSelection: DeviceSelection;
 }
 
 /** Everything the screens inject, wired on the simulated backend. */
@@ -40,6 +43,7 @@ export function createAppContext(
   const networkStore = createNetworkStore(network);
   const clients = createLiveClients(() => networkStore.networks(), live.clientFactory);
   const liveExposure = new LiveExposure(clients);
+  const deviceSelection = createDeviceSelection();
   return {
     sim: backend,
     backend,
@@ -54,8 +58,10 @@ export function createAppContext(
       network: () => networkStore.networks().alphanet,
       // Looked up at call time, so that a test can replace the approver.
       approver: (review) => prompt.approver(review),
+      device: deviceSelection,
       ...(live.fetcher === undefined ? {} : { fetcher: live.fetcher }),
     }),
+    deviceSelection,
   };
 }
 

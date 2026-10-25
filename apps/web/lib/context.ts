@@ -3,6 +3,7 @@ import type { Demo } from "./demo";
 import type { DevicePrompt } from "./device-prompt";
 import type { Migration } from "./migration";
 import type { NetworkStore } from "./network-store";
+import type { DeviceSelection } from "./live/device-selection";
 import type { BackendStatus } from "./boot";
 import type { Backend, ExposurePort } from "./ports";
 import type { WalletsApi } from "./wallets/api";
@@ -16,6 +17,7 @@ export const LIVE_EXPOSURE_KEY: InjectionKey<ExposurePort> = Symbol("carbs-live-
 export const LIVE_MIGRATION_KEY: InjectionKey<Migration> = Symbol("carbs-live-migration");
 export const BACKEND_STATUS_KEY: InjectionKey<BackendStatus> = Symbol("carbs-backend-status");
 export const DEVICE_PROMPT_KEY: InjectionKey<DevicePrompt> = Symbol("carbs-device-prompt");
+export const DEVICE_SELECTION_KEY: InjectionKey<DeviceSelection> = Symbol("carbs-device-selection");
 
 function required<T>(key: InjectionKey<T>): T {
   const value = inject(key);
@@ -32,3 +34,4 @@ export const useWallets = (): WalletsApi => required(WALLETS_KEY);
 export const useLiveExposure = (): ExposurePort => required(LIVE_EXPOSURE_KEY);
 export const useLiveMigration = (): Migration => required(LIVE_MIGRATION_KEY);
 export const useBackendStatus = (): BackendStatus => required(BACKEND_STATUS_KEY);
+export const useDeviceSelection = (): DeviceSelection => required(DEVICE_SELECTION_KEY);

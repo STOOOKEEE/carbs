@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import LedgerDevicePicker from "~/components/ui/LedgerDevicePicker.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
 import {
   useBackend,
+  useDeviceSelection,
   useLiveExposure,
   useLiveMigration,
   useMigration,
@@ -33,11 +35,20 @@ const checking = ref(false);
 const checkError = ref<string | null>(null);
 
 const readOnly = computed(() => network.value === "mainnet");
-const simulated = computed(() => backend.mode === "simulated");
 /** The migration follows the Data switch: the real AlphaNet, or the simulation. */
 const migration = computed(() => (source.value === "live" ? liveMigration : simulatedMigration));
 const mstate = computed(() => migration.value.state);
 const isLive = computed(() => source.value === "live");
+const deviceSelection = useDeviceSelection();
+/** The live run signs on a real Stax: the started run's device, else the one chosen now. */
+const realDevice = computed(
+  () =>
+    isLive.value &&
+    (mstate.value.address !== null ? mstate.value.realDevice : deviceSelection.choice === "usb"),
+);
+const staxMissing = computed(
+  () => isLive.value && deviceSelection.choice === "usb" && !deviceSelection.connected,
+);
 const alphanet = computed(() => networkStore.networks().alphanet);
 
 function explorerFor(hash: string): string | null {
@@ -194,6 +205,9 @@ async function useFixture(value: string): Promise<void> {
       <div class="flex flex-wrap items-center gap-3">
         <h2 class="panel-title">Migrate with the Ledger</h2>
         <SimBadge v-if="!isLive" title="The device and the node are simulated" />
+        <span v-else-if="realDevice" class="text-xs text-muted-foreground" data-testid="live-note"
+          >Ledger Stax (USB) · AlphaNet node real</span
+        >
         <template v-else>
           <SimBadge
             title="The device is a software double of the Stax; the node's answers are real"
@@ -211,9 +225,10 @@ async function useFixture(value: string): Promise<void> {
           Three steps, in this order, each confirmed on the device: SetRegularKey to the ML-DSA-44
           key, a proof transaction signed by that key, then asfDisableMaster.
         </p>
+        <LedgerDevicePicker v-if="isLive" />
         <button
           class="btn btn-primary"
-          :disabled="mstate.busy"
+          :disabled="mstate.busy || staxMissing"
           data-testid="migration-start"
           @click="migration.start()"
         >
@@ -252,6 +267,15 @@ async function useFixture(value: string): Promise<void> {
                 <span class="text-muted-foreground"> · {{ step.signedBy }}</span>
               </p>
               <div v-if="step.id === 3" class="space-y-2 rounded-md border p-3 text-sm">
+                <label v-if="realDevice" class="flex items-center gap-2">
+                  <input
+                    v-model="mstate.recoveryConfirmed"
+                    type="checkbox"
+                    data-testid="reinstalled"
+                  />
+                  I reinstalled the XRP app on the Stax (and reconnected it) before reading the key
+                  again
+                </label>
                 <button
                   class="btn"
                   :disabled="mstate.busy"
@@ -259,15 +283,17 @@ async function useFixture(value: string): Promise<void> {
                   @click="migration.proveRecoverable()"
                 >
                   {{
-                    isLive
-                      ? "Show the simulated device's seed to save"
-                      : "Derive the key twice to prove it is recoverable"
+                    !isLive
+                      ? "Derive the key twice to prove it is recoverable"
+                      : realDevice
+                        ? "Read the ML-DSA-44 key again from the Stax"
+                        : "Show the simulated device's seed to save"
                   }}
                 </button>
                 <span v-if="mstate.recoverableProven" class="ml-2 text-ok" data-testid="recoverable"
                   >proven</span
                 >
-                <template v-if="isLive && mstate.recoverySeed">
+                <template v-if="isLive && !realDevice && mstate.recoverySeed">
                   <p class="text-muted-foreground">
                     The ML-DSA-44 key of this throw-away account comes from this seed. Without it
                     the account is locked for good after step 3.
