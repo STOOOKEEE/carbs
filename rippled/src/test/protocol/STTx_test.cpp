@@ -105,6 +105,7 @@ public:
         static_assert(safeCast<std::uint32_t>(HashPrefix::CounterpartyTxMultiSign) == 0x43504D00);
         static_assert(safeCast<std::uint32_t>(HashPrefix::SponsorTxSign) == 0x53504E00);
         static_assert(safeCast<std::uint32_t>(HashPrefix::SponsorTxMultiSign) == 0x53504D00);
+        static_assert(safeCast<std::uint32_t>(HashPrefix::WitnessTxSign) == 0x57545300);
 
         RulesFixture const r;
 
@@ -132,12 +133,22 @@ public:
             BEAST_EXPECT(signingPrefix(role, true, r.legacy) == HashPrefix::TxMultiSign);
         }
 
+        // The witness role is new with SigningSessions: its own prefix, with or
+        // without the fix.
+        for (Rules const& rules : {r.legacy, r.fixed})
+        {
+            BEAST_EXPECT(
+                signingPrefix(SignatureRole::Witness, false, rules) == HashPrefix::WitnessTxSign);
+        }
+
         // Each role's field, and each signature field's role, agree.
         BEAST_EXPECT(signatureField(SignatureRole::Transaction) == nullptr);
         BEAST_EXPECT(*signatureField(SignatureRole::Counterparty) == sfCounterpartySignature);
         BEAST_EXPECT(*signatureField(SignatureRole::Sponsor) == sfSponsorSignature);
+        BEAST_EXPECT(*signatureField(SignatureRole::Witness) == sfWitnessSignature);
         BEAST_EXPECT(signatureRole(sfCounterpartySignature) == SignatureRole::Counterparty);
         BEAST_EXPECT(signatureRole(sfSponsorSignature) == SignatureRole::Sponsor);
+        BEAST_EXPECT(signatureRole(sfWitnessSignature) == SignatureRole::Witness);
         BEAST_EXPECT(!signatureRole(sfBook));
         BEAST_EXPECT(!signatureRole(sfSigner));
 

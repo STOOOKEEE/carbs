@@ -152,6 +152,54 @@ public:
     }
 
     /**
+     * @brief Get sfSessionMaxPerTx (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_AMOUNT::type::value_type>
+    getSessionMaxPerTx() const
+    {
+        if (hasSessionMaxPerTx())
+            return this->sle_->at(sfSessionMaxPerTx);
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfSessionMaxPerTx is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasSessionMaxPerTx() const
+    {
+        return this->sle_->isFieldPresent(sfSessionMaxPerTx);
+    }
+
+    /**
+     * @brief Get sfSessionWitness (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_ACCOUNT::type::value_type>
+    getSessionWitness() const
+    {
+        if (hasSessionWitness())
+            return this->sle_->at(sfSessionWitness);
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfSessionWitness is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasSessionWitness() const
+    {
+        return this->sle_->isFieldPresent(sfSessionWitness);
+    }
+
+    /**
      * @brief Get sfOwnerNode (SoeRequired)
      * @return The field value.
      */
@@ -296,6 +344,28 @@ public:
     setSessionSpent(std::decay_t<typename SF_AMOUNT::type::value_type> const& value)
     {
         object_[sfSessionSpent] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfSessionMaxPerTx (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    SigningSessionBuilder&
+    setSessionMaxPerTx(std::decay_t<typename SF_AMOUNT::type::value_type> const& value)
+    {
+        object_[sfSessionMaxPerTx] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfSessionWitness (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    SigningSessionBuilder&
+    setSessionWitness(std::decay_t<typename SF_ACCOUNT::type::value_type> const& value)
+    {
+        object_[sfSessionWitness] = value;
         return *this;
     }
 

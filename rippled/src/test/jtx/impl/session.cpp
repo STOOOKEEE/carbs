@@ -70,4 +70,16 @@ Permissions::operator()(Env&, JTx& jt) const
     jt.jv[sfPermissions.jsonName] = permissionsJson;
 }
 
+void
+MaxPerTx::operator()(Env&, JTx& jt) const
+{
+    jt.jv[sfSessionMaxPerTx.jsonName] = maxPerTx_.getJson(JsonOptions::Values::None);
+}
+
+void
+Witness::operator()(Env&, JTx& jt) const
+{
+    jt.jv[sfSessionWitness.jsonName] = witness_.human();
+}
+
 }  // namespace xrpl::test::jtx::session
