@@ -18,20 +18,29 @@ const webHid = hasWebHid();
 // The simulated Stax needs no browser support; the real one does.
 const ledgerBlocked = computed(() => backend.device.mode === "live" && !webHid);
 
-const PROFILES: readonly { id: Profile; title: string; body: string; note: string }[] = [
-  {
-    id: "mac",
-    title: "Mac account",
-    body: "Keeps its master key and has a passkey. The passkey opens sessions; the session key is a non-extractible P-256 key.",
-    note: "Not post-quantum: a passkey has full authority and cannot be replaced or removed.",
-  },
-  {
-    id: "ledger",
-    title: "Ledger account",
-    body: "Master key disabled, the device's ML-DSA-44 key as regular key, never a passkey. Every own-authority transaction is signed on the device.",
-    note: "Post-quantum root. Each transaction carries a 1 312-byte key and a 2 420-byte signature.",
-  },
-];
+// Who signs a Ledger account's own transactions: the Stax, or, on the simulation, software keys.
+const ledgerSigner = computed(() =>
+  backend.device.mode === "simulated"
+    ? "signed by the simulated Stax (software keys, no device involved)"
+    : "signed on the device",
+);
+
+const PROFILES = computed<readonly { id: Profile; title: string; body: string; note: string }[]>(
+  () => [
+    {
+      id: "mac",
+      title: "Mac account",
+      body: "Keeps its master key and has a passkey. The passkey opens sessions; the session key is a non-extractible P-256 key.",
+      note: "Not post-quantum: a passkey has full authority and cannot be replaced or removed.",
+    },
+    {
+      id: "ledger",
+      title: "Ledger account",
+      body: `Master key disabled, the device's ML-DSA-44 key as regular key, never a passkey. Every own-authority transaction is ${ledgerSigner.value}.`,
+      note: "Post-quantum root. Each transaction carries a 1 312-byte key and a 2 420-byte signature.",
+    },
+  ],
+);
 
 const masterLabel = computed(() => (state.info?.masterDisabled ? "disabled" : "enabled"));
 
