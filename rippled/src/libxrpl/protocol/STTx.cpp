@@ -191,8 +191,10 @@ STTx::getSignature(STObject const& sigObject)
 {
     try
     {
-        // A PasskeySignature is made with a P-256 key (ES256) or, under
-        // PasskeyMLDSA, an ML-DSA-44 key (COSE -48).
+        // A PasskeySignature is made with a P-256 key (ES256) or an ML-DSA-44
+        // key (COSE -48). Not gated on PasskeyMLDSA, which this function has
+        // no rules for: it is off the consensus path (Change::preflight reads
+        // it only when SigningPubKey is empty).
         auto const spk = sigObject.getFieldVL(sfSigningPubKey);
         auto const keyType = publicKeyType(makeSlice(spk));
         if ((keyType == KeyType::P256 || keyType == KeyType::Dilithium) &&
@@ -575,10 +577,9 @@ verifySigObject(
         if (passkeyKey && sigObject.isFieldPresent(sfPasskeySignature))
         {
             // The PasskeySignature alone is checked. A TxnSignature next to
-            // it would only change the ID: refused with fixP256StrictDer, and
-            // always next to an ML-DSA-44 passkey, a form PasskeyMLDSA
-            // introduces with no earlier behaviour to keep.
-            if ((strictP256Der || mldsaPasskey) && sigObject.isFieldPresent(sfTxnSignature))
+            // it would only change the ID: refused with fixP256StrictDer,
+            // which an ML-DSA-44 passkey always has (isPasskeyMLDSAEnabled).
+            if (strictP256Der && sigObject.isFieldPresent(sfTxnSignature))
                 return false;
             auto const& passkeySig =
                 static_cast<STObject const&>(sigObject.peekAtField(sfPasskeySignature));
@@ -1091,7 +1092,7 @@ bool
 isPasskeyMLDSAEnabled(Rules const& rules)
 {
     return rules.enabled(featurePasskeyMLDSA) && rules.enabled(featurePasskey) &&
-        rules.enabled(featureQuantum);
+        rules.enabled(featureQuantum) && rules.enabled(fixP256StrictDer);
 }
 
 bool

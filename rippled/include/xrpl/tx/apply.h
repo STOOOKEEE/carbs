@@ -74,8 +74,8 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity);
  * platform, and the amendment changes the verdict. Until fixP256StrictDer is
  * enabled, a P-256 signature anywhere in the transaction is parsed laxly, and
  * a PasskeySignature no P-256 key uses is ignored; the amendment refuses some
- * of these transactions that verified. Until PasskeyMLDSA (with Passkey and
- * Quantum, isPasskeyMLDSAEnabled) is enabled, a PasskeySignature next to an
+ * of these transactions that verified. Until PasskeyMLDSA (with Passkey,
+ * Quantum and fixP256StrictDer, isPasskeyMLDSAEnabled) is enabled, a PasskeySignature next to an
  * ML-DSA-44 SigningPubKey is refused or ignored, and the amendment verifies
  * it instead. checkValidity then keeps no
  * verdict on such a transaction, and its callers do not mark it BAD.

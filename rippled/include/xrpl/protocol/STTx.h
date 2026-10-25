@@ -258,10 +258,13 @@ isPseudoTx(STObject const& tx);
 
 /**
  * Whether a passkey may hold an ML-DSA-44 key under `rules`: PasskeyMLDSA and
- * the two amendments it builds on, Passkey and Quantum, are all enabled. A
- * passkey list then takes ML-DSA-44 public keys next to P-256 ones, and a
- * PasskeySignature next to an ML-DSA-44 SigningPubKey is verified as a
- * WebAuthn assertion (COSE algorithm -48).
+ * the amendments it builds on, Passkey, Quantum and fixP256StrictDer, are all
+ * enabled. fixP256StrictDer is required because before it no verdict on a
+ * transaction carrying a PasskeySignature is ever cached
+ * (isSignatureVerdictCacheable), and because it refuses a TxnSignature next to
+ * a PasskeySignature. A passkey list then takes ML-DSA-44 public keys next to
+ * P-256 ones, and a PasskeySignature next to an ML-DSA-44 SigningPubKey is
+ * verified as a WebAuthn assertion (COSE algorithm -48).
  */
 [[nodiscard]] bool
 isPasskeyMLDSAEnabled(Rules const& rules);
