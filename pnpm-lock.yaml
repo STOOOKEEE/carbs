@@ -36,6 +36,9 @@ importers:
       '@carbs/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@carbs/sessions':
+        specifier: workspace:*
+        version: link:../../packages/core
       ripple-address-codec:
         specifier: 5.0.1
         version: 5.0.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)

@@ -2,7 +2,10 @@
 // Node rules (rippled STTx.cpp verifyPasskeySignature, PublicKey.cpp publicKeyType):
 // - the passkey public key is 65 bytes, 0xF6 ‖ X ‖ Y (P-256);
 // - the WebAuthn challenge is the transaction's signing data (STX\0 ‖ fields), base64url;
-// - the signature travels in PasskeySignature {PasskeyID, AuthenticatorData, ClientDataJSON, Signature}.
+// - the signature travels in PasskeySignature {PasskeyID, AuthenticatorData, ClientDataJSON, Signature},
+//   as low-S strict DER (fixP256StrictDer refuses any other form).
+
+import { canonicalizeDer } from "@carbs/sessions";
 
 import { bytesToHex, hexToBytes } from "./hex.ts";
 import type { TxJson } from "./ledger.ts";
@@ -94,7 +97,10 @@ export async function signWithPasskey(
       PasskeyID: passkey.id,
       AuthenticatorData: bytesToHex(new Uint8Array(response.authenticatorData)),
       ClientDataJSON: bytesToHex(new Uint8Array(response.clientDataJSON)),
-      Signature: bytesToHex(new Uint8Array(response.signature)),
+      // An authenticator may return a high S; the node refuses it under
+      // fixP256StrictDer, and either way it is a second encoding of the
+      // signature, so write the low-S strict DER form.
+      Signature: bytesToHex(canonicalizeDer(new Uint8Array(response.signature))),
     },
   };
 }

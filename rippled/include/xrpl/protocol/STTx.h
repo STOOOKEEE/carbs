@@ -144,7 +144,7 @@ public:
     checkSign(Rules const& rules) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkBatchSign() const;
+    checkBatchSign(bool strictP256Der) const;
 
     // SQL Functions with metadata.
     static std::string const&
@@ -198,16 +198,30 @@ private:
     checkSign(Rules const& rules, STObject const& sigObject, SignatureRole role) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkSingleSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const;
+    checkSingleSign(
+        STObject const& sigObject,
+        HashPrefix prefix,
+        bool challengeAsBytes,
+        bool strictP256Der) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkMultiSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const;
+    checkMultiSign(
+        STObject const& sigObject,
+        HashPrefix prefix,
+        bool challengeAsBytes,
+        bool strictP256Der) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkBatchSingleSign(STObject const& batchSigner, std::vector<uint256> const& txIds) const;
+    checkBatchSingleSign(
+        STObject const& batchSigner,
+        std::vector<uint256> const& txIds,
+        bool strictP256Der) const;
 
     [[nodiscard]] std::expected<void, std::string>
-    checkBatchMultiSign(STObject const& batchSigner, std::vector<uint256> const& txIds) const;
+    checkBatchMultiSign(
+        STObject const& batchSigner,
+        std::vector<uint256> const& txIds,
+        bool strictP256Der) const;
 
     void
     buildBatchTxns();

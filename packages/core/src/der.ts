@@ -1,8 +1,9 @@
 /**
  * ECDSA signature formats for P-256 (FIANSO-SPEC.md sections 6.14 and 8.3).
  *
- * WebCrypto returns `r ‖ s` (IEEE P1363). The node takes DER. The node does not enforce low-S for
- * P-256, so the client normalizes every signature to low-S and writes strict (minimal) DER: a
+ * WebCrypto returns `r ‖ s` (IEEE P1363). The node takes DER. Without the fixP256StrictDer
+ * amendment the node does not enforce low-S or strict DER for P-256 (with it, it refuses any other
+ * form), so the client normalizes every signature to low-S and writes strict (minimal) DER: a
  * signature then has one encoding, which keeps the transaction id stable.
  */
 

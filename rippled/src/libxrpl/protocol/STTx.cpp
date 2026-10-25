@@ -271,8 +271,9 @@ STTx::checkSign(Rules const& rules, STObject const& sigObject, SignatureRole rol
         bool const multiSigning = signingPubKey.empty();
         auto const prefix = signingPrefix(role, multiSigning, rules);
         bool const challengeAsBytes = rules.enabled(fixPasskeyChallenge);
-        return multiSigning ? checkMultiSign(sigObject, prefix, challengeAsBytes)
-                            : checkSingleSign(sigObject, prefix, challengeAsBytes);
+        bool const strictP256Der = rules.enabled(fixP256StrictDer);
+        return multiSigning ? checkMultiSign(sigObject, prefix, challengeAsBytes, strictP256Der)
+                            : checkSingleSign(sigObject, prefix, challengeAsBytes, strictP256Der);
     }
     catch (...)
     {
@@ -316,14 +317,14 @@ STTx::checkSign(Rules const& rules) const
     // of signature checking.
     if (isFieldPresent(sfBatchSigners))
     {
-        if (auto const ret = checkBatchSign(); !ret)
+        if (auto const ret = checkBatchSign(rules.enabled(fixP256StrictDer)); !ret)
             return ret;
     }
     return {};
 }
 
 std::expected<void, std::string>
-STTx::checkBatchSign() const
+STTx::checkBatchSign(bool strictP256Der) const
 {
     try
     {
@@ -357,8 +358,9 @@ STTx::checkBatchSign() const
         for (auto const& signer : signers)
         {
             Blob const& signingPubKey = signer.getFieldVL(sfSigningPubKey);
-            auto const result = signingPubKey.empty() ? checkBatchMultiSign(signer, txIds)
-                                                      : checkBatchSingleSign(signer, txIds);
+            auto const result = signingPubKey.empty()
+                ? checkBatchMultiSign(signer, txIds, strictP256Der)
+                : checkBatchSingleSign(signer, txIds, strictP256Der);
 
             if (!result)
                 return result;
@@ -468,7 +470,8 @@ verifyPasskeySignature(
     Slice const& publicKey,
     STObject const& passkeySig,
     Slice const& expectedSigningData,
-    bool challengeAsBytes) noexcept
+    bool challengeAsBytes,
+    bool strictP256Der) noexcept
 {
     try
     {
@@ -521,7 +524,8 @@ verifyPasskeySignature(
             clientDataHash.data() + clientDataHash.size());
 
         Blob const signature = passkeySig.getFieldVL(sfSignature);
-        return verify(PublicKey(publicKey), makeSlice(signingData), makeSlice(signature));
+        return verify(
+            PublicKey(publicKey), makeSlice(signingData), makeSlice(signature), strictP256Der);
     }
     catch (std::exception const&)
     {
@@ -534,7 +538,11 @@ verifyPasskeySignature(
     signatures (sfPasskeySignature with WebAuthn challenge validation).
 */
 static bool
-verifySigObject(STObject const& sigObject, Slice const& data, bool challengeAsBytes) noexcept
+verifySigObject(
+    STObject const& sigObject,
+    Slice const& data,
+    bool challengeAsBytes,
+    bool strictP256Der) noexcept
 {
     try
     {
@@ -543,15 +551,28 @@ verifySigObject(STObject const& sigObject, Slice const& data, bool challengeAsBy
         if (!keyType)
             return false;
 
+        // A PasskeySignature next to a key that is not P-256 is not checked,
+        // so before fixP256StrictDer anyone could add one to a signed
+        // transaction and give it a new ID.
+        if (strictP256Der && *keyType != KeyType::P256 &&
+            sigObject.isFieldPresent(sfPasskeySignature))
+            return false;
+
         if (*keyType == KeyType::P256 && sigObject.isFieldPresent(sfPasskeySignature))
         {
+            // The PasskeySignature alone is checked; with fixP256StrictDer a
+            // TxnSignature next to it, which would only change the ID, is
+            // refused.
+            if (strictP256Der && sigObject.isFieldPresent(sfTxnSignature))
+                return false;
             auto const& passkeySig =
                 static_cast<STObject const&>(sigObject.peekAtField(sfPasskeySignature));
-            return verifyPasskeySignature(makeSlice(spk), passkeySig, data, challengeAsBytes);
+            return verifyPasskeySignature(
+                makeSlice(spk), passkeySig, data, challengeAsBytes, strictP256Der);
         }
 
         Blob const signature = sigObject.getFieldVL(sfTxnSignature);
-        return verify(PublicKey(makeSlice(spk)), data, makeSlice(signature));
+        return verify(PublicKey(makeSlice(spk)), data, makeSlice(signature), strictP256Der);
     }
     catch (std::exception const&)
     {
@@ -560,7 +581,11 @@ verifySigObject(STObject const& sigObject, Slice const& data, bool challengeAsBy
 }
 
 static std::expected<void, std::string>
-singleSignHelper(STObject const& sigObject, Slice const& data, bool challengeAsBytes)
+singleSignHelper(
+    STObject const& sigObject,
+    Slice const& data,
+    bool challengeAsBytes,
+    bool strictP256Der)
 {
     // We don't allow both a non-empty sfSigningPubKey and an sfSigners.
     // That would allow the transaction to be signed two ways.  So if both
@@ -568,28 +593,35 @@ singleSignHelper(STObject const& sigObject, Slice const& data, bool challengeAsB
     if (sigObject.isFieldPresent(sfSigners))
         return std::unexpected("Cannot both single- and multi-sign.");
 
-    if (!verifySigObject(sigObject, data, challengeAsBytes))
+    if (!verifySigObject(sigObject, data, challengeAsBytes, strictP256Der))
         return std::unexpected("Invalid signature.");
 
     return {};
 }
 
 std::expected<void, std::string>
-STTx::checkSingleSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const
+STTx::checkSingleSign(
+    STObject const& sigObject,
+    HashPrefix prefix,
+    bool challengeAsBytes,
+    bool strictP256Der) const
 {
     auto const data = getSigningData(*this, prefix);
-    return singleSignHelper(sigObject, makeSlice(data), challengeAsBytes);
+    return singleSignHelper(sigObject, makeSlice(data), challengeAsBytes, strictP256Der);
 }
 
 std::expected<void, std::string>
-STTx::checkBatchSingleSign(STObject const& batchSigner, std::vector<uint256> const& txIds) const
+STTx::checkBatchSingleSign(
+    STObject const& batchSigner,
+    std::vector<uint256> const& txIds,
+    bool strictP256Der) const
 {
     XRPL_ASSERT(getTxnType() == ttBATCH, "STTx::checkBatchSingleSign : batch transaction");
     Serializer msg;
     serializeBatch(msg, getAccountID(sfAccount), getSeqProxy().value(), getFlags(), txIds);
     finishMultiSigningData(batchSigner.getAccountID(sfAccount), msg);
     // A BatchSigner has no sfPasskeySignature, so no challenge is compared.
-    return singleSignHelper(batchSigner, msg.slice(), false);
+    return singleSignHelper(batchSigner, msg.slice(), false, strictP256Der);
 }
 
 std::expected<void, std::string>
@@ -597,7 +629,8 @@ multiSignHelper(
     STObject const& sigObject,
     std::optional<AccountID> txnAccountID,
     std::function<Serializer(AccountID const&)> makeMsg,
-    bool challengeAsBytes)
+    bool challengeAsBytes,
+    bool strictP256Der)
 {
     // Make sure the MultiSigners are present.  Otherwise they are not
     // attempting multi-signing and we just have a bad SigningPubKey.
@@ -608,6 +641,10 @@ multiSignHelper(
     // being present would indicate that the transaction is signed both ways.
     if (sigObject.isFieldPresent(sfTxnSignature))
         return std::unexpected("Cannot both single- and multi-sign.");
+
+    // Nor a PasskeySignature, which nothing here checks (fixP256StrictDer).
+    if (strictP256Der && sigObject.isFieldPresent(sfPasskeySignature))
+        return std::unexpected("Cannot both multi-sign and sign with a passkey.");
 
     STArray const& signers{sigObject.getFieldArray(sfSigners)};
 
@@ -645,7 +682,8 @@ multiSignHelper(
         try
         {
             auto const msgSerializer = makeMsg(accountID);
-            validSig = verifySigObject(signer, msgSerializer.slice(), challengeAsBytes);
+            validSig =
+                verifySigObject(signer, msgSerializer.slice(), challengeAsBytes, strictP256Der);
         }
         catch (std::exception const& e)
         {
@@ -665,7 +703,10 @@ multiSignHelper(
 }
 
 std::expected<void, std::string>
-STTx::checkBatchMultiSign(STObject const& batchSigner, std::vector<uint256> const& txIds) const
+STTx::checkBatchMultiSign(
+    STObject const& batchSigner,
+    std::vector<uint256> const& txIds,
+    bool strictP256Der) const
 {
     XRPL_ASSERT(getTxnType() == ttBATCH, "STTx::checkBatchMultiSign : batch transaction");
     // We can ease the computational load inside the loop a bit by
@@ -684,11 +725,16 @@ STTx::checkBatchMultiSign(STObject const& batchSigner, std::vector<uint256> cons
             finishMultiSigningData(accountID, s);
             return s;
         },
-        false);
+        false,
+        strictP256Der);
 }
 
 std::expected<void, std::string>
-STTx::checkMultiSign(STObject const& sigObject, HashPrefix prefix, bool challengeAsBytes) const
+STTx::checkMultiSign(
+    STObject const& sigObject,
+    HashPrefix prefix,
+    bool challengeAsBytes,
+    bool strictP256Der) const
 {
     // Used inside the loop in multiSignHelper to enforce that
     // the account owner may not multisign for themselves.
@@ -709,7 +755,8 @@ STTx::checkMultiSign(STObject const& sigObject, HashPrefix prefix, bool challeng
             finishMultiSigningData(accountID, s);
             return s;
         },
-        challengeAsBytes);
+        challengeAsBytes,
+        strictP256Der);
 }
 
 void

@@ -14,6 +14,8 @@
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/Rules.h>
 #include <xrpl/protocol/SField.h>
+#include <xrpl/protocol/STArray.h>
+#include <xrpl/protocol/STBlob.h>
 #include <xrpl/protocol/STObject.h>
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TER.h>
@@ -61,9 +63,10 @@ constexpr HashRouterFlags kSfSiggoodOldPrefix = HashRouterFlags::PRIVATE8;
 
 // A verdict forced by forceValidity, which verified nothing. Before
 // fixPasskeyChallenge, checkValidity keeps no verdict on a WebAuthn passkey
-// signature (see isSignatureVerdictCacheable), but a forced verdict has to
-// hold in every era, so it is recorded here too. Remove this flag when
-// PasskeyChallenge is retired in features.macro.
+// signature, nor before fixP256StrictDer on a P-256 signature (see
+// isSignatureVerdictCacheable), but a forced verdict has to hold in every
+// era, so it is recorded here too. Remove this flag when PasskeyChallenge
+// and P256StrictDer are both retired in features.macro.
 constexpr HashRouterFlags kSfSigforced = HashRouterFlags::PRIVATE9;
 
 //------------------------------------------------------------------------------
@@ -192,9 +195,53 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity)
         router.setFlags(txid, flags);
 }
 
+namespace {
+
+// Whether any signing key in `object`, at any depth, is a P-256 key: the
+// transaction's own SigningPubKey, a signer's, a role signature's or a
+// BatchSigner's. Keys are covered by the transaction ID, so the answer is
+// fixed for an ID.
+bool
+hasP256Key(STObject const& object)
+{
+    for (auto const& field : object)
+    {
+        if (field.getFName() == sfSigningPubKey)
+        {
+            if (auto const& vl = static_cast<STBlob const&>(field);
+                publicKeyType(Slice(vl.data(), vl.size())) == KeyType::P256)
+                return true;
+        }
+        else if (field.getSType() == STI_OBJECT)
+        {
+            if (hasP256Key(static_cast<STObject const&>(field)))
+                return true;
+        }
+        else if (field.getSType() == STI_ARRAY)
+        {
+            for (auto const& inner : static_cast<STArray const&>(field))
+            {
+                if (hasP256Key(inner))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
 bool
 isSignatureVerdictCacheable(STTx const& tx, Rules const& rules)
 {
+    // fixP256StrictDer refuses P-256 signatures that verified before it (not
+    // strict DER, or a high S), wherever a P-256 key signs, and a
+    // PasskeySignature that no P-256 key uses. Until it is enabled, no
+    // verdict on such a transaction is kept, so none crosses the activation.
+    if (!rules.enabled(fixP256StrictDer) &&
+        (hasP256Key(tx) || tx.isFieldPresent(sfPasskeySignature)))
+        return false;
+
     // Only the WebAuthn branch of signature verification changes with
     // fixPasskeyChallenge: a P-256 SigningPubKey with sfPasskeySignature (see
     // verifySigObject in STTx.cpp). Both are fixed for a transaction ID:

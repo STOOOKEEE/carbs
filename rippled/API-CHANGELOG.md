@@ -42,6 +42,7 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 
 ### Bugfixes
 
+- `submit`: With `fixP256StrictDer` enabled, a P-256 signature (a single signature, a WebAuthn `PasskeySignature`, or a multi-signer's or BatchSigner's) must be strict DER (the sequence length equal to the signature's, minimal integers, nothing after S) with a low S (S at most n/2); any other form is refused with `invalidTransaction` ("fails local checks: Invalid signature."). Before the amendment is enabled, a transaction that holds a P-256 signature is verified on each submission and its verdict is not cached. P-256 signatures made by the server are now always low S. With the same amendment, a `PasskeySignature` is refused next to a `SigningPubKey` that is not P-256 or next to `Signers`, and a `TxnSignature` is refused next to a `PasskeySignature` (each was ignored, so anyone could add one and change the transaction's hash).
 - `submit`: With `fixPasskeyChallenge` enabled, a transaction signed through WebAuthn (`PasskeySignature`) is no longer refused with `invalidTransaction` ("fails local checks: Invalid signature.") on a server where `char` is signed: the WebAuthn challenge is now compared with the signing data byte for byte. Before the amendment is enabled, a refused WebAuthn transaction is answered "fails local checks: Invalid signature." each time it is submitted, instead of the cached "Transaction has bad signature."
 
 ## XRP Ledger server version 3.4.0
