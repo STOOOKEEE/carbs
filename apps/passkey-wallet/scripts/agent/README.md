@@ -76,7 +76,7 @@ Node ≥ 22.18, from `apps/passkey-wallet` unless stated (`pnpm agent` runs
 1. **Stax policy.** XRP app open on the Stax, _Settings > Session policy_: **on**, _Max spend_
    **50 XRP**, _Max per payment_ **5 XRP**, _Max duration_ **3 min**.
 2. **Stax account.** In Chrome or Edge (WebHID), on `http://localhost:18080`, section
-   **Ledger Stax**: _Connecter la Stax_, then _Financer le compte Stax (faucet)_. Optional, for
+   **Ledger Stax**: _Connect the Stax_, then _Fund the Stax account (faucet)_. Optional, for
    the post-quantum line: migrate the account to its ML-DSA-44 root from the web app (Quantum
    screen); the demo page then says _signs with its ML-DSA-44 root_ and every approval is an
    ML-DSA-44 signature.
@@ -101,8 +101,8 @@ The model's own choices are not scripted: it may ignore the injection or escalat
 amber card to the attacker: click _Refuse_). The ledger codes do not depend on it, and the
 simulation shows the injection refusal in every run. If the session already expired before
 the simulation (slow model), the code there is `tefSESSION_EXPIRED` instead. `Refuse` on the
-dataset card shows the other branch: the agent goes on without it. The wallet page's **Agent
-IA** section does the same in French (and _Couper l'agent_ revokes the session from the Stax).
+dataset card shows the other branch: the agent goes on without it. The wallet page's **AI
+agent** section does the same (and _Cut off the agent_ revokes the session from the Stax).
 
 Set `AGENT_FIRST_CAP_XRP` to the cap itself (`20`) to skip the oversized first request. Add
 `--classical-session-key` to terminal 5 to replay the run with a secp256k1 session key.

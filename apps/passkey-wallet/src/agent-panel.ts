@@ -31,10 +31,10 @@ const SECONDS_PER_MINUTE = 60;
 const HASH_PREFIX_LENGTH = 12;
 
 const STATUS_LABELS: Record<AgentRequestStatus, string> = {
-  pending: "en attente",
-  approved: "approuvée",
-  rejected: "refusée",
-  failed: "échouée",
+  pending: "pending",
+  approved: "approved",
+  rejected: "refused",
+  failed: "failed",
 };
 
 const ui = {
@@ -59,7 +59,7 @@ const busy = new Set<string>();
 let inFlight: Promise<void> | undefined;
 
 function logDecision(decision: AgentDecision): void {
-  log(`Décision transmise à l'agent : demande ${STATUS_LABELS[decision.status]}.`);
+  log(`Decision sent to the agent: request ${STATUS_LABELS[decision.status]}.`);
 }
 
 function describeDuration(seconds: number): string {
@@ -71,17 +71,17 @@ function describeDuration(seconds: number): string {
 
 function describeSessionRequest(request: SessionRequest): string {
   return (
-    `Budget demandé par l'agent ${agentIdOf(request.sessionKey)} : plafond ${request.capXrp} XRP, ` +
-    `max ${request.maxPerTxXrp} XRP par paiement, durée ${describeDuration(request.durationSeconds)}, ` +
-    `but : « ${request.purpose} », clé de l'agent ${request.sessionKey}.`
+    `Budget requested by agent ${agentIdOf(request.sessionKey)}: cap ${request.capXrp} XRP, ` +
+    `max ${request.maxPerTxXrp} XRP per payment, duration ${describeDuration(request.durationSeconds)}, ` +
+    `purpose: "${request.purpose}", agent key ${request.sessionKey}.`
   );
 }
 
 function describePaymentIntent(request: PaymentIntent): string {
   const tag = request.destinationTag === undefined ? "" : ` (tag ${request.destinationTag})`;
   return (
-    `L'agent demande ${request.amountXrp} XRP pour « ${request.reason} » vers ` +
-    `${request.destination}${tag} (au-dessus de sa limite).`
+    `The agent requests ${request.amountXrp} XRP for "${request.reason}" to ` +
+    `${request.destination}${tag} (above its limit).`
   );
 }
 
@@ -98,8 +98,8 @@ async function approve(connection: Connection, record: AgentRequestRecord): Prom
   const { request } = record;
   log(
     request.kind === "session"
-      ? `Session de l'agent : ouverture du budget sur la Stax${stax.postQuantum ? " (racine ML-DSA-44)" : ""}…`
-      : `Paiement escaladé par l'agent : ${request.amountXrp} XRP vers ${request.destination}, signez sur la Stax…`,
+      ? `Agent session: opening the budget on the Stax${stax.postQuantum ? " (ML-DSA-44 root)" : ""}…`
+      : `Payment escalated by the agent: ${request.amountXrp} XRP to ${request.destination}, sign on the Stax…`,
   );
   logDecision(
     await approveAgentRequest(record, {
@@ -110,7 +110,7 @@ async function approve(connection: Connection, record: AgentRequestRecord): Prom
 }
 
 async function reject(record: AgentRequestRecord): Promise<void> {
-  log(`Demande de l'agent refusée : ${describeRequest(record)}`);
+  log(`Agent request refused: ${describeRequest(record)}`);
   logDecision(await rejectAgentRequest(record));
 }
 
@@ -134,7 +134,7 @@ function decide(record: AgentRequestRecord, action: () => Promise<void>): () => 
 function renderPending(pending: readonly AgentRequestRecord[], canSign: boolean): void {
   ui.pending.innerHTML = "";
   if (pending.length === 0) {
-    ui.pending.textContent = "Aucune demande en attente.";
+    ui.pending.textContent = "No pending requests.";
     return;
   }
   for (const record of pending) {
@@ -146,7 +146,7 @@ function renderPending(pending: readonly AgentRequestRecord[], canSign: boolean)
     const approveButton = document.createElement("button");
     approveButton.type = "button";
     approveButton.textContent =
-      record.request.kind === "session" ? "Approuver sur la Stax" : "Signer sur la Stax";
+      record.request.kind === "session" ? "Approve on the Stax" : "Sign on the Stax";
     approveButton.disabled = !canSign || busy.has(record.id);
     approveButton.addEventListener(
       "click",
@@ -159,7 +159,7 @@ function renderPending(pending: readonly AgentRequestRecord[], canSign: boolean)
     const rejectButton = document.createElement("button");
     rejectButton.type = "button";
     rejectButton.className = "secondary";
-    rejectButton.textContent = "Refuser";
+    rejectButton.textContent = "Refuse";
     rejectButton.disabled = busy.has(record.id);
     rejectButton.addEventListener(
       "click",
@@ -176,7 +176,7 @@ function renderHistory(decided: readonly AgentRequestRecord[]): void {
   for (const record of decided) {
     const item = document.createElement("li");
     item.className = record.status === "approved" ? "ok" : "error";
-    const time = new Date(record.createdAt).toLocaleTimeString("fr-FR");
+    const time = new Date(record.createdAt).toLocaleTimeString("en-US");
     item.append(`${time} · ${STATUS_LABELS[record.status]} · ${describeRequest(record)}`);
     if (record.txHash !== undefined) {
       item.append(
@@ -198,36 +198,36 @@ async function renderSession(connection: Connection | undefined): Promise<void> 
   const session = lastApprovedSession(records);
   const stax = staxAccount();
   if (session === undefined) {
-    ui.session.textContent = "Aucune session d'agent approuvée.";
+    ui.session.textContent = "No approved agent session.";
     ui.revoke.disabled = true;
     return;
   }
   if (connection === undefined) {
-    ui.session.textContent = "Nœud non connecté.";
+    ui.session.textContent = "Node not connected.";
     ui.revoke.disabled = true;
     return;
   }
   const state = await readAgentSession(connection, session);
   ui.revoke.disabled = state === undefined || stax?.address !== session.owner;
   if (state === undefined) {
-    ui.session.textContent = `Session de l'agent ${session.sessionKey} : fermée (plus d'entrée sur le ledger).`;
+    ui.session.textContent = `Agent session ${session.sessionKey}: closed (no entry left on the ledger).`;
     return;
   }
   const remaining = state.expiration === undefined ? undefined : secondsUntil(state.expiration);
   const time =
-    remaining === undefined ? "" : remaining > 0 ? ` · expire dans ${remaining} s` : " · expirée";
+    remaining === undefined ? "" : remaining > 0 ? ` · expires in ${remaining} s` : " · expired";
   ui.session.textContent =
-    `Session de l'agent ${agentIdOf(session.sessionKey)} (${session.sessionKey}, compte ${session.owner}) : ` +
-    `dépensé ${state.spentXrp} / ${state.capXrp ?? "?"} XRP` +
-    ` · max ${state.maxPerTxXrp ?? "?"} XRP par paiement${time}`;
+    `Agent session ${agentIdOf(session.sessionKey)} (${session.sessionKey}, account ${session.owner}): ` +
+    `spent ${state.spentXrp} / ${state.capXrp ?? "?"} XRP` +
+    ` · max ${state.maxPerTxXrp ?? "?"} XRP per payment${time}`;
 }
 
 async function render(connection: Connection | undefined): Promise<void> {
   try {
     records = await fetchAgentRecords();
-    ui.status.textContent = `Serveur du wallet joint · ${records.length} demande(s) de l'agent.`;
+    ui.status.textContent = `Wallet server reached · ${records.length} agent request(s).`;
   } catch (error) {
-    ui.status.textContent = `Serveur du wallet injoignable : ${agentErrorText(error)}`;
+    ui.status.textContent = `Wallet server unreachable: ${agentErrorText(error)}`;
     return;
   }
   const staxConnected = staxAccount() !== undefined;
@@ -264,13 +264,15 @@ export function setupAgentPanel(
         if (connection === undefined || session === undefined) return;
         if (stax?.address !== session.owner)
           throw new Error("connect the Stax of the account that opened the agent session");
-        log(`Couper l'agent : SigningSessionDelete de ${session.sessionKey}, validez sur la Stax…`);
+        log(
+          `Cutting off the agent: SigningSessionDelete of ${session.sessionKey}, approve on the Stax…`,
+        );
         const closed = await signAndSubmitWithStax(
           connection,
           closeSessionTx(session.owner, session.sessionKey),
           stax.postQuantum,
         );
-        log("Session de l'agent révoquée par la Stax :", closed);
+        log("Agent session revoked by the Stax:", closed);
       },
       logError,
       refreshAll,

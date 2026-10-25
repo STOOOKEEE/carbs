@@ -48,7 +48,7 @@ const PERMISSIONS: ReadonlyArray<{ name: string; value: number }> = [
 
 const OPENER_LABELS = {
   passkey: "Touch ID",
-  staxClassic: "Stax classique",
+  staxClassic: "classical Stax",
   staxPostQuantum: "Stax ML-DSA",
 } as const;
 type OpenerLabel = (typeof OPENER_LABELS)[keyof typeof OPENER_LABELS];
@@ -184,11 +184,11 @@ async function submitWithSessionKey(
   return submitAndWait(connection.node, connection.defs, final);
 }
 
-/** The account that opens or revokes sessions, as chosen in "Ouvrir avec", and how it signs. */
+/** The account that opens or revokes sessions, as chosen in "Open with", and how it signs. */
 interface OwnerSigner {
   owner: string;
   openedBy: OpenerLabel;
-  /** What the user must do to validate, for the journal. */
+  /** What the user must do to approve, for the log. */
   prompt: string;
   signAndSubmit: (tx: TxJson) => Promise<SubmittedTx>;
 }
@@ -199,7 +199,7 @@ function ownerSigner(connection: Connection, wallet: StoredWallet | undefined): 
     return {
       owner: wallet.address,
       openedBy: OPENER_LABELS.passkey,
-      prompt: "validez avec Touch ID",
+      prompt: "approve with Touch ID",
       signAndSubmit: (tx) => signAndSubmitWithPasskey(connection, wallet, tx),
     };
   }
@@ -208,7 +208,7 @@ function ownerSigner(connection: Connection, wallet: StoredWallet | undefined): 
   return {
     owner: stax.address,
     openedBy: stax.postQuantum ? OPENER_LABELS.staxPostQuantum : OPENER_LABELS.staxClassic,
-    prompt: "relisez sur la Stax",
+    prompt: "review on the Stax",
     signAndSubmit: (tx) => signAndSubmitWithStax(connection, tx, stax.postQuantum),
   };
 }
@@ -234,7 +234,7 @@ async function panelRules(): Promise<{ rules: SessionRules; witnessSeed: string 
   const witnessSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
   const witnessAddress = addressOfSeed(witnessSeed);
   await requestFunding(witnessAddress);
-  log(`Témoin créé et financé par le faucet : ${witnessAddress}`);
+  log(`Witness created and funded by the faucet: ${witnessAddress}`);
   rules.witness = witnessAddress;
   return { rules, witnessSeed };
 }
@@ -245,7 +245,7 @@ async function logBatch(
   label: string,
   submitted: SubmittedTx,
 ): Promise<Array<string | undefined>> {
-  log(`${label} (Batch externe) :`, submitted);
+  log(`${label} (outer Batch):`, submitted);
   if (submitted.result !== "tesSUCCESS") return [];
   const inner = await batchInnerResults(connection.node, submitted.hash);
   logInnerResults(inner);
@@ -269,19 +269,19 @@ async function openSession(
 
   let opened: boolean;
   if (firstPayment === undefined) {
-    log(`Ouverture d'une session pour ${keyAddress} : ${signer.prompt}…`);
+    log(`Opening a session for ${keyAddress}: ${signer.prompt}…`);
     const submitted = await signer.signAndSubmit(tx);
-    log("SigningSessionSet :", submitted);
+    log("SigningSessionSet:", submitted);
     opened = submitted.result === "tesSUCCESS";
   } else {
     const payment = paymentTx(signer.owner, firstPayment.destination, firstPayment.amountXrp);
     log(
-      `Ouverture d'une session pour ${keyAddress} et paiement de ${firstPayment.amountXrp} XRP en un seul Batch (tout ou rien) : ${signer.prompt}…`,
+      `Opening a session for ${keyAddress} and paying ${firstPayment.amountXrp} XRP in a single Batch (all or nothing): ${signer.prompt}…`,
     );
     const submitted = await signer.signAndSubmit(
       batchTx(signer.owner, [tx, payment], TF_ALL_OR_NOTHING),
     );
-    const [openResult] = await logBatch(connection, "Ouvrir et payer", submitted);
+    const [openResult] = await logBatch(connection, "Open and pay", submitted);
     opened = openResult === "tesSUCCESS";
   }
   if (!opened) return;
@@ -330,12 +330,12 @@ async function revokeAllSessions(
   const signer = ownerSigner(connection, wallet);
   const keys = await sessionKeysOf(connection, signer.owner);
   if (keys.length === 0) {
-    log(`Aucune session à révoquer pour ${signer.owner}.`);
+    log(`No session to revoke for ${signer.owner}.`);
     return;
   }
   const groups = batchGroups(keys);
   log(
-    `Révocation de ${keys.length} session(s) de ${signer.owner} en ${groups.length} validation(s) : ${signer.prompt}…`,
+    `Revoking ${keys.length} session(s) of ${signer.owner} in ${groups.length} approval(s): ${signer.prompt}…`,
   );
   for (const group of groups) {
     // The owner deletes its own sessions: Account is the owner, no Owner field.
@@ -344,11 +344,11 @@ async function revokeAllSessions(
     let results: Array<string | undefined>;
     if (deletes.length === 1 && single !== undefined) {
       const submitted = await signer.signAndSubmit(single);
-      log("SigningSessionDelete par le propriétaire :", submitted);
+      log("SigningSessionDelete by the owner:", submitted);
       results = [submitted.result];
     } else {
       const submitted = await signer.signAndSubmit(batchTx(signer.owner, deletes, TF_INDEPENDENT));
-      results = await logBatch(connection, "Révoquer toutes les sessions", submitted);
+      results = await logBatch(connection, "Revoke all sessions", submitted);
     }
     const session = active;
     if (session !== undefined && session.owner === signer.owner) {
@@ -379,13 +379,13 @@ export async function refreshSessionPanel(connection: Connection | undefined): P
   ui.attackAfterClose.disabled = connection === undefined || active?.closed !== true;
 
   if (active === undefined || connection === undefined) {
-    ui.info.textContent = "Aucune session ouverte.";
+    ui.info.textContent = "No open session.";
     return;
   }
   const entry = await sessionEntry(connection, active);
-  const header = `Clé de session ${active.keyAddress} pour ${active.owner}, ouverte par ${active.openedBy}`;
+  const header = `Session key ${active.keyAddress} for ${active.owner}, opened by ${active.openedBy}`;
   if (entry === undefined) {
-    ui.info.textContent = `${header} · ${active.closed ? "fermée" : "absente du ledger"}`;
+    ui.info.textContent = `${header} · ${active.closed ? "closed" : "not on the ledger"}`;
     return;
   }
   ui.info.textContent = [header, ...describeEntry(read(entry, ["node"]))].join(" · ");
@@ -413,21 +413,21 @@ function describeEntry(node: unknown): string[] {
 
   const parts: string[] = [];
   if (typeof flags === "number" && (flags & TF_ALL_TRANSACTIONS) !== 0) {
-    parts.push("mode A : toutes les transactions délégables");
+    parts.push("mode A: all delegable transactions");
   } else if (Array.isArray(permissions)) {
     const names = permissions.map((permission) =>
       permissionLabel(read(permission, ["Permission", "PermissionValue"])),
     );
-    parts.push(`mode P : ${names.join(", ")}`);
+    parts.push(`mode P: ${names.join(", ")}`);
   } else if (cap !== undefined) {
-    parts.push(`mode C : dépensé ${xrp(read(node, ["SessionSpent"]))} / ${xrp(cap)} XRP`);
-    if (maxPerTx !== undefined) parts.push(`max ${xrp(maxPerTx)} XRP par paiement`);
+    parts.push(`mode C: spent ${xrp(read(node, ["SessionSpent"]))} / ${xrp(cap)} XRP`);
+    if (maxPerTx !== undefined) parts.push(`max ${xrp(maxPerTx)} XRP per payment`);
   }
-  if (typeof witness === "string") parts.push(`témoin ${witness}`);
+  if (typeof witness === "string") parts.push(`witness ${witness}`);
   if (typeof expiration === "number") {
     const nowRipple = Math.floor(Date.now() / 1000) - kRippleEpochOffset;
     const remaining = expiration - nowRipple;
-    parts.push(remaining > 0 ? `expire dans ${remaining} s` : "expirée");
+    parts.push(remaining > 0 ? `expires in ${remaining} s` : "expired");
   }
   return parts;
 }
@@ -483,7 +483,7 @@ export function setupSessionPanel(
       const amount = positiveNumber(ui.payAmount, "the amount");
       const tx = paymentTx(session.owner, destination(), amount);
       log(
-        `Paiement de ${amount} XRP par la clé de session (aucune validation demandée)…`,
+        `Payment of ${amount} XRP by the session key (no approval requested)…`,
         await submitWithSessionKey(connection, session, tx),
       );
     }),
@@ -498,7 +498,7 @@ export function setupSessionPanel(
         RegularKey: session.keyAddress,
       };
       log(
-        "Attaque : la clé de session volée tente de devenir la RegularKey du compte :",
+        "Attack: the stolen session key tries to become the account's RegularKey:",
         await submitWithSessionKey(connection, session, tx),
       );
     }),
@@ -513,7 +513,7 @@ export function setupSessionPanel(
         SetFlag: ASF_DEFAULT_RIPPLE,
       };
       log(
-        "Attaque : la clé de session volée tente de modifier les réglages du compte (AccountSet) :",
+        "Attack: the stolen session key tries to change the account settings (AccountSet):",
         await submitWithSessionKey(connection, session, tx),
       );
     }),
@@ -525,7 +525,7 @@ export function setupSessionPanel(
       const amount = (maxPerTxXrp(session.rules) ?? 0) + 1;
       const tx = paymentTx(session.owner, destination(), amount);
       log(
-        `Attaque : paiement de ${amount} XRP, au-dessus du plafond par paiement :`,
+        `Attack: payment of ${amount} XRP, above the per-payment cap:`,
         await submitWithSessionKey(connection, session, tx),
       );
     }),
@@ -536,7 +536,7 @@ export function setupSessionPanel(
     withSession(async (connection, session) => {
       const tx = paymentTx(session.owner, destination(), 1);
       log(
-        "Attaque : paiement sans la co-signature du témoin :",
+        "Attack: payment without the witness co-signature:",
         await submitWithSessionKey(connection, session, tx, false),
       );
     }),
@@ -552,7 +552,7 @@ export function setupSessionPanel(
         TF_ALL_OR_NOTHING,
       );
       log(
-        "Attaque : la clé de session tente de signer un Batch du compte (attendu tefSESSION_TX_NOT_ALLOWED) :",
+        "Attack: the session key tries to sign a Batch for the account (expected tefSESSION_TX_NOT_ALLOWED):",
         await submitWithSessionKey(connection, session, batch),
       );
     }),
@@ -567,7 +567,7 @@ export function setupSessionPanel(
         closeSessionTx(session.owner, session.keyAddress),
         false,
       );
-      log("La clé de session ferme sa propre session :", submitted);
+      log("The session key closes its own session:", submitted);
       if (submitted.result === "tesSUCCESS") session.closed = true;
     }),
   );
@@ -577,7 +577,7 @@ export function setupSessionPanel(
     withSession(async (connection, session) => {
       const tx = paymentTx(session.owner, destination(), 1);
       log(
-        "Attaque : paiement avec la clé après la fermeture :",
+        "Attack: payment with the key after closing:",
         await submitWithSessionKey(connection, session, tx),
       );
     }),

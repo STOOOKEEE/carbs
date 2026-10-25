@@ -77,25 +77,25 @@ function timeout(ms: number): Promise<never> {
  * its user activation); the stale connection is closed afterwards, its error only logged.
  */
 function reconnect(stale: Stax | undefined): Promise<Reread> {
-  log("Reconnexion à la Stax (choisissez-la dans la fenêtre du navigateur si elle s'ouvre)…");
+  log("Reconnecting to the Stax (pick it in the browser window if it opens)…");
   const connecting = connectStax();
   if (stale !== undefined)
     stale.device
       .close()
       .catch((error: unknown) =>
-        log(`Ancienne connexion à la Stax non fermée (${describeLedgerError(error)}).`),
+        log(`Old Stax connection not closed (${describeLedgerError(error)}).`),
       );
   return connecting.then(
     (next) => {
       stax = next;
       reconnectNeedsClick = false;
-      log(`Stax reconnectée : ${next.account.address}.`);
+      log(`Stax reconnected: ${next.account.address}.`);
       return { account: next.account.address, pqKey: next.pqKey };
     },
     (error: unknown) => {
       reconnectNeedsClick = true;
       throw new Error(
-        `reconnexion à la Stax impossible (${describeLedgerError(error)}) : cliquez à nouveau sur « Relire la clé », la fenêtre du navigateur proposera la Stax`,
+        `cannot reconnect to the Stax (${describeLedgerError(error)}): click "Read the ML-DSA key on the Stax again" once more, the browser window will offer the Stax`,
       );
     },
   );
@@ -105,7 +105,7 @@ async function readOnExistingConnection(current: Stax): Promise<Reread> {
   const publicKey = bytesToHex(
     await Promise.race([getMlDsaPublicKey(current.device), timeout(EXISTING_READ_TIMEOUT_MS)]),
   );
-  log("Clé ML-DSA-44 relue sur la connexion existante.");
+  log("ML-DSA-44 key read again on the existing connection.");
   return {
     account: current.account.address,
     pqKey: { address: deriveAddress(publicKey), publicKey },
@@ -122,7 +122,7 @@ export function rereadMlDsaKey(): Promise<Reread> {
   if (current === undefined || reconnectNeedsClick) return reconnect(current);
   return readOnExistingConnection(current).catch((error: unknown) => {
     log(
-      `Lecture sur la connexion existante impossible (${describeLedgerError(error)}) : l'app a sans doute été réinstallée.`,
+      `Cannot read on the existing connection (${describeLedgerError(error)}): the app was probably reinstalled.`,
     );
     return reconnect(current);
   });
@@ -135,10 +135,10 @@ export async function signAndSubmitWithStax(
   withPq: boolean,
 ): Promise<SubmittedTx> {
   if (stax === undefined) throw new Error("connect the Ledger first");
-  log(`${String(tx["TransactionType"])} : relisez et validez sur la Stax…`);
+  log(`${String(tx["TransactionType"])}: review and approve on the Stax…`);
   const submitted = await submitSignedByStax(connection, stax, tx, withPq);
   log(
-    `${String(tx["TransactionType"])} signé ${withPq ? "en ML-DSA-44" : "avec la clé classique"} sur la Stax :`,
+    `${String(tx["TransactionType"])} signed ${withPq ? "with ML-DSA-44" : "with the classical key"} on the Stax:`,
     submitted,
   );
   return submitted;
@@ -162,19 +162,19 @@ export async function refreshLedgerPanel(connection: Connection | undefined): Pr
   ui.tryClassic.hidden = !migrated;
 
   if (stax === undefined) {
-    ui.info.textContent = "Stax non connectée (Chrome ou Edge, app XRP ouverte).";
+    ui.info.textContent = "Stax not connected (Chrome or Edge, XRP app open).";
     return;
   }
   ui.info.innerHTML = "";
   ui.info.append(
-    "Compte : ",
+    "Account: ",
     explorerLink(`accounts/${stax.account.address}`, stax.account.address),
-    state === undefined ? " · pas encore financé" : ` · ${state.balance}`,
+    state === undefined ? " · not funded yet" : ` · ${state.balance}`,
     document.createElement("br"),
-    `Clé ML-DSA-44 de la Stax : ${stax.pqKey.address}`,
+    `Stax ML-DSA-44 key: ${stax.pqKey.address}`,
     migrated
-      ? " · racine post-quantique active (clé maître désactivée)"
-      : " · pas encore migrée : voir « Migrer vers la racine ML-DSA-44 » ci-dessous",
+      ? " · post-quantum root active (master key disabled)"
+      : " · not migrated yet: see 'Migrate to the ML-DSA-44 root' below",
   );
 }
 
@@ -187,9 +187,9 @@ export function setupLedgerPanel(
   ui.connect.addEventListener(
     "click",
     run(async () => {
-      log("Connexion à la Stax (choisissez-la dans la fenêtre du navigateur)…");
+      log("Connecting to the Stax (pick it in the browser window)…");
       stax = await connectStax();
-      log(`Stax connectée : ${stax.account.address} (clé ML-DSA : ${stax.pqKey.address}).`);
+      log(`Stax connected: ${stax.account.address} (ML-DSA key: ${stax.pqKey.address}).`);
     }),
   );
 
@@ -198,7 +198,7 @@ export function setupLedgerPanel(
     run(async () => {
       if (stax === undefined) return;
       await requestFunding(stax.account.address);
-      log(`Compte Stax ${stax.account.address} financé par le faucet.`);
+      log(`Stax account ${stax.account.address} funded by the faucet.`);
     }),
   );
 
@@ -242,10 +242,8 @@ async function tryClassicKey(connection: Connection, current: Stax): Promise<voi
   const typed = ui.payDestination.value.trim();
   const destination = typed === "" ? current.pqKey.address : typed;
   if (!isValidClassicAddress(destination))
-    throw new Error("saisissez une destination valide (adresse r…) ci-dessus");
-  log(
-    `Paiement de ${CLASSIC_ATTEMPT_XRP} XRP avec l'ancienne clé classique : validez sur la Stax…`,
-  );
+    throw new Error("enter a valid destination (r… address) above");
+  log(`Payment of ${CLASSIC_ATTEMPT_XRP} XRP with the old classical key: approve on the Stax…`);
   const submitted = await submitSignedByStax(
     connection,
     current,
@@ -255,8 +253,8 @@ async function tryClassicKey(connection: Connection, current: Stax): Promise<voi
   const refused = submitted.result === MASTER_DISABLED;
   logOutcome(
     refused
-      ? "Ancienne clé classique refusée comme prévu : la clé maître est désactivée."
-      : `Attendu ${MASTER_DISABLED} pour l'ancienne clé classique, obtenu :`,
+      ? "Old classical key refused as expected: the master key is disabled."
+      : `Expected ${MASTER_DISABLED} for the old classical key, got:`,
     submitted,
     refused,
   );

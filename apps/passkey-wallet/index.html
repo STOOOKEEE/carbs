@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,147 +7,146 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
     />
-    <title>carbs · wallet passkey</title>
+    <title>carbs · passkey wallet</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main>
       <header>
-        <h1>carbs · wallet passkey</h1>
+        <h1>carbs · passkey wallet</h1>
         <p class="muted">
-          Proof of concept sur le nœud carbs (standalone) : les transactions sont signées par la
-          passkey de cet appareil (Touch ID), vérifiées nativement par le XRPL.
+          Proof of concept on the carbs node (standalone): transactions are signed by this device's
+          passkey (Touch ID) and verified natively by the XRPL.
         </p>
-        <p class="muted" id="node-status">Nœud : connexion…</p>
+        <p class="muted" id="node-status">Node: connecting…</p>
       </header>
 
       <section id="account-section">
-        <h2>1. Compte</h2>
-        <div id="account-info" class="muted">Aucun compte dans ce navigateur.</div>
+        <h2>1. Account</h2>
+        <div id="account-info" class="muted">No account in this browser.</div>
         <div class="actions">
-          <button id="open-account" type="button">Créer un compte (faucet)</button>
-          <button id="forget-account" type="button" class="secondary">Oublier ce compte</button>
+          <button id="open-account" type="button">Create an account (faucet)</button>
+          <button id="forget-account" type="button" class="secondary">Forget this account</button>
         </div>
       </section>
 
       <section id="passkey-section">
         <h2>2. Passkey</h2>
-        <div id="passkey-info" class="muted">Pas de passkey.</div>
+        <div id="passkey-info" class="muted">No passkey.</div>
         <div class="actions">
           <button id="register-passkey" type="button">
-            Créer la passkey et l'enregistrer (PasskeyListSet)
+            Create the passkey and register it (PasskeyListSet)
           </button>
           <button id="lock-account" type="button" class="secondary">
-            Passkey uniquement (désactiver la clé maître)
+            Passkey only (disable the master key)
           </button>
         </div>
       </section>
 
       <section id="pay-section">
-        <h2>3. Payer avec la passkey</h2>
+        <h2>3. Pay with the passkey</h2>
         <form id="pay-form">
           <label>Destination <input id="pay-destination" required placeholder="r…" /></label>
           <label
-            >Montant (XRP)
+            >Amount (XRP)
             <input id="pay-amount" required type="number" min="0.000001" step="any" value="1"
           /></label>
-          <button type="submit">Signer avec Touch ID et envoyer</button>
+          <button type="submit">Sign with Touch ID and send</button>
         </form>
       </section>
 
       <section id="pq-passkey-section">
-        <h2>Compte Touch ID post-quantique</h2>
+        <h2>Post-quantum Touch ID account</h2>
         <p class="muted">
-          La passkey n'est jamais enregistrée sur le ledger : après Touch ID, son extension PRF
-          libère un secret qui déchiffre une clé ML-DSA-44 gardée dans ce navigateur. Cette clé est
-          la seule autorité du compte (clé régulière, clé maître désactivée) et signe chaque
-          transaction dans la page.
+          The passkey is never registered on the ledger: after Touch ID, its PRF extension releases
+          a secret that decrypts an ML-DSA-44 key kept in this browser. That key is the account's
+          only authority (regular key, master key disabled) and signs every transaction in the page.
         </p>
-        <p id="pq-prf-status" class="muted">Extension PRF de WebAuthn : vérification…</p>
-        <div id="pq-account-info" class="muted">
-          Aucun compte post-quantique dans ce navigateur.
-        </div>
+        <p id="pq-prf-status" class="muted">WebAuthn PRF extension: checking…</p>
+        <div id="pq-account-info" class="muted">No post-quantum account in this browser.</div>
         <p id="pq-ledger-authority" class="muted"></p>
         <div class="actions">
-          <button id="pq-create" type="button">Créer le compte (Touch ID + clé ML-DSA-44)</button>
-          <button id="pq-forget" type="button" class="secondary">Oublier ce compte</button>
+          <button id="pq-create" type="button">
+            Create the account (Touch ID + ML-DSA-44 key)
+          </button>
+          <button id="pq-forget" type="button" class="secondary">Forget this account</button>
         </div>
         <form id="pq-pay-form">
           <label>Destination <input id="pq-pay-destination" required placeholder="r…" /></label>
           <label
-            >Montant (XRP)
+            >Amount (XRP)
             <input id="pq-pay-amount" required type="number" min="0.000001" step="any" value="1"
           /></label>
-          <button type="submit">Payer (Touch ID → ML-DSA-44)</button>
-          <button id="pq-session" type="button">Ouvrir une session (Touch ID → ML-DSA-44)</button>
+          <button type="submit">Pay (Touch ID → ML-DSA-44)</button>
+          <button id="pq-session" type="button">Open a session (Touch ID → ML-DSA-44)</button>
         </form>
         <p class="muted">
-          La session (mode C : 20 XRP au total, 5 XRP par paiement, 300 s, 50 transactions) est
-          ouverte par la clé ML-DSA-44 du compte ; sa clé de session ML-DSA-44 paie ensuite le
-          montant ci-dessus sans Touch ID.
+          The session (mode C: 20 XRP in total, 5 XRP per payment, 300 s, 50 transactions) is opened
+          by the account's ML-DSA-44 key; its ML-DSA-44 session key then pays the amount above
+          without Touch ID.
         </p>
       </section>
 
       <section id="pq-stax-section">
-        <h2>Passkey post-quantique (Ledger Stax)</h2>
+        <h2>Post-quantum passkey (Ledger Stax)</h2>
         <p class="muted">
-          Une passkey WebAuthn ML-DSA-44 (COSE -48) créée sur la Stax par l'app Security Key
-          modifiée, enregistrée sur le ledger par PasskeyListSet (sa clé publique de 1 312 octets)
-          et vérifiée par le nœud à chaque signature (amendement PasskeyMLDSA). Chrome, Stax
-          branchée en USB, app Security Key ouverte.
+          An ML-DSA-44 WebAuthn passkey (COSE -48) created on the Stax by the modified Security Key
+          app, registered on the ledger by PasskeyListSet (its 1,312-byte public key) and verified
+          by the node on every signature (PasskeyMLDSA amendment). Chrome, Stax plugged in over USB,
+          Security Key app open.
         </p>
         <p class="error">
-          Nœud de test uniquement, graine en clair : la graine de la clé maître du compte est gardée
-          en clair dans ce navigateur jusqu'au verrouillage. La section refuse de créer un compte si
-          le nœud n'est pas local ou listé dans VITE_TEST_NODE_HOSTS.
+          Test node only, plaintext seed: the account's master key seed is kept in plaintext in this
+          browser until the account is locked. This section refuses to create an account if the node
+          is not local or listed in VITE_TEST_NODE_HOSTS.
         </p>
-        <div id="pq-stax-info" class="muted">Pas de passkey post-quantique dans ce navigateur.</div>
+        <div id="pq-stax-info" class="muted">No post-quantum passkey in this browser.</div>
         <div class="actions">
           <button id="pq-stax-create" type="button">
-            1. Créer la passkey sur la Stax (alg -48)
+            1. Create the passkey on the Stax (alg -48)
           </button>
           <button id="pq-stax-register" type="button">
-            2. Créer le compte et enregistrer la passkey (PasskeyListSet)
+            2. Create the account and register the passkey (PasskeyListSet)
           </button>
-          <button id="pq-stax-forget" type="button" class="secondary">Oublier</button>
+          <button id="pq-stax-forget" type="button" class="secondary">Forget</button>
         </div>
         <form id="pq-stax-pay-form">
           <label>Destination <input id="pq-stax-destination" required placeholder="r…" /></label>
           <label
-            >Montant (XRP)
+            >Amount (XRP)
             <input id="pq-stax-amount" required type="number" min="0.000001" step="any" value="1"
           /></label>
-          <button type="submit">3. Payer (Stax → ML-DSA-44)</button>
+          <button type="submit">3. Pay (Stax → ML-DSA-44)</button>
           <button id="pq-stax-session" type="button">
-            4. Ouvrir une session (Stax) et payer avec la clé de session
+            4. Open a session (Stax) and pay with the session key
           </button>
         </form>
         <div class="actions">
           <button id="pq-stax-lock" type="button" class="secondary">
-            Passkey post-quantique uniquement (désactiver la clé maître)
+            Post-quantum passkey only (disable the master key)
           </button>
         </div>
-        <p class="muted">Réponses du nœud, la plus récente en haut :</p>
+        <p class="muted">Node responses, most recent first:</p>
         <ol id="pq-stax-results"></ol>
       </section>
 
       <section id="ledger-section">
         <h2>Ledger Stax</h2>
         <p class="muted">
-          Chrome ou Edge (WebHID), Stax déverrouillée sur l'app XRP. Chaque transaction est relue en
-          clair sur l'écran avant la signature.
+          Chrome or Edge (WebHID), Stax unlocked on the XRP app. Every transaction is shown in clear
+          text on the screen before signing.
         </p>
-        <div id="ledger-info" class="muted">Stax non connectée.</div>
+        <div id="ledger-info" class="muted">Stax not connected.</div>
         <div class="actions">
-          <button id="ledger-connect" type="button">Connecter la Stax</button>
+          <button id="ledger-connect" type="button">Connect the Stax</button>
           <button id="ledger-fund" type="button" class="secondary">
-            Financer le compte Stax (faucet)
+            Fund the Stax account (faucet)
           </button>
         </div>
         <form id="ledger-pay-form">
           <label>Destination <input id="ledger-pay-destination" required placeholder="r…" /></label>
           <label
-            >Montant (XRP)
+            >Amount (XRP)
             <input
               id="ledger-pay-amount"
               required
@@ -157,86 +156,84 @@
               value="1"
           /></label>
           <label class="inline"
-            ><input id="ledger-pay-pq" type="checkbox" /> signer en ML-DSA-44</label
+            ><input id="ledger-pay-pq" type="checkbox" /> sign with ML-DSA-44</label
           >
-          <button type="submit">Signer sur la Stax et envoyer</button>
+          <button type="submit">Sign on the Stax and send</button>
           <button id="ledger-try-classic" type="button" class="secondary" hidden>
-            Essayer avec l'ancienne clé classique
+            Try with the old classical key
           </button>
         </form>
         <fieldset id="ledger-migration">
-          <legend>Migrer vers la racine ML-DSA-44</legend>
+          <legend>Migrate to the ML-DSA-44 root</legend>
           <p class="muted">
-            Trois transactions, dans cet ordre : la clé ML-DSA-44 de la Stax devient la clé
-            régulière, elle prouve qu'elle signe pour le compte, puis la clé maître classique est
-            désactivée.
+            Three transactions, in this order: the Stax's ML-DSA-44 key becomes the regular key, it
+            proves it signs for the account, then the classical master key is disabled.
             <strong
-              >Après l'étape 3, seule la clé ML-DSA-44 signe : la perdre bloque le compte pour
-              toujours.</strong
+              >After step 3, only the ML-DSA-44 key signs: losing it locks the account
+              forever.</strong
             >
-            Avant l'étape 3, réinstallez l'app XRP sur la Stax et relisez la clé : elle doit être
-            identique (même seed, même clé).
+            Before step 3, reinstall the XRP app on the Stax and read the key again: it must be
+            identical (same seed, same key).
           </p>
-          <div id="ledger-migration-status" class="muted">Stax non connectée.</div>
+          <div id="ledger-migration-status" class="muted">Stax not connected.</div>
           <div class="actions">
             <button id="ledger-migrate-regular-key" type="button">
-              1. SetRegularKey vers la clé ML-DSA (clé classique)
+              1. SetRegularKey to the ML-DSA key (classical key)
             </button>
             <button id="ledger-migrate-proof" type="button">
-              2. Preuve : AccountSet signé en ML-DSA-44
+              2. Proof: AccountSet signed with ML-DSA-44
             </button>
           </div>
           <div class="actions">
             <button id="ledger-migrate-reread" type="button" class="secondary">
-              Relire la clé ML-DSA sur la Stax (après réinstallation de l'app)
+              Read the ML-DSA key on the Stax again (after reinstalling the app)
             </button>
             <label class="inline"
-              ><input id="ledger-migrate-checked" type="checkbox" /> J'ai vérifié la clé ML-DSA
-              après réinstallation de l'app</label
+              ><input id="ledger-migrate-checked" type="checkbox" /> I checked the ML-DSA key after
+              reinstalling the app</label
             >
             <button id="ledger-migrate-disable-master" type="button">
-              3. Désactiver la clé maître (asfDisableMaster, clé classique)
+              3. Disable the master key (asfDisableMaster, classical key)
             </button>
           </div>
         </fieldset>
       </section>
 
       <section id="session-section">
-        <h2>Sessions de signature</h2>
+        <h2>Signing sessions</h2>
         <p class="muted">
-          Une validation (Touch ID ou Stax) ouvre une session ; la clé de session signe ensuite sans
-          rien demander, dans les limites que le nœud fait respecter. Mode C : paiements XRP
-          plafonnés ; mode A : toutes les transactions délégables ; mode P : une liste de
-          permissions.
+          One approval (Touch ID or Stax) opens a session; the session key then signs without asking
+          anything, within the limits the node enforces. Mode C: capped XRP payments; mode A: every
+          delegable transaction; mode P: a list of permissions.
         </p>
-        <div id="session-info" class="muted">Aucune session ouverte.</div>
+        <div id="session-info" class="muted">No open session.</div>
         <div class="actions">
           <label
-            >Ouvrir avec
+            >Open with
             <select id="session-opener">
-              <option value="passkey">Touch ID (compte passkey)</option>
+              <option value="passkey">Touch ID (passkey account)</option>
               <option value="stax">Ledger Stax</option>
             </select></label
           >
           <label
             >Mode
             <select id="session-mode">
-              <option value="cap">C : plafond de dépense</option>
-              <option value="all">A : toutes les transactions</option>
-              <option value="permissions">P : permissions</option>
+              <option value="cap">C: spending cap</option>
+              <option value="all">A: all transactions</option>
+              <option value="permissions">P: permissions</option>
             </select></label
           >
           <label
-            >Durée (s) <input id="session-duration" type="number" min="1" max="600" value="300"
+            >Duration (s) <input id="session-duration" type="number" min="1" max="600" value="300"
           /></label>
           <fieldset id="session-cap-fields">
-            <legend>Plafonds (mode C)</legend>
+            <legend>Caps (mode C)</legend>
             <label
-              >Plafond total (XRP)
+              >Total cap (XRP)
               <input id="session-cap" type="number" min="0.000001" step="any" value="50"
             /></label>
             <label
-              >Max par paiement (XRP)
+              >Max per payment (XRP)
               <input id="session-max-per-tx" type="number" min="0.000001" step="any" value="20"
             /></label>
           </fieldset>
@@ -244,24 +241,23 @@
             <legend>Permissions (mode P)</legend>
           </fieldset>
           <label class="inline"
-            ><input id="session-witness" type="checkbox" /> exiger un témoin</label
+            ><input id="session-witness" type="checkbox" /> require a witness</label
           >
-          <button id="session-open" type="button">Ouvrir la session</button>
+          <button id="session-open" type="button">Open the session</button>
         </div>
         <div class="actions">
           <fieldset>
-            <legend>Batch : une seule validation du propriétaire</legend>
+            <legend>Batch: a single approval by the owner</legend>
             <label
-              >Destination du premier paiement
-              <input id="session-batch-destination" placeholder="r…"
+              >First payment destination <input id="session-batch-destination" placeholder="r…"
             /></label>
             <label
-              >Montant (XRP)
+              >Amount (XRP)
               <input id="session-batch-amount" type="number" min="0.000001" step="any" value="1"
             /></label>
-            <button id="session-open-batch" type="button">Ouvrir et payer (Batch)</button>
+            <button id="session-open-batch" type="button">Open and pay (Batch)</button>
             <button id="session-revoke-all" type="button" class="secondary">
-              Révoquer toutes les sessions (Batch)
+              Revoke all sessions (Batch)
             </button>
           </fieldset>
         </div>
@@ -270,7 +266,7 @@
             >Destination <input id="session-pay-destination" required placeholder="r…"
           /></label>
           <label
-            >Montant (XRP)
+            >Amount (XRP)
             <input
               id="session-pay-amount"
               required
@@ -279,59 +275,58 @@
               step="any"
               value="5"
           /></label>
-          <button type="submit">Payer avec la clé de session (sans validation)</button>
+          <button type="submit">Pay with the session key (no approval)</button>
         </form>
-        <h3>Attaques</h3>
+        <h3>Attacks</h3>
         <div class="actions">
           <button id="attack-regular-key" type="button" class="secondary">
-            Clé volée : changer la RegularKey
+            Stolen key: change the RegularKey
           </button>
           <button id="attack-account-set" type="button" class="secondary">
-            Clé volée : AccountSet
+            Stolen key: AccountSet
           </button>
           <button id="attack-per-tx" type="button" class="secondary">
-            Dépasser le max par paiement
+            Exceed the max per payment
           </button>
           <button id="attack-no-witness" type="button" class="secondary">
-            Payer sans le témoin
+            Pay without the witness
           </button>
           <button id="attack-batch" type="button" class="secondary">
-            Clé de session : signer un Batch
+            Session key: sign a Batch
           </button>
           <button id="session-close" type="button" class="secondary">
-            Fermer la session (par la clé)
+            Close the session (by the key)
           </button>
-          <button id="attack-after-close" type="button" class="secondary">
-            Payer après la fermeture
-          </button>
+          <button id="attack-after-close" type="button" class="secondary">Pay after closing</button>
         </div>
       </section>
 
       <section id="agent-section">
-        <h2>Agent IA</h2>
+        <h2>AI agent</h2>
         <p class="muted">
-          L'agent demande un budget (mode C : plafond, max par paiement, expiration courte) que vous
-          approuvez sur la Stax ; il paie ensuite seul avec sa clé de session, et le ledger refuse
-          tout dépassement. Un achat au-dessus de sa limite vous est soumis pour signature sur la
-          Stax.
+          The agent requests a budget (mode C: cap, max per payment, short expiry) that you approve
+          on the Stax; it then pays on its own with its session key, and the ledger refuses any
+          overspend. A purchase above its limit is sent to you for signing on the Stax.
         </p>
-        <div id="agent-status" class="muted">Serveur du wallet : connexion…</div>
+        <div id="agent-status" class="muted">Wallet server: connecting…</div>
         <p id="agent-stax-hint" class="muted">
-          Connectez la Stax dans la section Ledger pour approuver les demandes.
+          Connect the Stax in the Ledger section to approve requests.
         </p>
-        <h3>Session de l'agent</h3>
-        <div id="agent-session" class="muted">Aucune session d'agent approuvée.</div>
+        <h3>Agent session</h3>
+        <div id="agent-session" class="muted">No approved agent session.</div>
         <div class="actions">
-          <button id="agent-revoke" type="button" class="secondary" disabled>Couper l'agent</button>
+          <button id="agent-revoke" type="button" class="secondary" disabled>
+            Cut off the agent
+          </button>
         </div>
-        <h3>Demandes en attente</h3>
-        <div id="agent-pending">Aucune demande en attente.</div>
-        <h3>Historique</h3>
+        <h3>Pending requests</h3>
+        <div id="agent-pending">No pending requests.</div>
+        <h3>History</h3>
         <ol id="agent-history"></ol>
       </section>
 
       <section>
-        <h2>Journal</h2>
+        <h2>Log</h2>
         <ol id="log"></ol>
       </section>
     </main>
