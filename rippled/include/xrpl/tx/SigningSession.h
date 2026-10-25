@@ -15,13 +15,18 @@ namespace xrpl {
 /**
  * Delegable transaction types that a signing session never signs: each one
  * grants rights to a new key or to a third party that no amount fixed at
- * signing bounds (FIANSO-SPEC 6.8). Every other type follows its XLS-75
+ * signing bounds, and that outlive the session (FIANSO-SPEC 6.8, decision
+ * D4). A credential is a lasting attestation that other accounts' deposit
+ * preauthorizations and permissioned domains accept; a DID is the account's
+ * lasting identity document. Every other type follows its XLS-75
  * `delegable` setting.
  */
-inline constexpr std::array<TxType, 3> kSessionExcluded = {
+inline constexpr std::array<TxType, 5> kSessionExcluded = {
     ttPASSKEY_LIST_SET,
     ttSPONSORSHIP_SET,
     ttSUBSCRIPTION_SET,
+    ttCREDENTIAL_CREATE,
+    ttDID_SET,
 };
 
 /**
