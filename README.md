@@ -42,6 +42,7 @@ key.
 ## Table of contents
 
 - [Try it yourself](#try-it-yourself)
+- [How carbs fits the tracks](#how-carbs-fits-the-tracks)
 - [How it works](#how-it-works)
 - [On the ledger](#on-the-ledger)
 - [On the device](#on-the-device)
@@ -93,6 +94,43 @@ desk. They run with the node on the team's own network (`infra/compose.yaml`, HT
 Tailscale), not on a public host; the web app's **Apps** screen lists them and links to them. Run
 sheet:
 [`apps/passkey-wallet/scripts/agent/README.md`](./apps/passkey-wallet/scripts/agent/README.md).
+
+## How carbs fits the tracks
+
+**Protocol Innovation, XRPL Commons** (core infrastructure, clients and developer tooling):
+
+- **Core infrastructure, in C++.** The `SigningSessions` amendment in rippled: a ledger entry, two
+  transactions, an authorization check in `preclaim`, accounting at two points of
+  `Transactor::operator()` and an invariant, with an XLS draft written from the implementation. Two
+  defects of the base fixed behind their own amendments, `fixPasskeyChallenge` and
+  `fixP256StrictDer`, each with a test that failed first.
+- **Client.** `@carbs/sessions`: definitions read from `server_definitions`, encoding, session keys
+  (P-256 and ML-DSA-44), the node client and the quantum exposure check.
+- **Developer tooling.** A native fuzz loop for the XRP app's parser, a per-assertion record of the
+  base tree's own failures, and the developer feedback log.
+
+**Ledger** (bring the modern Ledger stack into XRPL, and lean into the gaps):
+
+- **XRPL transaction Clear Signing.** Two new transaction types clear-signed on the Stax
+  (`SigningSessionSet`, `SigningSessionDelete`), every inner transaction of a `Batch` shown before
+  it is signed, and session transactions never blind-signed. The client predicts the device's review
+  line for line from the same fields, checked against frozen screen vectors
+  ([`docs/device-contract.md`](./docs/device-contract.md)).
+- **Things Ledger does not support yet.** ML-DSA-44 signing of XRPL transactions on the Stax, with a
+  clear-signed review, validated on the public AlphaNet; a session policy and per-app profiles
+  (agent, game, trading, streaming, minting) that the device enforces before any review.
+- **The Device Management Kit, and its gaps.** The client reaches the device through the Device
+  Management Kit only (WebHID), with its own commands for the post-quantum root, the session policy
+  and the Agent ID: the pre-release `device-signer-kit-xrp` covers addresses, classical signing and
+  app configuration, nothing more. The gaps we hit are in
+  [`docs/ledger-dx-feedback.md`](./docs/ledger-dx-feedback.md).
+- **Ledger-secured flows.** The trading (order book offers), minting (NFTs) and streaming apps open
+  their session on the Stax with a profile the device checks; the session key then signs alone,
+  inside limits the ledger enforces.
+- **A real device.** The ML-DSA-44 payments above were signed by our Stax; the agent demo ran end to
+  end on a real Stax against the standalone node (reported in #83).
+- **Developer feedback**, weighed by the track as much as the code: 48 entries in
+  [`docs/ledger-dx-feedback.md`](./docs/ledger-dx-feedback.md).
 
 ## How it works
 
