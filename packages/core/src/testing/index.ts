@@ -2,3 +2,8 @@
 export * from "./recorded-node.js";
 export * from "./simulated-definitions.js";
 export { SoftwareAuthenticator } from "../keys/passkey.js";
+export { SoftwareMlDsaAuthenticator } from "../keys/pq-passkey.js";
+export {
+  signWithMlDsaPasskeyForTests,
+  type MlDsaPasskeySignOptions,
+} from "../keys/pq-passkey-sign.js";
