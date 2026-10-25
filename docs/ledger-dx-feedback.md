@@ -71,7 +71,7 @@ Template: `date · area · page or path · what we tried · what happened or was
 
 ## Overall experience (filled at the end)
 
-42 entries, about 398 minutes lost where we measured it (many findings were made while reading and cost nothing, marked `n/a`). The recurring pattern is not missing features but **unstated facts**: which ledger a method reads, who adds the signing prefix, what a build flag really selects, which of several files defines a parameter. The Ledger side was the harder one to learn from documentation alone: the information we needed was in SDK sources, headers and other apps, rarely on a documentation page. What worked (see the DEVLOG): the app built in the builder image, loaded on the Stax with `ledgerblue` from macOS, and the cmocka tests of app-xrp took new vectors. We did not measure the experience of someone who is not already reading C and Makefiles.
+48 entries, about 428 minutes lost over the 35 where we measured it (many findings were made while reading and cost nothing, marked `n/a`). The recurring pattern is not missing features but **unstated facts**: which ledger a method reads, who adds the signing prefix, what a build flag really selects, which of several files defines a parameter. The Ledger side was the harder one to learn from documentation alone: the information we needed was in SDK sources, headers and other apps, rarely on a documentation page. What worked (see the DEVLOG): the app built in the builder image, loaded on the Stax with `ledgerblue` from macOS, and the cmocka tests of app-xrp took new vectors. We did not measure the experience of someone who is not already reading C and Makefiles.
 
 ## Tutorial and code-sample ideas (filled at the end)
 

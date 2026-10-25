@@ -189,7 +189,7 @@ Replacing `T::checkSign` drops two checks, and the hook redoes them: the refusal
 
 **The witness signature.** `WitnessSignature` holds one `SigningPubKey` and one `TxnSignature`; a multi-signed witness is not supported (an empty `SigningPubKey` fails the local checks). The signature is verified with the transaction's own, in `STTx::checkSign` (`rippled/src/libxrpl/protocol/STTx.cpp:307-314`), over `WTS\0` followed by the transaction's signing fields (`rippled/src/libxrpl/protocol/Sign.cpp:62-63`). `WitnessSignature` is not a signing field: the session key's signature does not cover it, and the witness signs the same fields as the session key, its `SigningPubKey` included. Its own prefix keeps a witness signature from being replayed as any other role's. A `WitnessSignature` on any transaction is `temDISABLED` in `preflight1` while `SigningSessions` is not enabled (`rippled/src/libxrpl/tx/Transactor.cpp:305-306`), so no transaction carrying one is applied before the amendment (its signature is still verified with the transaction's when it is relayed or submitted).
 
-The 68 transaction types a session may sign in mode A, and the 7 granular permissions it may hold in mode P, are pinned by test 9b. A new delegable type fails that test until someone decides on it.
+The 66 transaction types a session may sign in mode A, and the 7 granular permissions it may hold in mode P, are pinned by test 9b. A new delegable type fails that test until someone decides on it.
 
 ## 8. Accounting
 
