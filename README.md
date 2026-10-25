@@ -13,7 +13,7 @@ On XRPL a key has all the authority of an account or none, and a public key that
    | **P** | sign the listed XLS-75 permissions                             | time, the list, fee ceiling                        |
    | **C** | send direct XRP `Payment` only                                 | time, a total XRP cap (fees included), fee ceiling |
 
-   A session is opened with **one ordinary signature**, from the Stax (which shows the rules on its screen) or from a passkey. A session key can never change who controls the account. The session's own close (a `SigningSessionDelete` signed by the session key) is exempt from the expiry and from the cap: its fee is not counted in mode C and may reach the fee ceiling, the required base fee plus 1000 times the base fee unit.
+   A session is opened with **one ordinary signature**, from the Stax (which shows the rules on its screen) or from a passkey. A session key can never change who controls the account. The session's own close (a `SigningSessionDelete` signed by the session key) is exempt from the expiry and from the cap: its fee is not counted in mode C, and it may pay no more than the base fee its type requires, so a mode C account loses at most the cap plus one base fee.
 
 3. **A quantum exposure check and a guided migration** for any XRPL account, plus the `@carbs/sessions` library. Planned, **not built**: a Device Management Kit Ledger adapter for `xrpl-connect` and a `create-xrp` sessions template (spec 8.8, tasks E1 and E2).
 
