@@ -32,4 +32,9 @@ int ui_error_blind_signing(void) {
     reject_transaction();
     return 0;
 }
+
+void ui_error_session_blind_signing(void) {
+    nbgl_useCaseStatus("Session transactions are never blind-signed", false,
+                       display_idle_menu);
+}
 #endif

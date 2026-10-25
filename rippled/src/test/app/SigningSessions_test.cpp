@@ -73,6 +73,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -1345,10 +1346,12 @@ class SigningSessions_test : public beast::unit_test::Suite
         Account const alice{"alice"}, bob{"bob"}, carol{"carol"}, key{"key"};
         env.fund(XRP(10000), alice, bob);
         env.close();
-        env(session::set(alice, key, 600), session::Cap(XRP(100000)));
+        // The bound on the count of transactions follows the same accounting.
+        env(session::set(alice, key, 600), session::Cap(XRP(100000)), session::MaxTxCount(10));
         env.close();
         auto const fee = env.current()->fees().base;
         auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        auto const txCount = [&] { return (*sessionEntry(env, alice, key))[sfSessionTxCount]; };
 
         // A tec from preclaim: a new account below the reserve.
         env(pay(alice, carol, XRP(1)), Sig(key), lls(), Ter(tecNO_DST_INSUF_XRP));
@@ -1374,6 +1377,7 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         env.require(Owners(alice, 2), tickets(alice, 1));
         BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 2);
+        BEAST_EXPECT(txCount() == 2);
 
         // The fee-claim reset: the destination holds more XRP than exists, so
         // the first invariant pass fails; after the reset only the fee
@@ -1392,6 +1396,7 @@ class SigningSessions_test : public beast::unit_test::Suite
         env(pay(alice, bob, XRP(1)), Sig(key), lls(), Ter(tecINVARIANT_FAILED));
         BEAST_EXPECT(env.balance(alice) == before - fee);
         BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 3);
+        BEAST_EXPECT(txCount() == 3);
     }
 
     // A fee cut short by the reset: in a closed ledger an account whose
@@ -2246,6 +2251,104 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
+    // SessionMaxTxCount: in any mode, 1..kMaxSessionTxCount; SessionTxCount
+    // counts each session-signed transaction applied, tes or tec, the own
+    // close excepted; at the bound the next one is refused with no fee, and
+    // the own close still passes.
+    void
+    testMaxTxCount(FeatureBitset features)
+    {
+        testcase("SessionMaxTxCount");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, gw{"gw"}, ghost{"ghost"};
+        Account const keyC{"keyC"}, keyP{"keyP"}, keyA{"keyA"};
+        env.fund(XRP(10000), alice, bob, gw);
+        env.close();
+
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        auto const txCount = [&](Account const& key) -> std::optional<std::uint32_t> {
+            auto const sle = sessionEntry(env, alice, key);
+            if (!sle)
+                return std::nullopt;
+            return (*sle)[~sfSessionTxCount];
+        };
+
+        // In range, in every mode.
+        env(session::set(alice, keyC, 600),
+            session::Cap(XRP(30)),
+            session::MaxTxCount(0),
+            Ter(temMALFORMED));
+        env(session::set(alice, keyC, 600),
+            session::Cap(XRP(30)),
+            session::MaxTxCount(kMaxSessionTxCount + 1),
+            Ter(temMALFORMED));
+        env(session::set(alice, keyA, 600),
+            Txflags(tfAllTransactions),
+            session::MaxTxCount(kMaxSessionTxCount));
+        env(session::set(alice, keyC, 600), session::Cap(XRP(30)), session::MaxTxCount(2));
+        env(session::set(alice, keyP, 600),
+            session::Permissions({"OfferCreate"}),
+            session::MaxTxCount(2));
+        env.close();
+        for (auto const& key : {keyA, keyC, keyP})
+        {
+            auto const sle = sessionEntry(env, alice, key);
+            if (!BEAST_EXPECT(sle))
+                return;
+            BEAST_EXPECT((*sle)[sfSessionTxCount] == 0);
+        }
+        BEAST_EXPECT((*sessionEntry(env, alice, keyC))[sfSessionMaxTxCount] == 2);
+        BEAST_EXPECT((*sessionEntry(env, alice, keyA))[sfSessionMaxTxCount] == kMaxSessionTxCount);
+
+        // Mode A: a tec counts.
+        env(pay(alice, ghost, XRP(1)), Sig(keyA), lls(), Ter(tecNO_DST_INSUF_XRP));
+        env.close();
+        BEAST_EXPECT(txCount(keyA) == 1);
+
+        // Mode C: a tes and a tec count, the third is refused with no fee.
+        auto const fee = env.current()->fees().base;
+        env(pay(alice, bob, XRP(1)), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(txCount(keyC) == 1);
+        env(pay(alice, ghost, XRP(1)), Sig(keyC), lls(), Ter(tecNO_DST_INSUF_XRP));
+        env.close();
+        BEAST_EXPECT(txCount(keyC) == 2);
+        BEAST_EXPECT(sessionSpent(env, alice, keyC) == XRP(1) + fee + fee);
+
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)), Sig(keyC), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(txCount(keyC) == 2);
+
+        // The own close is exempt from the bound.
+        env(session::del(alice, keyC), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, keyC));
+
+        // Mode P: a tec (an offer killed) and a tes count, then refused.
+        auto const usd = gw["USD"];
+        env(offer(alice, usd(10), XRP(10)),
+            Txflags(tfImmediateOrCancel),
+            Sig(keyP),
+            lls(),
+            Ter(tecKILLED));
+        env.close();
+        BEAST_EXPECT(txCount(keyP) == 1);
+        env(offer(alice, usd(10), XRP(10)), Sig(keyP), lls());
+        env.close();
+        BEAST_EXPECT(txCount(keyP) == 2);
+        env(offer(alice, usd(10), XRP(10)), Sig(keyP), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(txCount(keyP) == 2);
+
+        env(session::del(alice, keyP), Sig(keyP), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, keyP));
+    }
+
 public:
     void
     run() override
@@ -2296,6 +2399,7 @@ public:
         testMlDsaLedgerAccount(all);
         testMaxPerTx(all);
         testWitness(all);
+        testMaxTxCount(all);
     }
 };
 

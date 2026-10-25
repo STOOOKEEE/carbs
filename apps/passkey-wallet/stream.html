@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
+    />
+    <title>carbs · pay-as-you-go streaming on the XRPL</title>
+    <link rel="stylesheet" href="/src/demo/demo.css" />
+    <link rel="stylesheet" href="/src/apps/stream/stream.css" />
+  </head>
+  <body class="stream-page">
+    <header class="demo-header">
+      <h1>
+        Pay-as-you-go streaming, metered by the XRPL ledger
+        <span class="dot">·</span>
+        <span id="st-owner-line" class="accent root-muted">No owner yet</span>
+      </h1>
+      <p id="st-connection" class="status">Connecting…</p>
+    </header>
+
+    <main class="demo-grid">
+      <section class="column" aria-label="Player">
+        <h2>Player</h2>
+        <div id="st-player" class="player player-idle">
+          <div class="bars" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <p id="st-player-overlay" class="player-overlay">Open a streaming session to watch.</p>
+        </div>
+        <div class="player-controls">
+          <button id="st-play" type="button" class="primary" disabled>Play</button>
+          <button id="st-pause" type="button" class="secondary" disabled>Pause</button>
+        </div>
+        <dl class="meter">
+          <div>
+            <dt>Watched</dt>
+            <dd id="st-watched">0:00</dd>
+          </div>
+          <div>
+            <dt>XRP paid</dt>
+            <dd id="st-paid">0</dd>
+          </div>
+          <div>
+            <dt>Payments</dt>
+            <dd id="st-payments">0</dd>
+          </div>
+        </dl>
+        <p class="hint">
+          0.005 XRP every 3 s, one payment per ledger, signed by the session key alone.
+        </p>
+        <p id="st-provider" class="provider-line">Provider: not reached yet.</p>
+      </section>
+
+      <section class="column centre-column" aria-label="Session on the ledger">
+        <div class="agent-id-card">
+          <p class="label">Agent ID of the session key</p>
+          <p id="st-agent-id" class="agent-id">––––-––––</p>
+        </div>
+        <div class="budget-card">
+          <p class="label">Session on the ledger</p>
+          <p class="spent">
+            <span id="st-spent">0</span> <span class="of">/</span> <span id="st-cap">–</span> XRP
+          </p>
+          <div class="gauge"><div id="st-gauge-fill" class="gauge-fill"></div></div>
+          <dl class="budget-facts">
+            <div>
+              <dt>Transactions</dt>
+              <dd id="st-count">–</dd>
+            </div>
+            <div>
+              <dt>Time left</dt>
+              <dd id="st-countdown">–</dd>
+            </div>
+            <div>
+              <dt>Max per payment</dt>
+              <dd id="st-max-per-tx">–</dd>
+            </div>
+            <div>
+              <dt>Profile</dt>
+              <dd>streaming</dd>
+            </div>
+          </dl>
+          <p id="st-session-state" class="session-state">No session yet.</p>
+        </div>
+        <ol id="st-refusals" class="refusals" aria-label="Refusals"></ol>
+      </section>
+
+      <section class="column owner-column" aria-label="Owner">
+        <h2>Owner</h2>
+        <p id="st-owner-status" class="stax-status">Choose who opens the session.</p>
+        <div class="button-row">
+          <button id="st-connect-stax" type="button" class="secondary" disabled>
+            Connect the Stax
+          </button>
+          <button id="st-use-passkey" type="button" class="secondary" disabled>
+            Touch ID (Mac)
+          </button>
+        </div>
+        <button id="st-open" type="button" class="primary" disabled>Open streaming session</button>
+        <p class="hint">1 XRP cap · 0.01 XRP per payment · 600 tx · 10 min · signed once</p>
+        <p class="label">Try to abuse</p>
+        <button id="st-abuse-big" type="button" class="abuse" disabled>Pay 0.5 XRP at once</button>
+        <button id="st-abuse-binge" type="button" class="abuse" disabled>
+          Fast-forward to the cap
+        </button>
+        <button id="st-abuse-device" type="button" class="abuse abuse-device" disabled>
+          Ask the Stax for 20 XRP
+        </button>
+        <button id="st-close" type="button" class="secondary" disabled>Close session</button>
+        <p id="st-message" class="stax-message" hidden></p>
+      </section>
+    </main>
+
+    <footer class="layers">
+      <div id="st-layer-device" class="layer layer-device">
+        <span class="layer-name">Device:</span>
+        <span class="layer-what">streaming profile, at opening</span>
+        <span id="st-layer-device-count" class="layer-count">0 refused</span>
+      </div>
+      <div id="st-layer-ledger" class="layer layer-ledger">
+        <span class="layer-name">Ledger:</span>
+        <span class="layer-what">SigningSessions, at every payment</span>
+        <span id="st-layer-ledger-count" class="layer-count">0 refused</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/apps/stream/main.ts"></script>
+  </body>
+</html>

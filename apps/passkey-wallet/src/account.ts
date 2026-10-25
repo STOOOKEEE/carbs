@@ -20,7 +20,7 @@ import type { StoredWallet } from "./storage.ts";
 
 /** ACCOUNT_ONE: an address no key controls. Set as regular key so that the passkey list is the only signer. */
 const BLACK_HOLE_ADDRESS = "rrrrrrrrrrrrrrrrrrrrBZbvji";
-const ASF_DISABLE_MASTER = 4;
+export const ASF_DISABLE_MASTER = 4;
 const DROPS_PER_XRP = 1_000_000;
 
 export interface Connection {

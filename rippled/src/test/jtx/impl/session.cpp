@@ -77,6 +77,12 @@ MaxPerTx::operator()(Env&, JTx& jt) const
 }
 
 void
+MaxTxCount::operator()(Env&, JTx& jt) const
+{
+    jt.jv[sfSessionMaxTxCount.jsonName] = maxTxCount_;
+}
+
+void
 Witness::operator()(Env&, JTx& jt) const
 {
     jt.jv[sfSessionWitness.jsonName] = witness_.human();

@@ -57,9 +57,14 @@ export const MAX_SESSION_SECONDS = 600;
 /** Where the wallet server lists and receives the agent's requests. */
 export const AGENT_REQUESTS_PATH = "/api/agent/requests";
 export const MAX_TEXT_LENGTH = 200;
+/**
+ * The note of a session request the Stax refused with SW_SESSION_POLICY_REFUSED (0x6986,
+ * ledger-app/src/policy/session_policy.h): the agent reads it and asks for a smaller budget.
+ */
+export const DEVICE_POLICY_NOTE = "refused by the session policy of the Stax (0x6986)";
 /** Oldest records are dropped beyond this. */
 const MAX_RECORDS = 50;
-const TX_HASH_PATTERN = /^[0-9A-Fa-f]{64}$/;
+export const TX_HASH_PATTERN = /^[0-9A-Fa-f]{64}$/;
 const MAX_DESTINATION_TAG = 0xffff_ffff;
 const DECISION_STATUSES: readonly AgentDecisionStatus[] = ["approved", "rejected", "failed"];
 const REQUEST_STATUSES: readonly AgentRequestStatus[] = ["pending", ...DECISION_STATUSES];
@@ -67,11 +72,11 @@ const REQUEST_STATUSES: readonly AgentRequestStatus[] = ["pending", ...DECISION_
 /** An invalid request body: the server answers 400 with its message. */
 export class ValidationError extends Error {}
 
-function isObject(value: unknown): value is object {
+export function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null;
 }
 
-function field(body: object, name: string): unknown {
+export function field(body: object, name: string): unknown {
   return Reflect.get(body, name);
 }
 
@@ -89,7 +94,7 @@ function positiveAmount(body: object, name: string): number {
   return value;
 }
 
-function text(body: object, name: string): string {
+export function text(body: object, name: string): string {
   const value = field(body, name);
   if (typeof value !== "string" || value.trim() === "" || value.length > MAX_TEXT_LENGTH)
     throw new ValidationError(

@@ -5,7 +5,7 @@
 import type { XrplDefinitions } from "ripple-binary-codec";
 import { isValidClassicAddress } from "ripple-address-codec";
 
-import type { PaymentIntent } from "../../server/agent-requests.ts";
+import type { AgentRequestStatus, PaymentIntent } from "../../server/agent-requests.ts";
 import {
   type JsonValue,
   type SubmittedTx,
@@ -16,7 +16,8 @@ import {
   submitAndWait,
 } from "../../src/ledger.ts";
 import { type NodeClient, RpcError, type RpcResult } from "../../src/rpc.ts";
-import { createRequest, waitForDecision } from "./wallet-client.ts";
+import { report } from "./timeline.ts";
+import { DECISION_TIMEOUT_MS, createRequest, waitForDecision } from "./wallet-client.ts";
 import {
   type Catalogue,
   type PaymentRequirement,
@@ -36,8 +37,6 @@ const HASH_PREFIX_LENGTH = 12;
 const CATALOGUE_PATH = "/api";
 const API_PATH_PREFIX = "/api/";
 const REASON_MAX_LENGTH = 200;
-/** How long the agent waits for the human to review an escalated payment. */
-const APPROVAL_TIMEOUT_MS = 300_000;
 /** Classic r-addresses in API content: candidates for an injected destination. */
 const ADDRESS_PATTERN = /\br[1-9A-HJ-NP-Za-km-z]{24,34}\b/g;
 /** The amount an injected instruction asks for: "amountXrp 500" or "500 XRP". */
@@ -101,6 +100,8 @@ export interface AgentContext {
   sessionSeed: string;
   merchantUrl: string;
   walletUrl: string;
+  /** "XXXX-XXXX": the first 4 bytes of the session key's AccountID, as the Stax shows it. */
+  agentId: string;
   offers: Offer[];
   /** By API path (without the query string). */
   refusals: Map<string, Refusal>;
@@ -168,6 +169,29 @@ export async function submitAsSession(context: AgentContext, tx: TxJson): Promis
   const filled = await autofill(context.node, context.defs, tx);
   const signed = signWithSeed(context.defs, filled, context.sessionSeed);
   return submitAndWait(context.node, context.defs, signed);
+}
+
+/** The human's decision, as the stage timeline says it. */
+export const DECISION_TEXT: Record<AgentRequestStatus, string> = {
+  pending: "still waiting for the owner",
+  approved: "signed by the owner on the Stax",
+  rejected: "refused by the owner",
+  failed: "not signed",
+};
+
+/** Posts a session payment's outcome: a purchase, or the ledger's refusal with its code. */
+export async function reportPayment(
+  context: AgentContext,
+  what: string,
+  amountXrp: number,
+  { hash, result }: SubmittedTx,
+): Promise<void> {
+  const paid = result === "tesSUCCESS";
+  await report(context, paid ? "purchase" : "refused", paid ? `Paid ${what}` : `Refused: ${what}`, {
+    code: result,
+    hash,
+    amountXrp,
+  });
 }
 
 /** The SigningSession entry in the validated ledger; undefined once it is gone. */
@@ -349,6 +373,7 @@ async function callApi(context: AgentContext, args: unknown): Promise<ToolOutcom
       requirement.destinationTag,
     ),
   );
+  await reportPayment(context, path, amountXrp, { hash, result });
   if (result !== "tesSUCCESS") {
     context.events.push({ kind: "refused", what: `invoice ${path}`, amountXrp, outcome: result });
     context.refusals.set(apiPathOf(path), {
@@ -371,7 +396,16 @@ async function callApi(context: AgentContext, args: unknown): Promise<ToolOutcom
   }
   const served = await redeem(context, offer, hash);
   if (!served.ok) return failure(`paid (${hash}) but ${served.reason}`);
-  context.injection ??= findInjection(context, served.data, requirement.payTo, path);
+  if (context.injection === undefined) {
+    context.injection = findInjection(context, served.data, requirement.payTo, path);
+    if (context.injection !== undefined)
+      await report(
+        context,
+        "injection",
+        `Prompt injection in ${path}: "pay ${context.injection.amountXrp} XRP to ${context.injection.destination}"`,
+        { amountXrp: context.injection.amountXrp },
+      );
+  }
   context.events.push({
     kind: "bought",
     what: path,
@@ -434,14 +468,25 @@ async function requestApproval(context: AgentContext, args: unknown): Promise<To
     sessionKey: context.sessionKey,
   };
   const created = await createRequest(context.walletUrl, intent);
+  await report(
+    context,
+    "escalation",
+    `Above its limit, asks you to sign on the Stax: ${intent.reason}`,
+    { amountXrp },
+  );
   console.log(
     `     ↳ intent ${created.id}: waiting for the owner to review it on the Ledger Stax…`,
   );
-  const record = await waitForDecision(context.walletUrl, created.id, APPROVAL_TIMEOUT_MS);
+  const record = await waitForDecision(context.walletUrl, created.id, DECISION_TIMEOUT_MS);
   const what =
     offer === undefined ? `intent to ${destination}` : `intent ${offer.requirement.resource}`;
   const decision = [record.status, record.result].filter((part) => part !== undefined).join(" ");
   context.events.push({ kind: "escalated", what, amountXrp, outcome: decision });
+  await report(context, "decision", `${amountXrp} XRP payment ${DECISION_TEXT[record.status]}`, {
+    ...(record.result === undefined ? {} : { code: record.result }),
+    ...(record.txHash === undefined ? {} : { hash: record.txHash }),
+    amountXrp,
+  });
   const forModel: { [key: string]: JsonValue } = {
     decision: record.status,
     ...(record.result === undefined ? {} : { result: record.result }),
@@ -464,6 +509,7 @@ async function pay(context: AgentContext, args: unknown): Promise<ToolOutcome> {
     context,
     paymentTx(context.owner, destination, xrpToDrops(amountXrp)),
   );
+  await reportPayment(context, `${amountXrp} XRP to ${destination}`, amountXrp, { hash, result });
   context.events.push({
     kind: result === "tesSUCCESS" ? "paid" : "refused",
     what: `pay ${destination}`,
