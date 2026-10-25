@@ -15,7 +15,10 @@ namespace xrpl {
 class SigningSessionDelete : public Transactor
 {
 public:
-    static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Normal;
+    // A blocker, like SetRegularKey: once a close applies, what its session
+    // key signed loses its authority, so the queue must hold nothing of the
+    // account behind it.
+    static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Blocker;
 
     explicit SigningSessionDelete(ApplyContext& ctx) : Transactor(ctx)
     {
