@@ -33,7 +33,7 @@ The signing data is `STX\0 ‖ signing fields`, with `SigningPubKey` = the 1 312
 
 ## 2. Screen lines
 
-The client predicts the review (`reviewLines(tx, defs)` in `packages/ledger/src/screen.ts`). Order: `Transaction Type`, `Account`, `Session key` (when present), then every shown field in serialization order, then the synthetic `Note` of `SigningSessionSet` (`ledger-app/src/xrp/signing_session.h:29-33`). The lines below are the device track's frozen vectors (`ledger-app/tests/standalone/testcases/*.txt`); `packages/ledger` reproduces each of them line for line in a test.
+The client predicts the review (`reviewLines(tx, defs)` in `packages/ledger/src/screen.ts`). Order: `Transaction Type`, `Account`, `Session key` (when present), then every shown field in serialization order, then the synthetic rows of `SigningSessionSet`: `Allows; XRP payments only, fees included` in mode C, then `Note` (`ledger-app/src/xrp/signing_session.h:34-46`, `ledger-app/src/xrp/xrp_parse.c:671-692`). A signed field that claims the id of either synthetic row is refused (`ledger-app/src/xrp/xrp_parse.c:633-639`; vectors `10-spoofed-note`, `13-spoofed-scope`). The note says only what the node refuses to every session, whatever its mode: a new key or signer (`SetRegularKey` and `SignerListSet` are not delegable, `rippled/include/xrpl/protocol/detail/transactions.macro:124`, `:173`; `PasskeyListSet` is excluded, `rippled/include/xrpl/tx/SigningSession.h:22-26`); in mode P a granular account permission (for example `AccountDomainSet`, `rippled/include/xrpl/protocol/detail/permissions.macro:29`) can still change the account, so the note does not claim more. The lines below are the device track's frozen vectors (`ledger-app/tests/standalone/testcases/*.txt`); `packages/ledger` reproduces each of them line for line in a test.
 
 `SigningSessionSet`, mode A (`30-signing-session-set/01-mode-all`):
 
@@ -45,10 +45,10 @@ Network ID;       24100
 Allows;           All transactions
 Valid for;        10 minutes
 Fee;              XRP 0.000012
-Note;             Cannot change keys, signers or the account
+Note;             Cannot change keys or signers
 ```
 
-Mode P lists `Allows [1]` … `Allows [10]` (one permission each, by name, after `Fee`; `02-mode-permissions`, `04-ten-permissions`); mode C shows `Max spend; XRP 20` after `Fee` (`03-mode-cap`). Durations: `10 minutes`, `5 minutes`, `1 minute`, `1 min 30 s`, `45 s` (`05-short-duration`). An unknown permission value, an unknown flag and a forged `Note` field make the app ask for blind signing or refuse (`06-` to `11-`); the client's prediction for those is `blind`.
+Mode P lists `Allows [1]` … `Allows [10]` (one permission each, by name, after `Fee`; `02-mode-permissions`, `04-ten-permissions`); mode C shows `Max spend; XRP 20` after `Fee`, and `Allows; XRP payments only, fees included` before the `Note` (`03-mode-cap`, `05-short-duration`, `12-cap-per-tx-and-witness`): the node lets a capped session sign a direct XRP payment and nothing else, and counts the fee against the cap (`rippled/src/libxrpl/tx/Transactor.cpp:1108-1112`, `:1131-1142`). Durations: `10 minutes`, `5 minutes`, `1 minute`, `1 min 30 s`, `45 s` (`05-short-duration`). An unknown permission value, an unknown flag and a forged `Note` field make the app ask for blind signing or refuse (`06-` to `11-`); the client's prediction for those is `blind`.
 
 `SigningSessionDelete` (`31-signing-session-delete/01-own-close`, `02-expired-by-third-party`): `Transaction Type; Close session`, `Account`, `Session key`, `Fee`, and `Owner` when a third party closes an expired session.
 
