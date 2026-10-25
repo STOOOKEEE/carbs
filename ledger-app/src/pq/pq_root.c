@@ -3,8 +3,11 @@
  *
  *   Key derivation (deterministic, recoverable from the 24 words, FIANSO-SPEC 7.7):
  *     node = SLIP-21(seed, label "carbs ML-DSA-44")     (64 bytes: chain || key)
- *     xi   = node[32..64]
+ *     xi   = node[32..64], the SLIP-21 key
  *     (pk, sk) = ML-DSA-44.KeyGen_internal(xi)       (FIPS 204, Algorithm 6)
+ *   In HDW_SLIP21 mode the OS returns only the 32-byte key, at the start of the
+ *   output buffer (Speculos src/bolos/os_bip32.c, hdw_slip21): xi is those 32
+ *   bytes. An all-zero output is refused rather than used as a seed.
  *   No BIP32 secp256k1 private key is ever reused as an ML-DSA seed.
  *   The node verifies pure ML-DSA with an empty context over the full signing
  *   data (STX\0 prefix included), so the host sends exactly those bytes. The
@@ -38,18 +41,15 @@
 #include "../xrp/signing_session.h"
 #include "../xrp/xrp_parse.h"
 
-/* Internal SDK function (lib_cxng/src/cx_mldsa_internal.h): deterministic key generation. */
-cx_err_t MLDSA_internal_keygen(uint8_t *pk,
-                               size_t pk_len,
-                               uint8_t *sk,
-                               size_t sk_len,
-                               const uint8_t seed[MLDSA_SEEDBYTES],
-                               MLDSA_param_t param);
+/* Internal SDK header (lib_cxng/src, on the include path, see the Makefile):
+ * MLDSA_internal_keygen, the deterministic key generation. */
+#include <cx_mldsa_internal.h>
 
 #define PQ_CHUNK         250U
 #define PQ (&tmp_ctx.pq_context)
-#define PQ_SLIP21_NODE   64U
-#define PQ_SLIP21_KEY    32U
+/* os_derive_bip32_with_seed_no_throw() takes a 64-byte output buffer
+ * (raw_privkey[static 64]); in HDW_SLIP21 mode it fills only the first 32. */
+#define PQ_OS_KEY_BUFFER 64U
 #define SW_WRONG_DATA    0x6A80
 #define SW_OK            0x9000
 #define SW_DENY          0x6985
@@ -61,8 +61,9 @@ cx_err_t MLDSA_internal_keygen(uint8_t *pk,
 /* Same answer as the classical path (sign_transaction.c, handle_packet_content). */
 #define SW_SESSION_BLIND_REFUSED (0x6800 | SESSION_BLIND_SIGN_REFUSED)
 
-/* SLIP-21 path: a leading 0x00 then the label (must match PATH_SLIP21_APP_LOAD_PARAMS). */
-static const char PQ_SLIP21_LABEL[] = "\0carbs ML-DSA-44";
+/* SLIP-21 path: a leading 0x00 then the label (must match PATH_SLIP21_APP_LOAD_PARAMS).
+ * Aligned because the OS takes it as a const unsigned int pointer. */
+static const char PQ_SLIP21_LABEL[] __attribute__((aligned(4))) = "\0carbs ML-DSA-44";
 
 /* The signature stays outside tmp_ctx (which is zeroed when the instruction changes). */
 static uint8_t pq_signature[MLDSA44_SIGBYTES];
@@ -70,25 +71,39 @@ static size_t pq_signature_length;
 /* XRPL single-signature prefix (HashPrefix::txSign): "STX\0". */
 static const uint8_t PQ_SIGNING_PREFIX[] = {0x53, 0x54, 0x58, 0x00};
 
+static bool is_all_zero(const uint8_t *data, size_t length) {
+    uint8_t bits = 0;
+    for (size_t i = 0; i < length; i++) {
+        bits |= data[i];
+    }
+    return bits == 0;
+}
+
 static bool derive_keypair(void) {
-    uint8_t node[PQ_SLIP21_NODE] = {0};
+    uint8_t output[PQ_OS_KEY_BUFFER] = {0};
     bool ok = false;
     if (os_derive_bip32_with_seed_no_throw(HDW_SLIP21,
                                            CX_CURVE_SECP256K1,
                                            (const unsigned int *) PQ_SLIP21_LABEL,
                                            sizeof(PQ_SLIP21_LABEL) - 1,
-                                           node,
+                                           output,
                                            NULL,
                                            NULL,
-                                           0) == CX_OK) {
+                                           0) == CX_OK &&
+        !is_all_zero(output, MLDSA_SEEDBYTES)) {
+        /* xi = the 32-byte SLIP-21 key, at the start of the output. */
         ok = MLDSA_internal_keygen(PQ->public_key,
                                    sizeof(PQ->public_key),
                                    PQ->secret_key,
                                    sizeof(PQ->secret_key),
-                                   node + PQ_SLIP21_NODE - PQ_SLIP21_KEY,
+                                   output,
                                    MLDSA_44) == CX_OK;
     }
-    explicit_bzero(node, sizeof(node));
+    explicit_bzero(output, sizeof(output));
+    if (!ok) {
+        explicit_bzero(PQ->public_key, sizeof(PQ->public_key));
+        explicit_bzero(PQ->secret_key, sizeof(PQ->secret_key));
+    }
     return ok;
 }
 

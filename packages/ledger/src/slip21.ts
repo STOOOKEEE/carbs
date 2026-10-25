@@ -1,12 +1,13 @@
 /**
  * The device's ML-DSA-44 key derivation, reproduced for vectors and the simulated device
- * (`ledger-app/src/pq/pq_root.c:4-8`, `:57-86`):
+ * (`ledger-app/src/pq/pq_root.c:4-11`, `:64-108`):
  *   seed = BIP39(mnemonic)                          (PBKDF2-HMAC-SHA512, 2048 rounds, salt "mnemonic")
  *   m    = HMAC-SHA512("Symmetric key seed", seed)   (SLIP-21 master node)
  *   node = HMAC-SHA512(m[0..32], 0x00 ‖ "carbs ML-DSA-44")
  *   xi   = node[32..64]                              (FIPS 204 ML-DSA.KeyGen_internal seed)
- * Whether the device's SDK computes SLIP-21 exactly this way is UNVERIFIED until the device-track
- * owner compares the vector of `docs/device-contract.md` with a device or Speculos.
+ * Verified on Speculos against the app with the SLIP-21 seed fix (two mnemonics,
+ * `docs/device-contract.md` section 4); not yet on the real Stax. Builds before that fix derived
+ * KeyGen_internal(32 zero bytes) on every device, so they never matched this derivation.
  */
 
 import { hmac } from "@noble/hashes/hmac.js";
