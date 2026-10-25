@@ -30,6 +30,7 @@
 #include <xrpl/protocol/Units.h>
 #include <xrpl/protocol/XRPAmount.h>
 #include <xrpl/protocol/jss.h>
+#include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/apply.h>
 #include <xrpl/tx/applySteps.h>
 
@@ -103,6 +104,20 @@ increase(FeeLevel64 level, std::uint32_t increasePercent)
 {
     return mulDiv(level, 100 + increasePercent, 100)
         .value_or(static_cast<FeeLevel64>(xrpl::kMuldivMax));
+}
+
+// Whether `tx`, signed by a session key, would displace `queued`, a
+// transaction that key did not sign. The owner's close of the session,
+// waiting in the queue, must not be outbid by the key it revokes.
+static bool
+sessionDisplacesOther(ReadView const& view, STTx const& tx, STTx const& queued)
+{
+    auto const session = signingSessionOf(view, tx);
+    if (!session)
+        return false;
+
+    auto const queuedSession = sessionKeyletOf(view.rules(), queued);
+    return !queuedSession || queuedSession->key != session->key;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -937,6 +952,15 @@ TxQ::apply(
             // Is the current transaction's fee higher than
             // the queued transaction's fee + a percentage
             TxQAccount::TxMap::iterator const& existingIter = *replacedTxIter;
+
+            if (sessionDisplacesOther(view, *tx, *existingIter->second.txn))
+            {
+                JLOG(j_.trace()) << "Ignoring session-signed transaction " << transactionID
+                                 << " in favor of queued " << existingIter->second.txID
+                                 << " signed by another key";
+                return {telCAN_NOT_QUEUE_FEE, false};
+            }
+
             auto requiredRetryLevel =
                 increase(existingIter->second.feeLevel, setup_.retrySequencePercent);
             JLOG(j_.trace()) << "Found transaction in queue for account " << account << " with "
@@ -1724,6 +1748,20 @@ TxQ::tryDirectApply(
 
     if (feeLevelPaid >= requiredFeeLevel)
     {
+        // A session-signed transaction that would replace a queued one its
+        // key did not sign goes through the queue, which refuses it.
+        {
+            std::scoped_lock const lock(mutex_);
+            if (auto const accountIter = byAccount_.find(account); accountIter != byAccount_.end())
+            {
+                auto const& queued = accountIter->second.transactions;
+                if (auto const existingIter = queued.find(txSeqProx);
+                    existingIter != queued.end() &&
+                    sessionDisplacesOther(view, *tx, *existingIter->second.txn))
+                    return {};
+            }
+        }
+
         // Attempt to apply the transaction directly.
         auto const transactionID = tx->getTransactionID();
         JLOG(j_.trace()) << "Applying transaction " << transactionID << " to open ledger.";
