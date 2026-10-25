@@ -377,8 +377,7 @@ public:
      * the RegularKey, a passkey or a beneficiary (FIANSO-SPEC 6.5).
      *
      * Templated like invokeCheckPermission, because mode P needs
-     * T::checkGranularSemantics and the fee ceiling needs
-     * T::calculateBaseFee. Returns NotTEC: tesSUCCESS or a tef code.
+     * T::checkGranularSemantics. Returns NotTEC: tesSUCCESS or a tef code.
      */
     template <class T>
     static NotTEC
@@ -394,7 +393,6 @@ public:
             ctx,
             sessionKeylet,
             overridesCheckSign,
-            [&ctx] { return T::calculateBaseFee(ctx.view, ctx.tx); },
             [](ReadView const& view,
                STTx const& tx,
                std::unordered_set<GranularPermissionType> const& held) {
@@ -412,7 +410,6 @@ public:
         PreclaimContext const& ctx,
         Keylet const& sessionKeylet,
         bool overridesCheckSign,
-        std::function<XRPAmount()> const& baseFee,
         GranularSemantics const& granularSemantics);
 
     static NotTEC

@@ -1056,7 +1056,6 @@ Transactor::checkSession(
     PreclaimContext const& ctx,
     Keylet const& sessionKeylet,
     bool overridesCheckSign,
-    std::function<XRPAmount()> const& baseFee,
     GranularSemantics const& granularSemantics)
 {
     auto const session = ctx.view.read(sessionKeylet);
@@ -1123,9 +1122,20 @@ Transactor::checkSession(
         return tefSESSION_EXPIRED;
 
     // 4. Fee ceiling, the own close included: what the type requires, plus a
-    // bounded margin.
+    // bounded margin. The required fee comes from xrpl::calculateBaseFee, the
+    // exception-safe path the fee check of invokePreclaim uses too. Its
+    // errors (temUNKNOWN, tefEXCEPTION) are already NotTEC; anything else
+    // becomes tefINTERNAL, since no tec may come before authorization.
+    auto const required = xrpl::calculateBaseFee(ctx.view, ctx.tx);
+    if (!required)
+    {
+        auto const error = required.error();
+        if (isTemMalformed(error) || isTefFailure(error))
+            return NotTEC::fromInt(TERtoInt(error));
+        return tefINTERNAL;  // LCOV_EXCL_LINE
+    }
     auto const fee = ctx.tx[sfFee].xrp();
-    if (fee > baseFee() + ctx.view.fees().base * kSessionFeeMultiple)
+    if (fee > *required + ctx.view.fees().base * kSessionFeeMultiple)
         return tefSESSION_LIMIT;
 
     // 5. The caps, in mode C, except for the own close: what the transaction
