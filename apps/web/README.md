@@ -68,7 +68,7 @@ The reusable shapes (`.panel`, `.panel-stack`, `.btn`, `.chip`, `.sim-badge`, `.
 assets/tokens.css        design tokens (the look)
 assets/css/main.css      base styles and the few shared classes
 components/screens/      the six screens, one component each, with their tests
-components/ui/           SIMULATED badge, result view, device modal, headers
+components/ui/           SIMULATED badge, result view, explorer links, device modal, headers
 lib/ports.ts             Node, Device, Wallet, Exposure interfaces
 lib/sim/                 the simulated implementations and their tests
 lib/demo.ts, migration.ts  the stores behind the screens (state is read back from the node)
@@ -76,6 +76,7 @@ lib/live-apps.ts         the Apps screen's catalogue of the team's live apps and
 layouts/, pages/         Nuxt routing: /, /account, /session, /actions, /attack, /apps, /quantum
 lib/wallets/             the three wallet adapters, the passkey and the wallet entry's logic
 lib/networks.ts, csp.ts  AlphaNet, Local node, Mainnet (read-only); the CSP is built from them
+lib/explorer.ts          links to the explorer of the network an address or a hash lives on
 server/                  Nitro: moves the inline config script into a file (CSP script-src 'self')
 ```
 

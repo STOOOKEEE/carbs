@@ -20,7 +20,7 @@ describe("networks", () => {
     expect(alpha.rpc).toBe("https://rpc.alphanet.xrpl.org");
     expect(alpha.wss).toBe("wss://alphanet.xrpl.org");
     expect(alpha.faucet).toBe("https://faucet.alphanet.xrpl.org/accounts");
-    expect(alpha.explorer).toBe("https://alphanet.xrpl.org");
+    expect(alpha.explorer).toBe("https://custom.xrpl.org/alphanet.xrpl.org");
     expect(NETWORKS.local.wss).toBe("ws://localhost:6006");
     expect(NETWORKS.mainnet.readOnly).toBe(true);
     expect(NETWORKS.mainnet.faucet).toBeNull();
@@ -39,13 +39,13 @@ describe("networks", () => {
 
   it("links transactions and accounts to the explorer of the network", () => {
     expect(explorerTxUrl(NETWORKS.alphanet, "ABC")).toBe(
-      "https://alphanet.xrpl.org/transactions/ABC",
+      "https://custom.xrpl.org/alphanet.xrpl.org/transactions/ABC",
     );
     expect(explorerTxUrl(NETWORKS.mainnet, "ABC")).toBe(
       "https://livenet.xrpl.org/transactions/ABC",
     );
     expect(explorerAccountUrl(NETWORKS.alphanet, "rX")).toBe(
-      "https://alphanet.xrpl.org/accounts/rX",
+      "https://custom.xrpl.org/alphanet.xrpl.org/accounts/rX",
     );
     expect(explorerTxUrl(NETWORKS.local, "ABC")).toBeNull();
   });
@@ -64,8 +64,15 @@ describe("networks", () => {
     const origins = allConnectOrigins(NETWORKS);
     expect(origins).toContain("wss://alphanet.xrpl.org");
     expect(origins).toContain("https://faucet.alphanet.xrpl.org");
-    expect(origins).toContain("https://livenet.xrpl.org");
+    expect(origins).toContain("https://xrplcluster.com");
     expect(origins.every((o) => /^(wss?|https?):\/\/[^/]+$/.test(o))).toBe(true);
+  });
+
+  it("leaves the explorers out of connect-src: they are only linked to", () => {
+    const origins = allConnectOrigins(NETWORKS);
+    for (const explorer of [NETWORKS.alphanet.explorer, NETWORKS.mainnet.explorer]) {
+      expect(origins).not.toContain(new URL(explorer ?? "").origin);
+    }
   });
 });
 

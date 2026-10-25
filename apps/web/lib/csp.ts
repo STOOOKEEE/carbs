@@ -1,7 +1,8 @@
 /**
  * The Content-Security-Policy, built from the configured networks. `script-src` is
  * `'self'` alone (no `unsafe-inline`, no hash, no third-party script); `connect-src`
- * lists the hosts of the networks and the explorers, never a bare scheme or a wildcard.
+ * lists the hosts of the networks' nodes and faucets, never a bare scheme or a wildcard.
+ * Explorers and the team's apps are only linked to: navigation needs no `connect-src`.
  * `nuxt.config.ts` serves it; `docs/DEPLOY.md` and `vercel.json` carry the same text
  * (a test fails if they drift).
  */

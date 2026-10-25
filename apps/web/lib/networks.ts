@@ -2,7 +2,8 @@
  * The networks the app knows. AlphaNet is the default; the local node is the standalone
  * node of `infra/` (URL from the environment, spec 6.12); mainnet is read-only and used by
  * the Quantum screen only (spec 8.7). The same list builds the Content-Security-Policy
- * (`lib/csp.ts`), so a host that is not listed here cannot be contacted.
+ * (`lib/csp.ts`), so a host that is not listed here cannot be contacted. The explorers are
+ * only linked to (navigation, in a new tab), so they are not in it.
  */
 
 export type NetworkId = "alphanet" | "local" | "mainnet";
@@ -15,6 +16,7 @@ export interface AppNetwork {
   wss: string;
   rpc: string;
   faucet: string | null;
+  /** Base of the public explorer's pages (`/accounts/<address>`, `/transactions/<hash>`). */
   explorer: string | null;
   /** Only read from; never submitted to. */
   readOnly: boolean;
@@ -42,7 +44,8 @@ export function createNetworks(
       wss: "wss://alphanet.xrpl.org",
       rpc: "https://rpc.alphanet.xrpl.org",
       faucet: "https://faucet.alphanet.xrpl.org/accounts",
-      explorer: "https://alphanet.xrpl.org",
+      // The XRPL Explorer in custom-network mode: the AlphaNet host itself serves no explorer.
+      explorer: "https://custom.xrpl.org/alphanet.xrpl.org",
       readOnly: false,
     },
     local: {
@@ -126,11 +129,12 @@ export function checkNodeUrl(raw: string, pageProtocol: string): UrlCheck {
   return { ok: true, reason: null };
 }
 
-/** The origins (scheme, host, port) a network needs in `connect-src`. */
+/** The origins (scheme, host, port) a network needs in `connect-src`: its node and its faucet. */
 export function networkOrigins(network: AppNetwork): string[] {
   // The app talks to the local node over its public WebSocket only; its HTTP port is the admin RPC.
   const rpc = network.id === "local" ? null : network.rpc;
-  const origins = [network.wss, rpc, network.faucet, network.explorer]
+  // The explorer is only linked to, never fetched: navigation needs no connect-src.
+  const origins = [network.wss, rpc, network.faucet]
     .filter((value): value is string => value !== null)
     .map((value) => new URL(value).origin);
   return [...new Set(origins)];
@@ -148,7 +152,7 @@ export function localRpcFor(wss: string): string {
   }
 }
 
-/** Every origin the page may connect to: all configured networks and their explorers. */
+/** Every origin the page may connect to: the nodes and faucets of all configured networks. */
 export function allConnectOrigins(networks: Record<NetworkId, AppNetwork>): string[] {
   return [...new Set(Object.values(networks).flatMap(networkOrigins))];
 }

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from "vue";
+import ExplorerLink from "~/components/ui/ExplorerLink.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
-import { useWallets } from "~/lib/context";
+import { useBackend, useWallets } from "~/lib/context";
 import { shortAddress } from "~/lib/format";
 import { PART_LABELS, type SimulatedPart, type WalletId } from "~/lib/wallets/catalog";
 
 const wallets = useWallets();
+const backend = useBackend();
 const state = wallets.state;
 const open = ref(false);
 const dialog = ref<HTMLElement | null>(null);
@@ -36,7 +38,15 @@ async function connect(id: WalletId): Promise<void> {
   <div class="relative" data-testid="wallet-connector">
     <template v-if="state.address">
       <div class="flex items-center gap-2 text-xs">
-        <span class="mono" data-testid="connected-address">{{ shortAddress(state.address) }}</span>
+        <span class="mono" data-testid="connected-address">
+          <ExplorerLink
+            kind="account"
+            :value="state.address"
+            :network="backend.node.explorerNetwork()"
+            :simulated="backend.mode === 'simulated'"
+            :text="shortAddress(state.address)"
+          />
+        </span>
         <button class="btn !min-h-8" data-testid="wallet-disconnect" @click="wallets.disconnect()">
           Disconnect
         </button>

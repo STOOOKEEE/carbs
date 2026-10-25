@@ -37,6 +37,9 @@ describe("Quantum screen", () => {
     await wrapper.get("[data-testid='fixture-exposed-master']").trigger("click");
     await flushPromises();
     expect(wrapper.get("[data-testid='reason-master']").text()).toContain("first revealed in");
+    // A simulated history is on no explorer: the account and the hash stay plain text.
+    expect(wrapper.get("[data-testid='report-address']").text()).toMatch(/^r/);
+    expect(wrapper.find("[data-testid='report'] a").exists()).toBe(false);
   });
 
   it("checks a pasted address", async () => {
@@ -228,6 +231,27 @@ describe("Quantum screen, live source", () => {
     expect(wrapper.get("[data-testid='coverage']").text()).toContain("does not reach");
   });
 
+  it("links the checked account and the transaction that revealed its key to the AlphaNet explorer", async () => {
+    const { wrapper } = await checkLive([creation, signedByMaster], true);
+    const explorer = "https://custom.xrpl.org/alphanet.xrpl.org";
+    const account = wrapper.get("[data-testid='report-account-link']");
+    expect(account.attributes("href")).toBe(`${explorer}/accounts/${address}`);
+    expect(account.attributes("target")).toBe("_blank");
+    expect(account.attributes("rel")).toBe("noopener noreferrer");
+    const reveal = wrapper.get("[data-testid='reason-master'] [data-testid='explorer-link']");
+    expect(reveal.attributes("href")).toBe(`${explorer}/transactions/${"AB".repeat(31)}01`);
+  });
+
+  it("links mainnet's account and transaction to livenet.xrpl.org", async () => {
+    const { wrapper } = await checkLive([creation, signedByMaster], true, "mainnet");
+    expect(wrapper.get("[data-testid='report-account-link']").attributes("href")).toBe(
+      `https://livenet.xrpl.org/accounts/${address}`,
+    );
+    expect(
+      wrapper.get("[data-testid='reason-master'] [data-testid='explorer-link']").attributes("href"),
+    ).toBe(`https://livenet.xrpl.org/transactions/${"AB".repeat(31)}01`);
+  });
+
   it("reads mainnet from its own node and offers no migration there", async () => {
     const { wrapper, urls } = await checkLive([creation, signedByMaster], true, "mainnet");
     expect(urls).toEqual(["https://xrplcluster.com"]);
@@ -277,7 +301,7 @@ describe("Quantum screen, live migration (AlphaNet double, SIMULATED device)", (
     const address = wrapper.get("[data-testid='migration-address']").text();
     expect(address).toMatch(/^r/);
     expect(wrapper.get("[data-testid='account-link']").attributes("href")).toBe(
-      `https://alphanet.xrpl.org/accounts/${address}`,
+      `https://custom.xrpl.org/alphanet.xrpl.org/accounts/${address}`,
     );
 
     await click("run-step-1");
@@ -295,7 +319,7 @@ describe("Quantum screen, live migration (AlphaNet double, SIMULATED device)", (
     expect(links).toHaveLength(3);
     for (const link of links) {
       expect(link.attributes("href")).toMatch(
-        /^https:\/\/alphanet\.xrpl\.org\/transactions\/[0-9A-F]{64}$/,
+        /^https:\/\/custom\.xrpl\.org\/alphanet\.xrpl\.org\/transactions\/[0-9A-F]{64}$/,
       );
     }
     const codes = wrapper

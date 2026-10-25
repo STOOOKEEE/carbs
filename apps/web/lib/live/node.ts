@@ -16,7 +16,6 @@ import {
   type NodeClient,
 } from "@carbs/sessions";
 import type { AppNetwork } from "../networks";
-import { explorerTxUrl } from "../networks";
 import type {
   AccountInfo,
   AccountObjects,
@@ -289,7 +288,7 @@ export class LiveNode implements NodePort {
     return transactionHash(encodeTx(tx, this.defs));
   }
 
-  explorerUrl(hash: string): string | null {
-    return explorerTxUrl(this.network(), hash);
+  explorerNetwork(): AppNetwork {
+    return this.network();
   }
 }

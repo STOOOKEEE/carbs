@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BusyNote from "~/components/ui/BusyNote.vue";
+import ExplorerLink from "~/components/ui/ExplorerLink.vue";
 import LedgerDevicePicker from "~/components/ui/LedgerDevicePicker.vue";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import NeedAccount from "~/components/ui/NeedAccount.vue";
@@ -196,7 +197,15 @@ async function close(): Promise<void> {
               <dt>Mode</dt>
               <dd data-testid="entry-mode">{{ entry.mode }}</dd>
               <dt>Session key</dt>
-              <dd class="mono">{{ shortAddress(entry.sessionKey) }}</dd>
+              <dd class="mono">
+                <ExplorerLink
+                  kind="account"
+                  :value="entry.sessionKey"
+                  :network="backend.node.explorerNetwork()"
+                  :simulated="backend.mode === 'simulated'"
+                  :text="shortAddress(entry.sessionKey)"
+                />
+              </dd>
               <dt v-if="entry.permissions.length">Allows</dt>
               <dd v-if="entry.permissions.length">{{ entry.permissions.join(", ") }}</dd>
             </dl>

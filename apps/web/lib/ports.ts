@@ -5,6 +5,8 @@
  * packages/core, packages/ledger and the real node.
  */
 
+import type { AppNetwork } from "./networks";
+
 export type BackendMode = "simulated" | "live";
 export type KeyAlgorithm = "secp256k1" | "p256" | "mldsa44";
 export type SessionMode = "A" | "P" | "C";
@@ -167,7 +169,11 @@ export interface NodePort {
   submit(tx: TxJson): Promise<NodeResult>;
   /** The transaction id of a signed transaction. */
   transactionHash(tx: TxJson): string;
-  explorerUrl(hash: string): string | null;
+  /**
+   * The network whose public explorer shows this node's accounts and transactions; null for the
+   * simulation, whose values are on no explorer (`lib/explorer.ts` adds none for the local node).
+   */
+  explorerNetwork(): AppNetwork | null;
 }
 
 /** What the Stax shows before it signs: a list of labelled lines (spec 7.3). */

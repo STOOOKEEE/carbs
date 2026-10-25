@@ -266,7 +266,7 @@ export class SimulatedNode implements NodePort, SimClock {
     return simTxHash(tx);
   }
 
-  explorerUrl(): string | null {
+  explorerNetwork(): null {
     return null;
   }
 

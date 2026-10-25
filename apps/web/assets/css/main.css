@@ -259,6 +259,29 @@
     border: var(--border-width-fine) dashed var(--color-sim);
   }
 
+  /* An address or a hash linked to a public explorer (new tab): accent underline and an arrow. */
+  .explorer-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent);
+    text-decoration-thickness: var(--border-width-fine);
+    text-underline-offset: 0.2em;
+    transition: color var(--motion-fast) var(--ease-out);
+  }
+
+  .explorer-link:hover {
+    color: var(--color-accent);
+  }
+
+  /* Not part of the link's text for assistive technology (empty alternative). */
+  .explorer-link::after {
+    display: inline-block;
+    margin-left: var(--space-1);
+    color: var(--color-accent);
+    content: "\2197";
+    content: "\2197" / "";
+  }
+
   .fade-in {
     animation: fade-in var(--motion-base) var(--ease-out);
   }
