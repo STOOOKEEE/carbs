@@ -342,6 +342,22 @@ describe("carbs protections: per-transaction bound and witness (SIMULATED defini
     await expect(signAsWitness(sessionSigned.tx, key, defs)).rejects.toThrow(/own witness/);
   });
 
+  it("never co-signs a session close", async () => {
+    const key = await createSessionKey();
+    const witnessKey = classicSignerFromSeed(generateClassicSeed());
+    const ownClose: TxJson = {
+      TransactionType: "SigningSessionDelete",
+      Account: payment["Account"],
+      SessionKey: key.address,
+      Fee: "10",
+      Sequence: 9,
+      LastLedgerSequence: 120,
+      SigningPubKey: key.publicKeyHex,
+      TxnSignature: "00",
+    };
+    await expect(signAsWitness(ownClose, witnessKey, defs)).rejects.toThrow(/session close/);
+  });
+
   it("maps tefSESSION_NO_WITNESS, read by name from the definitions", () => {
     const code = defs.resultCode("tefSESSION_NO_WITNESS");
     expect(code).toBe(defs.resultCode("tefFIREWALL_BLOCK") + 4);
