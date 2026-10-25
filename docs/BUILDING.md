@@ -55,3 +55,7 @@ cmake -S ledger-app/unit-tests -B <build> -G Ninja \
 cmake --build <build>
 (cd ledger-app/unit-tests/src && for t in test_printers test_swap test_tx test_pq_root; do <build>/$t; done)
 ```
+
+### Fuzzing the transaction parser
+
+The app's fuzzer is `ledger-app/fuzzing/` (libFuzzer, run by ClusterFuzzLite in Docker with the Ledger SDK). On a Mac without Docker, the SDK or a clang with libFuzzer, `ledger-app/fuzzing/native/run.sh [seconds]` builds the same entry point (`fuzzing/src/fuzz_tx.c`: parse, then format every field) against the SDK test doubles of `unit-tests/`, with AddressSanitizer and UndefinedBehaviorSanitizer, and feeds it random mutations of the ClusterFuzzLite corpus and of every test vector (`tests/standalone/testcases`, the signing session, Batch and policy vectors included). It is not coverage-guided; a crash stops the run and saves its input.

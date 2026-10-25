@@ -7,6 +7,7 @@
 #include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Indexes.h>
+#include <xrpl/protocol/KeyType.h>
 #include <xrpl/protocol/Keylet.h>
 #include <xrpl/protocol/LedgerFormats.h>
 #include <xrpl/protocol/Permissions.h>
@@ -146,6 +147,23 @@ isSessionExpired(ReadView const& view, SLE const& session)
 }
 
 bool
+isSessionKeyTypeEnabled(Rules const& rules, KeyType type)
+{
+    // No default: a new key type must be decided here.
+    switch (type)
+    {
+        case KeyType::Secp256k1:
+        case KeyType::Ed25519:
+            return true;
+        case KeyType::P256:
+            return rules.enabled(featurePasskey) && rules.enabled(fixP256StrictDer);
+        case KeyType::Dilithium:
+            return rules.enabled(featureQuantum);
+    }
+    return false;  // LCOV_EXCL_LINE
+}
+
+bool
 isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witness)
 {
     if (!tx.isFieldPresent(sfWitnessSignature))
@@ -156,10 +174,9 @@ isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witnes
     if (!keyType)
         return false;
 
-    // A key of a type whose amendment is not enabled never co-signs, as it
+    // A key of a type that may not sign under a session never co-signs, as it
     // never signs as a session key (Transactor::checkSession).
-    if ((*keyType == KeyType::P256 && !view.rules().enabled(featurePasskey)) ||
-        (*keyType == KeyType::Dilithium && !view.rules().enabled(featureQuantum)))
+    if (!isSessionKeyTypeEnabled(view.rules(), *keyType))
         return false;
 
     auto const sle = view.read(keylet::account(witness));
