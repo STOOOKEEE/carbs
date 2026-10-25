@@ -55,6 +55,39 @@
         </form>
       </section>
 
+      <section id="pq-passkey-section">
+        <h2>Compte Touch ID post-quantique</h2>
+        <p class="muted">
+          La passkey n'est jamais enregistrée sur le ledger : après Touch ID, son extension PRF
+          libère un secret qui déchiffre une clé ML-DSA-44 gardée dans ce navigateur. Cette clé est
+          la seule autorité du compte (clé régulière, clé maître désactivée) et signe chaque
+          transaction dans la page.
+        </p>
+        <p id="pq-prf-status" class="muted">Extension PRF de WebAuthn : vérification…</p>
+        <div id="pq-account-info" class="muted">
+          Aucun compte post-quantique dans ce navigateur.
+        </div>
+        <p id="pq-ledger-authority" class="muted"></p>
+        <div class="actions">
+          <button id="pq-create" type="button">Créer le compte (Touch ID + clé ML-DSA-44)</button>
+          <button id="pq-forget" type="button" class="secondary">Oublier ce compte</button>
+        </div>
+        <form id="pq-pay-form">
+          <label>Destination <input id="pq-pay-destination" required placeholder="r…" /></label>
+          <label
+            >Montant (XRP)
+            <input id="pq-pay-amount" required type="number" min="0.000001" step="any" value="1"
+          /></label>
+          <button type="submit">Payer (Touch ID → ML-DSA-44)</button>
+          <button id="pq-session" type="button">Ouvrir une session (Touch ID → ML-DSA-44)</button>
+        </form>
+        <p class="muted">
+          La session (mode C : 20 XRP au total, 5 XRP par paiement, 300 s, 50 transactions) est
+          ouverte par la clé ML-DSA-44 du compte ; sa clé de session ML-DSA-44 paie ensuite le
+          montant ci-dessus sans Touch ID.
+        </p>
+      </section>
+
       <section id="ledger-section">
         <h2>Ledger Stax</h2>
         <p class="muted">
