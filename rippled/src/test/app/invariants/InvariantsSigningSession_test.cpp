@@ -12,6 +12,7 @@
 #include <test/jtx/txflags.h>
 #include <test/jtx/webauthn.h>
 
+#include <xrpl/basics/Slice.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Indexes.h>
 #include <xrpl/protocol/LedgerFormats.h>
@@ -22,6 +23,7 @@
 #include <xrpl/protocol/jss.h>
 
 #include <memory>
+#include <string>
 
 namespace xrpl::test {
 
@@ -544,6 +546,141 @@ class InvariantsSigningSession_test : public InvariantsBase
             TxAccount::A1);
     }
 
+    // Rule 4: a mode-C session transaction other than the own close is a
+    // session cap payment. Without a mutation: the shape alone fails.
+    void
+    testModeCShape()
+    {
+        testcase("rule 4: a mode-C transaction is a cap payment");
+        using namespace jtx;
+
+        auto const message = "a mode-C session transaction is not a session cap payment";
+        auto const unchanged = [](Account const&, Account const&, ApplyContext&) { return true; };
+
+        // An IOU payment, whose outflow SessionSpent cannot see.
+        Account const a2{"A2"};
+        doInvariantCheck(
+            {{message}},
+            unchanged,
+            XRPAmount{},
+            STTx{
+                ttPAYMENT,
+                [&a2](STObject& tx) {
+                    tx.setFieldVL(sfSigningPubKey, key().pk().slice());
+                    tx.setAccountID(sfDestination, a2.id());
+                    tx.setFieldAmount(sfAmount, a2["USD"](1));
+                    tx.setFieldU32(sfLastLedgerSequence, 1000);
+                }},
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            open('C'),
+            TxAccount::A1);
+
+        // Another type.
+        doInvariantCheck(
+            {{message}},
+            unchanged,
+            XRPAmount{},
+            STTx{
+                ttACCOUNT_SET,
+                [](STObject& tx) {
+                    tx.setFieldVL(sfSigningPubKey, key().pk().slice());
+                    tx.setFieldU32(sfLastLedgerSequence, 1000);
+                }},
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            open('C'),
+            TxAccount::A1);
+    }
+
+    // Rule 4: a mode-C session transaction counts at most SessionMaxPerTx
+    // beyond its fee; at the bound it passes.
+    void
+    testMaxPerTx()
+    {
+        testcase("rule 4: SessionMaxPerTx");
+        using namespace jtx;
+
+        XRPAmount const fee{10};
+        XRPAmount const maxPerTx = XRP(1).value().xrp();
+        // The account pays `amount` plus the fee, the counter counts both and
+        // A2 receives the amount, so only the per-transaction bound can fail.
+        auto const spend = [fee](XRPAmount amount) {
+            return [amount, fee](Account const& a1, Account const& a2, ApplyContext& ac) {
+                auto const sle = ac.view().peek(sessionOf(a1));
+                auto const account = ac.view().peek(keylet::account(a1.id()));
+                auto const destination = ac.view().peek(keylet::account(a2.id()));
+                if (!sle || !account || !destination)
+                    return false;
+                (*sle)[sfSessionSpent] = STAmount{amount + fee};
+                ac.view().update(sle);
+                (*account)[sfBalance] = (*account)[sfBalance] - STAmount{amount + fee};
+                ac.view().update(account);
+                (*destination)[sfBalance] = (*destination)[sfBalance] + STAmount{amount};
+                ac.view().update(destination);
+                return true;
+            };
+        };
+        auto const openWithMax = [maxPerTx](Account const& a1, Account const&, Env& env) {
+            env(session::set(a1, key(), 600),
+                session::Cap(XRP(100)),
+                session::MaxPerTx(STAmount{maxPerTx}));
+            return true;
+        };
+        // The payment declares the fee it pays.
+        auto const payment = [fee] {
+            auto tx = sessionPayment();
+            tx.setFieldAmount(sfFee, STAmount{fee});
+            return tx;
+        };
+
+        doInvariantCheck(
+            {{"a mode-C session transaction counted more than its SessionMaxPerTx"}},
+            spend(maxPerTx + XRPAmount{1}),
+            fee,
+            payment(),
+            {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+            openWithMax,
+            TxAccount::A1);
+
+        doInvariantCheck(
+            {},
+            spend(maxPerTx),
+            fee,
+            payment(),
+            {tesSUCCESS, tesSUCCESS},
+            openWithMax,
+            TxAccount::A1);
+    }
+
+    // Rule 5: a session-signed transaction creates none of the entries of the
+    // excluded types (sponsorship, subscription, credential, DID).
+    void
+    testExcludedCreated()
+    {
+        testcase("rule 5: no entry of an excluded type");
+        using namespace jtx;
+
+        Account const a1{"A1"}, a2{"A2"};
+        for (auto const& keylet :
+             {keylet::sponsorship(a1.id(), a2.id()),
+              keylet::subscription(a1.id(), a2.id(), 1),
+              keylet::credential(a2.id(), a1.id(), makeSlice(std::string{"KYC"})),
+              keylet::did(a1.id())})
+        {
+            doInvariantCheck(
+                {{"a session-signed transaction created a sponsorship, subscription, credential "
+                  "or DID"}},
+                [keylet](Account const&, Account const&, ApplyContext& ac) {
+                    ac.view().insert(std::make_shared<SLE>(keylet));
+                    return true;
+                },
+                XRPAmount{},
+                sessionPayment(),
+                {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+                open('A'),
+                TxAccount::A1);
+        }
+    }
+
     // Rule 5: a session-signed transaction never touches the authority of the
     // account, nor another of its sessions.
     void
@@ -745,7 +882,10 @@ public:
         testSpent();
         testOwnCloseSpent();
         testOutflow();
+        testModeCShape();
+        testMaxPerTx();
         testAuthority();
+        testExcludedCreated();
         testValid();
         testValidOwnClose();
     }
