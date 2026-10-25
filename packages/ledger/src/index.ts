@@ -1,6 +1,7 @@
 /**
  * `@carbs/ledger`: the client side of the device contract (`docs/device-contract.md`) over the
- * Device Management Kit (`connectLedger`, WebHID), and a SIMULATED device that follows the same
+ * Device Management Kit (`connectLedger`, WebHID) and Ledger's XRP signer kit, extended for this
+ * repository's app (`@carbs/device-signer-kit-xrp`), and a SIMULATED device that follows the same
  * contract for the tests.
  */
 
@@ -8,6 +9,7 @@ export * from "./agent-id.js";
 export * from "./apdu.js";
 export * from "./commands.js";
 export * from "./device.js";
+export { kitFlows, kSkipOpenApp, type XrpKitFlows, type XrpTransport } from "./kit.js";
 export * from "./ledger-error.js";
 export * from "./screen.js";
 export * from "./session-policy.js";

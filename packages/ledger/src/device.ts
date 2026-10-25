@@ -1,15 +1,21 @@
 /**
- * A real Ledger as an `ApduTransport`: a Device Management Kit session, so the commands and
- * signers of this package run on the device unchanged. The WebHID connection is `src/webhid.ts`.
+ * A real Ledger: a Device Management Kit session and the extended XRP signer kit bound to it, so
+ * the commands and signers of this package run on the device through the kit. The WebHID
+ * connection is `src/webhid.ts`.
  */
 
-import { dmkTransport, type ApduTransport, type DmkApduSender } from "./apdu.js";
+import type { SignerXrp } from "@carbs/device-signer-kit-xrp";
+import { dmkTransport, type DmkApduSender } from "./apdu.js";
+import type { XrpTransport } from "./kit.js";
 
 /** First account of the XRP app (BIP44 coin type 144). */
 export const kDefaultXrpPath = "44'/144'/0'/0/0";
 
-/** A connected device: APDUs to the open XRP app, then `close` once done. */
-export interface LedgerDevice extends ApduTransport {
+/**
+ * A connected device: the kit's signer for the commands, raw APDUs to the open XRP app, then
+ * `close` once done.
+ */
+export interface LedgerDevice extends XrpTransport {
   close(): Promise<void>;
 }
 
@@ -19,10 +25,16 @@ export interface DmkSession extends DmkApduSender {
   close(): void;
 }
 
-export function ledgerDevice(dmk: DmkSession, sessionId: string): LedgerDevice {
+/**
+ * A device over a DMK session. With `signer` (the kit built on the same session, as
+ * `connectLedger` does), the commands go through `dmk.executeDeviceAction`; without it, they
+ * run the kit's device actions over `sendApdu`.
+ */
+export function ledgerDevice(dmk: DmkSession, sessionId: string, signer?: SignerXrp): LedgerDevice {
   const transport = dmkTransport(dmk, sessionId);
   return {
     exchange: (apdu) => transport.exchange(apdu),
+    signer,
     async close() {
       await dmk.disconnect({ sessionId });
       dmk.close();

@@ -1,7 +1,7 @@
 /** Device keys as `BytesSigner`s of `@carbs/sessions`, so the same signing code serves every key. */
 
 import { kTxSignPrefix, type BytesSigner } from "@carbs/sessions";
-import type { ApduTransport } from "./apdu.js";
+import type { XrpTransport } from "./kit.js";
 import {
   DeviceContractError,
   getClassicPublicKey,
@@ -12,14 +12,14 @@ import {
 } from "./commands.js";
 
 /** The device's ML-DSA-44 root key. `sign` receives `STX\0 ‖ fields` and sends it as it is. */
-export async function deviceMlDsaSigner(transport: ApduTransport): Promise<BytesSigner> {
+export async function deviceMlDsaSigner(transport: XrpTransport): Promise<BytesSigner> {
   const publicKey = await getMlDsaPublicKey(transport);
   return { keyType: "ml-dsa-44", publicKey, sign: (data) => signMlDsa(transport, data) };
 }
 
 /** A classical device key. `sign` receives `STX\0 ‖ fields` and sends the fields only. */
 export async function deviceClassicSigner(
-  transport: ApduTransport,
+  transport: XrpTransport,
   path: string,
   curve: DeviceCurve,
 ): Promise<BytesSigner> {
