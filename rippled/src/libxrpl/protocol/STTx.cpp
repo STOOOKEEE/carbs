@@ -302,8 +302,9 @@ STTx::checkSign(Rules const& rules) const
     }
 
     // A signing session's witness signs with one key; whether that key belongs
-    // to the session's witness is checked against the ledger
-    // (Transactor::checkSession).
+    // to the session's witness, and whether the transaction may carry one at
+    // all, is checked against the ledger (Transactor::checkSession,
+    // invokePreclaim).
     if (isFieldPresent(sfWitnessSignature))
     {
         auto const witnessSignatureObj = getFieldObject(sfWitnessSignature);

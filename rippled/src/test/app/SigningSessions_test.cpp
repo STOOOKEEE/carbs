@@ -2465,6 +2465,53 @@ class SigningSessions_test : public beast::unit_test::Suite
         env(session::del(alice, key), Sig(key), lls());
         env.close();
         BEAST_EXPECT(!sessionEntry(env, alice, key));
+
+        // Once the session is closed, the key has no authority: that refusal
+        // comes first, co-signed or not.
+        env(pay(alice, bob, XRP(1)),
+            Sig(key),
+            Sig(sfWitnessSignature, witness),
+            lls(),
+            Ter(tefBAD_AUTH));
+
+        // Multi-signed, by a delegate, and a Batch: none is session-signed.
+        env(signers(alice, 1, {{bob, 1}}));
+        env(delegate::set(alice, bob, {"Payment"}));
+        env.close();
+        balance = env.balance(alice);
+        auto const bobBalance = env.balance(bob);
+        env(pay(alice, witness, XRP(1)),
+            Msig(bob),
+            Fee(drops(20)),
+            Sig(sfWitnessSignature, mallory),
+            Ter(tefBAD_SIGNATURE));
+        env(pay(alice, witness, XRP(1)),
+            delegate::As(bob),
+            Sig(sfWitnessSignature, mallory),
+            Ter(tefBAD_SIGNATURE));
+        auto seq = env.seq(alice);
+        auto const batchFee = batch::calcBatchFee(env, 0, 2);
+        env(batch::outer(alice, seq, batchFee, tfAllOrNothing),
+            batch::Inner(pay(alice, witness, XRP(1)), seq + 1),
+            batch::Inner(pay(alice, witness, XRP(1)), seq + 2),
+            Sig(sfWitnessSignature, mallory),
+            Ter(tefBAD_SIGNATURE));
+        // An inner transaction is refused with the whole Batch, before its fee.
+        auto inner = pay(alice, witness, XRP(1));
+        inner[sfWitnessSignature.jsonName][sfSigningPubKey.jsonName] = strHex(mallory.pk().slice());
+        inner[sfWitnessSignature.jsonName][sfTxnSignature.jsonName] = "DEADBEEF";
+        env(batch::outer(alice, seq, batchFee, tfAllOrNothing),
+            batch::Inner(inner, seq + 1),
+            batch::Inner(pay(alice, witness, XRP(1)), seq + 2),
+            Ter(temBAD_SIGNATURE));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(env.balance(bob) == bobBalance);
+        env(batch::outer(alice, seq, batchFee, tfAllOrNothing),
+            batch::Inner(pay(alice, witness, XRP(1)), seq + 1),
+            batch::Inner(pay(alice, witness, XRP(1)), seq + 2));
+        env.close();
+        BEAST_EXPECT(env.seq(alice) == seq + 3);
     }
 
     // A witness key of a type whose amendment is not enabled never co-signs,

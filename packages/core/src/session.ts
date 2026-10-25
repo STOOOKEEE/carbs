@@ -250,7 +250,8 @@ export function witnessSigningData(tx: TxJson, defs: Definitions): Uint8Array {
 /**
  * Add the witness's co-signature to a transaction the session key has signed. The witness signs
  * with a single key (the node refuses an empty `SigningPubKey`), the account's master or regular
- * key; the node checks which key it is (`tefSESSION_NO_WITNESS`).
+ * key; the node checks which key it is (`tefSESSION_NO_WITNESS`). Never on the own close: the node
+ * refuses a co-signature on a transaction that needs none (`tefBAD_SIGNATURE`).
  */
 export async function signAsWitness(
   sessionSigned: TxJson,
@@ -266,6 +267,11 @@ export async function signAsWitness(
   }
   if (bytesToHex(witness.publicKey) === bytesToHex(hexToBytes(sessionPubKey))) {
     throw new SessionSignError("the session key is not its own witness");
+  }
+  // The own close needs no witness and the node refuses one on it (tefBAD_SIGNATURE); no other
+  // close is session-signed.
+  if (sessionSigned["TransactionType"] === "SigningSessionDelete") {
+    throw new SessionSignError("a witness never co-signs a session close");
   }
   requireField(defs, kWitnessSignatureField);
   const signature = await witness.sign(witnessSigningData(sessionSigned, defs));

@@ -193,18 +193,17 @@ invokePreclaim(PreclaimContext const& ctx)
                         // A session-signed transaction is authorized by its
                         // session alone, in place of the signature check.
                         auto const session = signingSessionOf(ctx.view, ctx.tx);
-
-                        // A WitnessSignature co-signs a session-signed
-                        // transaction only. Anywhere else nothing would say
-                        // whose it must be, so anyone could add one and
-                        // change the transaction's ID.
-                        if (!session && ctx.tx.isFieldPresent(sfWitnessSignature))
-                            return tefBAD_SIGNATURE;
-
                         if (NotTEC const result = session
                                 ? Transactor::invokeCheckSession<T>(ctx, *session)
                                 : T::checkSign(ctx))
                             return result;
+
+                        // A WitnessSignature co-signs a session-signed
+                        // transaction only (checkSession rule 7). Anywhere
+                        // else nothing would say whose it must be, so anyone
+                        // could add one and change the transaction's ID.
+                        if (!session && ctx.tx.isFieldPresent(sfWitnessSignature))
+                            return tefBAD_SIGNATURE;
 
                         if (NotTEC const result = Transactor::checkFirewall(ctx))
                             return result;

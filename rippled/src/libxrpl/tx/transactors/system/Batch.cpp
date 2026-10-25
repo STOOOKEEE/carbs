@@ -344,6 +344,17 @@ Batch::preflight(PreflightContext const& ctx)
             }
         }
 
+        // A WitnessSignature co-signs a session-signed transaction, and an
+        // inner transaction never is one (before SigningSessions, the inner
+        // transaction's own preflight refuses the field).
+        if (stx.isFieldPresent(sfWitnessSignature) && ctx.rules.enabled(featureSigningSessions))
+        {
+            JLOG(ctx.j.debug()) << "BatchTrace[" << parentBatchId << "]: "
+                                << "inner txn cannot include WitnessSignature. "
+                                << "txID: " << hash;
+            return temBAD_SIGNATURE;
+        }
+
         // Check that the Fee is native asset (XRP) and zero
         if (auto const fee = stx.getFieldAmount(sfFee); !fee.native() || fee.xrp() != beast::kZero)
         {
