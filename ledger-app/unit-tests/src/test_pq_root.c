@@ -57,6 +57,9 @@ static int answers;
 static int review_screens;
 static int blind_review_screens;
 static int blind_error_screens;
+static int session_blind_screens;
+static int policy_refusal_screens;
+static session_policy_verdict_t policy_verdict;
 static resultAction_t review_callback;
 
 static uint8_t signed_message[PQ_MAX_MESSAGE];
@@ -187,6 +190,19 @@ int ui_error_blind_signing(void) {
     return 0;
 }
 
+/* As ui_error_session_blind_signing() in ui/other/blind_signing.c: the screen
+ * only, the caller answers. */
+void ui_error_session_blind_signing(void) { session_blind_screens++; }
+
+/* As ui_session_policy_refusal() in ui/other/session_policy_refusal.c: the
+ * screen, then 0x6986 and the context reset. */
+void ui_session_policy_refusal(const session_policy_verdict_t* verdict) {
+    policy_refusal_screens++;
+    policy_verdict = *verdict;
+    io_send_sw(SW_SESSION_POLICY_REFUSED);
+    reset_transaction_context();
+}
+
 /* ---------------------------------------------------------------- helpers */
 
 #define INS_GET_APP_CONFIG INS_GET_APP_CONFIGURATION
@@ -286,10 +302,15 @@ static int setup(void** state) {
     review_screens = 0;
     blind_review_screens = 0;
     blind_error_screens = 0;
+    session_blind_screens = 0;
+    policy_refusal_screens = 0;
+    memset(&policy_verdict, 0, sizeof(policy_verdict));
     review_callback = NULL;
     signed_length = 0;
     signatures = 0;
     test_storage.allow_blind_sign = BlindSignEnabled;
+    memset(&test_storage.session_policy, 0,
+           sizeof(test_storage.session_policy));
     test_storage.initialized = 1;
     return 0;
 }
@@ -579,6 +600,106 @@ static void test_clear_signing_ignores_the_setting(void** state) {
     assert_int_equal(signatures, 1);
 }
 
+/* ------------------------------------------- session transactions and policy
+ */
+
+#define XRP_DROPS(xrp) ((uint64_t)(xrp) * 1000000ULL)
+#define POLICY_MAX_CAP XRP_DROPS(50)
+/* SessionCap 20 XRP and 500 XRP (tests/standalone/testcases/33-*). */
+#define WITHIN_POLICY_TX "33-session-policy/01-within-policy.raw"
+#define ABOVE_POLICY_TX "33-session-policy/02-above-policy.raw"
+
+static void enable_policy(void) {
+    test_storage.session_policy.enabled = 1;
+    test_storage.session_policy.max_cap = POLICY_MAX_CAP;
+}
+
+/* As review_transaction() on the classical path: a session the policy
+ * refuses gets the refusal screen and 0x6986 before any review. */
+static void test_session_policy_refuses(void** state) {
+    (void)state;
+    enable_policy();
+    message_t message;
+    load_signing_data(ABOVE_POLICY_TX, &message);
+
+    assert_int_equal(send_signing_data(&message, 250),
+                     SW_SESSION_POLICY_REFUSED);
+    assert_int_equal(policy_refusal_screens, 1);
+    assert_int_equal(policy_verdict.violation, SESSION_POLICY_CAP_ABOVE);
+    assert_int_equal(policy_verdict.value, XRP_DROPS(500));
+    assert_int_equal(policy_verdict.limit, POLICY_MAX_CAP);
+    assert_int_equal(review_screens + blind_review_screens, 0);
+    assert_int_equal(signatures, 0);
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                     SW_NO_SIGNATURE);
+
+    /* Nothing is left pending: the next request is served normally. */
+    message_t a;
+    load_signing_data(PAYMENT_A, &a);
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    assert_int_equal(review_screens, 1);
+    approve();
+    assert_int_equal(signatures, 1);
+}
+
+/* A session within the policy, or any session with the policy off, is
+ * reviewed and signed as before. */
+static void test_session_policy_allows(void** state) {
+    (void)state;
+    enable_policy();
+    message_t within;
+    load_signing_data(WITHIN_POLICY_TX, &within);
+    assert_int_equal(send_signing_data(&within, 250), NO_SW);
+    assert_int_equal(review_screens, 1);
+    approve();
+    assert_int_equal(last_sw, SW_OK);
+    assert_memory_equal(signed_message, within.bytes, within.length);
+
+    memset(&test_storage.session_policy, 0,
+           sizeof(test_storage.session_policy));
+    message_t above;
+    load_signing_data(ABOVE_POLICY_TX, &above);
+    assert_int_equal(send_signing_data(&above, 250), NO_SW);
+    assert_int_equal(review_screens, 2);
+    approve();
+    assert_int_equal(signatures, 2);
+    assert_int_equal(policy_refusal_screens, 0);
+}
+
+/* As handle_packet_content() on the classical path: a session transaction
+ * that cannot be clear-signed gets its screen and 0x6815, whatever the
+ * blind-signing setting says. */
+static void test_session_never_blind_signed(void** state) {
+    (void)state;
+    static const char* const vectors[] = {
+        /* A Permission value that is neither delegable nor granular. */
+        "30-signing-session-set/06-unknown-permission.raw",
+        /* A Batch that would go blind holding a session. */
+        "34-session-agent-id/03-batch-session-refused.raw",
+    };
+    static const uint8_t settings[] = {BlindSignEnabled, BlindSignDisabled};
+    for (size_t v = 0; v < sizeof(vectors) / sizeof(vectors[0]); v++) {
+        for (size_t s = 0; s < sizeof(settings); s++) {
+            setup(NULL);
+            test_storage.allow_blind_sign = settings[s];
+            message_t message;
+            load_signing_data(vectors[v], &message);
+
+            assert_int_equal(send_signing_data(&message, 250),
+                             SW_SESSION_BLIND_REFUSED);
+            assert_int_equal(session_blind_screens, 1);
+            assert_int_equal(blind_error_screens, 0);
+            assert_int_equal(review_screens + blind_review_screens, 0);
+            assert_int_equal(signatures, 0);
+
+            message_t a;
+            load_signing_data(PAYMENT_A, &a);
+            assert_int_equal(send_signing_data(&a, 250), NO_SW);
+            assert_int_equal(review_screens, 1);
+        }
+    }
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_public_key_chunks, setup),
@@ -598,6 +719,9 @@ int main(void) {
         cmocka_unit_test_setup(test_blind_signing_disabled_refuses, setup),
         cmocka_unit_test_setup(test_blind_signing_enabled_reviews, setup),
         cmocka_unit_test_setup(test_clear_signing_ignores_the_setting, setup),
+        cmocka_unit_test_setup(test_session_policy_refuses, setup),
+        cmocka_unit_test_setup(test_session_policy_allows, setup),
+        cmocka_unit_test_setup(test_session_never_blind_signed, setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
