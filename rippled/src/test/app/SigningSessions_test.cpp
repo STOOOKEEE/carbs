@@ -1562,6 +1562,46 @@ class SigningSessions_test : public beast::unit_test::Suite
         }
     }
 
+    // A session key of a type whose amendment is not enabled cannot sign: a
+    // P-256 key needs Passkey, an ML-DSA-44 key needs Quantum. The opening
+    // names the key by its AccountID, so the refusal is at use, the own close
+    // included; the owner's own close and a third party's after expiry still
+    // remove the session.
+    void
+    testKeyTypeAmendments(FeatureBitset features)
+    {
+        testcase("session key types need their amendment");
+        using namespace jtx;
+
+        for (auto const& [type, feature] :
+             {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::Dilithium, featureQuantum}})
+        {
+            for (bool const enabled : {false, true})
+            {
+                Env env{*this, enabled ? features : features - feature};
+                Account const alice{"alice"}, bob{"bob"};
+                Account const key{"session", type};
+                env.fund(XRP(10000), alice, bob);
+                env.close();
+                env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+                env.close();
+                auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+                auto const expected = enabled ? Ter(tesSUCCESS) : Ter(tefSESSION_TX_NOT_ALLOWED);
+                env(pay(alice, bob, XRP(1)), Sig(key), lls(), expected);
+                env(session::del(alice, key), Sig(key), lls(), expected);
+                env.close();
+                BEAST_EXPECT(sessionEntry(env, alice, key) == nullptr == enabled);
+                if (!enabled)
+                {
+                    env(session::del(alice, key));
+                    env.close();
+                    BEAST_EXPECT(!sessionEntry(env, alice, key));
+                }
+            }
+        }
+    }
+
     void
     testMlDsaLedgerAccount(FeatureBitset features)
     {
@@ -2287,6 +2327,7 @@ public:
         testRegularKeyAndLastLedger(all);
         testModeP(all);
         testKeyTypes(all);
+        testKeyTypeAmendments(all);
         testMlDsaLedgerAccount(all);
         testMaxPerTx(all);
         testWitness(all);

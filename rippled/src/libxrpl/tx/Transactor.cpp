@@ -1073,6 +1073,14 @@ Transactor::checkSession(
     if (isPseudoAccount(ctx.view, ctx.tx.getAccountID(sfAccount)))
         return tefBAD_AUTH;
 
+    // A session key of a type whose amendment is not enabled never signs,
+    // the own close included. The opening names the key by its AccountID
+    // only, so this is the first point where the type is known.
+    if (auto const keyType = publicKeyType(makeSlice(ctx.tx.getSigningPubKey()));
+        (keyType == KeyType::P256 && !ctx.view.rules().enabled(featurePasskey)) ||
+        (keyType == KeyType::Dilithium && !ctx.view.rules().enabled(featureQuantum)))
+        return tefSESSION_TX_NOT_ALLOWED;
+
     bool const ownClose = isSessionOwnClose(ctx.tx);
 
     // 1. Eligibility. Every refusal is a tef: a retriable ter would keep the
