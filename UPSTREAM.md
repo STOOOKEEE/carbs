@@ -8,6 +8,7 @@ carbs builds on four upstream code bases. They are **imported unmodified, each i
 | `ledger-app/`              | https://github.com/LedgerHQ/app-xrp                                                                               | `master`    | `7b5185ff09b4b3d15df242b156a6aaadfc99f555` (v2.8.2)                                                                                     | `c7bcb68`   | Apache-2.0, `ledger-app/LICENSE`                 |
 | `apps/web/`                | `create-xrp` 0.5.0 on npm (https://github.com/XRPL-Commons/scaffold-xrp, `packages/create-xrp`)                   | npm `0.5.0` | `gitHead` `8cdf24f9339f4642b4cbf2f5d9dd094ca8726bd2`, tarball sha256 `758b8286279292cb926e23159ae17600426dc6130553cb2afe68d03b5b077ee7` | see below   | MIT, `apps/web/LICENSE`                          |
 | `packages/signer-kit-xrp/` | https://github.com/LedgerHQ/device-sdk-ts, `packages/signer/signer-xrp` (`@ledgerhq/device-signer-kit-xrp` 0.3.0) | `develop`   | `8ab7cdcaac6330ae6667a9b47cefe152c4968308` (2026-10-24, "Sort imports in SignTransactionDeviceActionFactory (#2048)")                   | see below   | Apache-2.0, `packages/signer-kit-xrp/LICENSE.MD` |
+| `security-key-app/`        | https://github.com/LedgerHQ/app-security-key                                                                      | `main`      | `1fce46957b5d155cc2d5d47d2cea6840e50b3b23` (2026-10-12, "Merge pull request #30 from LedgerHQ/develop", app version 1.7.8)              | see below   | Apache-2.0, `security-key-app/LICENSE`           |
 
 ## How an import was made
 
