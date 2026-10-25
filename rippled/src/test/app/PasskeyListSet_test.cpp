@@ -20,6 +20,7 @@
 #include <test/jtx/Account.h>
 #include <test/jtx/Env.h>
 #include <test/jtx/amount.h>
+#include <test/jtx/delegate.h>
 #include <test/jtx/envconfig.h>
 #include <test/jtx/fee.h>
 #include <test/jtx/multisign.h>
@@ -27,11 +28,13 @@
 #include <test/jtx/pay.h>
 #include <test/jtx/sig.h>
 #include <test/jtx/ter.h>
+#include <test/jtx/webauthn.h>
 
 #include <xrpl/basics/strHex.h>
 #include <xrpl/beast/unit_test/suite.h>
 #include <xrpl/json/json_value.h>
 #include <xrpl/protocol/Feature.h>
+#include <xrpl/protocol/Indexes.h>
 #include <xrpl/protocol/KeyType.h>
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/SField.h>
@@ -313,6 +316,104 @@ public:
         env.close();
     }
 
+    // Upstream defect (review of Transia-RnD/rippled#29): PasskeyListSet is
+    // Delegable, so a delegate holding that permission registers its own key
+    // in the account's passkey list, and a passkey has full authority over
+    // the account. fixPasskeyListNotDelegable makes the type non-delegable:
+    // DelegateSet refuses the permission (temMALFORMED) and a PasskeyListSet
+    // with Delegate is refused in preflight (temINVALID), like every other
+    // non-delegable type.
+    void
+    testDelegatedPasskeyListSet(FeatureBitset features)
+    {
+        using namespace test::jtx;
+
+        testcase("a delegate cannot register its own passkey for the account");
+
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const carol{"carol"};
+        Account const bobPasskey{"bobPasskey", KeyType::P256};
+        Account const alicePasskey{"alicePasskey", KeyType::P256};
+        std::string const passkeyId = "DEADBEEF";
+
+        // Before the fix: bob, delegated PasskeyListSet by alice, registers
+        // his own P-256 key in alice's list and signs alice's payments with
+        // it, raw and through WebAuthn.
+        {
+            Env env{*this, envconfig(), features - fixPasskeyListNotDelegable};
+            env.fund(XRP(1000), alice, bob, carol);
+            env.close();
+            env(delegate::set(alice, bob, {"PasskeyListSet"}));
+            env.close();
+
+            env(test::jtx::passkeyListSet(alice, bobPasskey, passkeyId), delegate::As(bob));
+            env.close();
+            BEAST_EXPECT(env.le(keylet::passkeyList(alice.id())));
+
+            env(pay(alice, carol, XRP(100)), Sig(bobPasskey));
+            env(pay(alice, carol, XRP(100)), WebAuthnSig(bobPasskey, passkeyId));
+            env.close();
+            BEAST_EXPECT(env.balance(carol) == XRP(1200));
+        }
+
+        // With the fix: the permission cannot be granted, a delegated
+        // PasskeyListSet is refused, and bob's key has no authority. alice
+        // still registers her own passkey.
+        {
+            Env env{*this, envconfig(), features};
+            env.fund(XRP(1000), alice, bob, carol);
+            env.close();
+
+            env(delegate::set(alice, bob, {"PasskeyListSet"}), Ter(temMALFORMED));
+            env(delegate::set(alice, bob, {"Payment", "PasskeyListSet"}), Ter(temMALFORMED));
+            env.close();
+            BEAST_EXPECT(!env.le(keylet::delegate(alice.id(), bob.id())));
+
+            env(test::jtx::passkeyListSet(alice, bobPasskey, passkeyId),
+                delegate::As(bob),
+                Ter(temINVALID));
+            env.close();
+            BEAST_EXPECT(!env.le(keylet::passkeyList(alice.id())));
+
+            env(pay(alice, carol, XRP(100)), Sig(bobPasskey), Ter(tefBAD_AUTH));
+            env(pay(alice, carol, XRP(100)), WebAuthnSig(bobPasskey, passkeyId), Ter(tefBAD_AUTH));
+            env.close();
+            BEAST_EXPECT(env.balance(carol) == XRP(1000));
+
+            env(test::jtx::passkeyListSet(alice, alicePasskey, passkeyId));
+            env.close();
+            env(pay(alice, carol, XRP(100)), Sig(alicePasskey));
+            env.close();
+            BEAST_EXPECT(env.balance(carol) == XRP(1100));
+        }
+
+        // A delegation granted before the fix is enabled no longer lets the
+        // delegate set the list once it is; the other permissions of the same
+        // Delegate entry keep working.
+        {
+            Env env{*this, envconfig(), features - fixPasskeyListNotDelegable};
+            env.fund(XRP(1000), alice, bob, carol);
+            env.close();
+            env(delegate::set(alice, bob, {"Payment", "PasskeyListSet"}));
+            env.close();
+
+            env.enableFeature(fixPasskeyListNotDelegable);
+            env.close();
+
+            env(test::jtx::passkeyListSet(alice, bobPasskey, passkeyId),
+                delegate::As(bob),
+                Ter(temINVALID));
+            env.close();
+            BEAST_EXPECT(!env.le(keylet::passkeyList(alice.id())));
+            env(pay(alice, carol, XRP(100)), Sig(bobPasskey), Ter(tefBAD_AUTH));
+
+            env(pay(alice, carol, XRP(100)), delegate::As(bob));
+            env.close();
+            BEAST_EXPECT(env.balance(carol) == XRP(1100));
+        }
+    }
+
     void
     run() override
     {
@@ -330,6 +431,7 @@ public:
         testPasskeyPayment(sa);
         testMultisignWithP256(sa);
         testMultisignMixedKeyTypes(sa);
+        testDelegatedPasskeyListSet(sa);
     }
 };
 

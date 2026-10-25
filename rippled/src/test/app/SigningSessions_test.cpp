@@ -1912,9 +1912,22 @@ class SigningSessions_test : public beast::unit_test::Suite
             BEAST_EXPECTS(actual.contains(name), "no longer eligible: " + name);
 
         // The excluded types are delegable: without the exclusion, mode A
-        // would sign them.
+        // would sign them. PasskeyListSet stops being delegable with
+        // fixPasskeyListNotDelegable and stays excluded for a ledger without
+        // the fix.
         for (auto const type : kSessionExcluded)
-            BEAST_EXPECT(Permission::getInstance().isDelegable(type + 1, rules));
+        {
+            bool const delegable =
+                type != ttPASSKEY_LIST_SET || !rules.enabled(fixPasskeyListNotDelegable);
+            BEAST_EXPECT(Permission::getInstance().isDelegable(type + 1, rules) == delegable);
+        }
+        BEAST_EXPECT(isSessionExcluded(ttPASSKEY_LIST_SET));
+        {
+            Env unfixed{*this, features - fixPasskeyListNotDelegable};
+            BEAST_EXPECT(
+                Permission::getInstance().isDelegable(
+                    ttPASSKEY_LIST_SET + 1, unfixed.current()->rules()));
+        }
 
         // Mode P lists exactly the eligible types.
         for (auto const& format : TxFormats::getInstance())
