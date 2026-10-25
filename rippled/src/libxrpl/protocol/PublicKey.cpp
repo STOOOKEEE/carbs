@@ -568,6 +568,14 @@ verify(PublicKey const& publicKey, Slice const& m, Slice const& sig, bool strict
     return false;
 }
 
+bool
+verify(PublicKey const& publicKey, Slice const& m, Slice const& sig) noexcept
+{
+    if (publicKeyType(publicKey) == KeyType::P256)
+        return false;
+    return verify(publicKey, m, sig, false);
+}
+
 NodeID
 calcNodeID(PublicKey const& pk)
 {

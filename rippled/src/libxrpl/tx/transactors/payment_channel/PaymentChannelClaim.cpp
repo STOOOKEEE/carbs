@@ -95,7 +95,7 @@ PaymentChannelClaim::preflight(PreflightContext const& ctx)
         PublicKey const pk(ctx.tx[sfPublicKey]);
         Serializer msg;
         serializePayChanAuthorization(msg, k.key, authAmt);
-        if (!verify(pk, msg.slice(), *sig))
+        if (!verify(pk, msg.slice(), *sig, ctx.rules.enabled(fixP256StrictDer)))
             return temBAD_SIGNATURE;
     }
 

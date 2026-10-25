@@ -1,3 +1,4 @@
+#include <xrpld/app/ledger/LedgerMaster.h>
 #include <xrpld/rpc/Context.h>
 #include <xrpld/rpc/detail/RPCHelpers.h>
 
@@ -6,6 +7,7 @@
 #include <xrpl/basics/base_uint.h>
 #include <xrpl/json/json_value.h>
 #include <xrpl/protocol/ErrorCodes.h>
+#include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/RPCErr.h>
 #include <xrpl/protocol/Serializer.h>
@@ -65,8 +67,12 @@ doChannelVerify(rpc::JsonContext& context)
     if (!sig || sig->empty())
         return rpcError(RpcInvalidParams);
 
+    // As PaymentChannelClaim checks it, under the current ledger's rules.
+    bool const strictP256Der =
+        context.ledgerMaster.getCurrentLedger()->rules().enabled(fixP256StrictDer);
+
     json::Value result;
-    result[jss::signature_verified] = verify(*pk, msg.slice(), makeSlice(*sig));
+    result[jss::signature_verified] = verify(*pk, msg.slice(), makeSlice(*sig), strictP256Der);
     return result;
 }
 
