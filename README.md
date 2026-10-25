@@ -13,7 +13,7 @@
 
 🗽 **Built at the XRPL Hackathon NYC — Protocol Innovation · Ledger Protocol Innovation · New York, 24–25 October 2026**
 
-**[Open the app](https://carbs-kappa.vercel.app)** · **[XLS draft](./docs/XLS-Sessions.md)** · **[Developer feedback](./docs/ledger-dx-feedback.md)** · **[Specification](./FIANSO-SPEC.md)** · **[Architecture](./docs/ARCHITECTURE.md)** · **[DEVLOG](./docs/DEVLOG.md)**
+**[Open the app](https://carbs-kappa.vercel.app)** · **[Demo video](https://youtu.be/aJu0FsRNgjk)** · **[Pitch video](https://youtube.com/shorts/xvWcqh40NrA)** · **[XLS draft](./docs/XLS-Sessions.md)** · **[Developer feedback](./docs/ledger-dx-feedback.md)** · **[Specification](./FIANSO-SPEC.md)** · **[Architecture](./docs/ARCHITECTURE.md)** · **[DEVLOG](./docs/DEVLOG.md)**
 
 </div>
 
@@ -57,6 +57,12 @@ key.
 - [License](#license)
 
 ## Try it yourself
+
+**Videos.** A [demo](https://youtu.be/aJu0FsRNgjk) (3:01, silent) walks through the flow with the
+code that implements it, on the ledger and on the device; a
+[vertical pitch](https://youtube.com/shorts/xvWcqh40NrA) (2:52, narrated) tells the story for
+anyone. The Stax screens in them are Speculos emulator snapshots of the app, and the narration is
+text-to-speech from a voice cloned from Sofiane's.
 
 The web app is deployed at **https://carbs-kappa.vercel.app**, a static build of `apps/web`
 (deployment notes in [`docs/DEPLOY.md`](./docs/DEPLOY.md)). No node that carries the amendment is
