@@ -3,7 +3,8 @@
 //   GENESIS_SEED=… XRPLD_WS=ws://127.0.0.1:6006 node server/server.ts
 // The genesis seed comes from the environment and is never committed.
 // It also relays an AI agent's requests (session budget, payment above it) to the page,
-// where the human decides on the Stax: in memory, never signing for the owner.
+// where the human decides on the Stax: in memory, never signing for the owner. The agent's
+// timeline (/api/agent/events) feeds the stage demo page (demo.html).
 
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -26,11 +27,19 @@ import {
   parseAgentRequest,
   parseDecision,
 } from "./agent-requests.ts";
+import { AGENT_EVENTS_PATH, TimelineStore, parseTimelineEvent } from "./agent-events.ts";
+import { MINT_API_PREFIX, handleMint } from "./mint.ts";
+import { STREAM_API_PREFIX, handleStream } from "./stream.ts";
+import { handleGame } from "./game.ts";
+import { GAME_API_PREFIX } from "../src/apps/game/protocol.ts";
+import { handleDex } from "./dex.ts";
+import { DEX_API_PREFIX } from "../src/apps/dex/api.ts";
 
 const PORT = Number(process.env["PORT"] ?? 8080);
 const NODE_WS = process.env["XRPLD_WS"] ?? "ws://127.0.0.1:6006";
 const GENESIS_SEED = process.env["GENESIS_SEED"];
-const DIST_DIR = new URL("../dist/", import.meta.url).pathname;
+/** WALLET_DIST serves another build (e.g. one built for a second node), ending with "/". */
+const DIST_DIR = process.env["WALLET_DIST"] ?? new URL("../dist/", import.meta.url).pathname;
 const FAUCET_PATH = "/api/faucet";
 /** What a new account receives: enough for the reserve and a few payments. */
 const FAUCET_DROPS = String(1_000 * 1_000_000);
@@ -120,6 +129,28 @@ async function handleFaucet(req: IncomingMessage, res: ServerResponse): Promise<
 }
 
 const agentRequests = new AgentRequestStore();
+const agentEvents = new TimelineStore();
+/** The `after` query parameter of GET /api/agent/events: a sequence number (0: from the start). */
+const SEQ_PATTERN = /^\d{1,15}$/;
+
+async function handleAgentEvents(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+): Promise<void> {
+  if (req.method === "GET") {
+    const after = new URLSearchParams(url.split("?")[1] ?? "").get("after") ?? "0";
+    if (!SEQ_PATTERN.test(after)) throw new ValidationError("after must be a non-negative integer");
+    replyJson(res, 200, agentEvents.after(Number(after)));
+    return;
+  }
+  if (req.method !== "POST") {
+    replyJson(res, 405, { error: "method not allowed" });
+    return;
+  }
+  const record = agentEvents.append(parseTimelineEvent(await readJson(req)));
+  replyJson(res, 201, record);
+}
 
 async function handleAgentList(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method === "GET") {
@@ -166,8 +197,17 @@ async function handleAgentRecord(
   }
 }
 
-async function handleAgent(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+async function handleAgent(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: string,
+  path: string,
+): Promise<void> {
   try {
+    if (path === AGENT_EVENTS_PATH) {
+      await handleAgentEvents(req, res, url);
+      return;
+    }
     if (path === AGENT_REQUESTS_PATH) {
       await handleAgentList(req, res);
       return;
@@ -209,8 +249,18 @@ function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = req.url ?? "/";
   const path = url.split("?")[0] ?? "/";
   if (req.method === "POST" && path === FAUCET_PATH) return handleFaucet(req, res);
-  if (path === AGENT_REQUESTS_PATH || path.startsWith(`${AGENT_REQUESTS_PATH}/`))
-    return handleAgent(req, res, path);
+  if (
+    path === AGENT_EVENTS_PATH ||
+    path === AGENT_REQUESTS_PATH ||
+    path.startsWith(`${AGENT_REQUESTS_PATH}/`)
+  )
+    return handleAgent(req, res, url, path);
+  if (path.startsWith(MINT_API_PREFIX)) return handleMint(req, res, path, fund);
+  if (path.startsWith(STREAM_API_PREFIX))
+    return handleStream(req, res, url, { nodeUrl: NODE_WS, fund });
+  if (path.startsWith(GAME_API_PREFIX))
+    return handleGame(req, res, path, { nodeUrl: NODE_WS, fund });
+  if (path.startsWith(DEX_API_PREFIX)) return handleDex(req, res, path, { nodeUrl: NODE_WS, fund });
   return handleStatic(url, res);
 }
 

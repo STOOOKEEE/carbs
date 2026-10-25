@@ -1,0 +1,197 @@
+/* The DEX page, on top of the stage demo's look (demo.css): order book, session, controls. */
+
+:root {
+  --own: #5b8cff;
+}
+
+.dex-grid {
+  grid-template-columns: 1fr 1fr 1.1fr;
+}
+
+/* Order book */
+
+.book-head,
+.book-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.book-head {
+  font-size: 16px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.book-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-height: 0;
+}
+
+.book-asks {
+  justify-content: flex-end;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.book-bids {
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.book-row {
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.book-ask span:first-child {
+  color: var(--ledger);
+}
+
+.book-bid span:first-child {
+  color: var(--paid);
+}
+
+.book-row span:last-child {
+  color: var(--muted);
+  font-size: 16px;
+  align-self: center;
+}
+
+.book-own {
+  background: color-mix(in srgb, var(--own) 22%, transparent);
+}
+
+.book-own span:last-child {
+  color: var(--own);
+  font-weight: 700;
+}
+
+.book-reference {
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--expiry);
+}
+
+.book-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 16px;
+}
+
+.legend-own {
+  color: var(--own);
+}
+
+.legend-market {
+  color: var(--muted);
+}
+
+/* Session */
+
+.dex-wide-fact {
+  grid-column: 1 / -1;
+}
+
+.budget-facts dd.dex-small-fact {
+  font-size: 22px;
+}
+
+.dex-honest {
+  margin-top: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--waiting);
+  border-radius: 12px;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.dex-honest strong {
+  color: var(--waiting);
+}
+
+/* Controls */
+
+.dex-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dex-actions button,
+.control-column > button {
+  font-size: 18px;
+  padding: 10px 14px;
+}
+
+.dex-abuse button {
+  border-color: var(--ledger);
+  color: var(--ledger);
+}
+
+.dex-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-left: 4px solid var(--line);
+  border-radius: 6px;
+  background: #0c1017;
+  font-size: 16px;
+}
+
+.activity a {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.activity-detail {
+  font-size: 15px;
+}
+
+.activity-ok {
+  border-left-color: var(--paid);
+}
+
+.activity-ledger {
+  border-left-color: var(--ledger);
+  color: var(--ledger);
+}
+
+.activity-device {
+  border-left-color: var(--device);
+  color: var(--device);
+}
+
+.activity-warning {
+  border-left-color: var(--waiting);
+  color: var(--waiting);
+}
+
+.activity-info .activity-text {
+  color: var(--muted);
+}
