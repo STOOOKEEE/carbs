@@ -87,7 +87,7 @@ The simulated backend needs nothing else. There is no API key anywhere.
 
 ## Running the node and the app together (local)
 
-`pnpm demo` starts, on this machine, the standalone node of `infra/standalone.cfg` (`XRPLD_BIN`, a build with the SigningSessions amendment), its ledger closer, a dev faucet that holds the genesis key (`GENESIS_SEED`, read from the environment, never written) and the web app on the live backend. It is not a deployment: nothing is exposed beyond the loopback. A hosted site needs its own TLS in front of a node (see "A hosted site and the node").
+`pnpm demo` starts, on this machine, the standalone node of `infra/standalone.cfg` (`XRPLD_BIN`, a build with the SigningSessions amendment), its ledger closer, a dev faucet that holds the genesis key (`GENESIS_SEED`, read from the environment, never written, and not passed to the node, the closer or the web app's dev server; the faucet funds at most 10 accounts per origin per minute) and the web app on the live backend. It is not a deployment: nothing is exposed beyond the loopback. A hosted site needs its own TLS in front of a node (see "A hosted site and the node").
 
 ## For the owner (human-only)
 

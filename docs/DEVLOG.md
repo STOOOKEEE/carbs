@@ -501,6 +501,12 @@ Final review gate, round 2 (an independent reviewer, model Opus, read-only, on `
 
 **Bugs & fix.** The first witness test disabled the witness's master key with its regular key: `tecNEED_MASTER_KEY`; only the master key may set `asfDisableMaster`.
 
+## 2026-10-24: audit 24.10, section A5 (`pnpm demo` and its faucet)
+
+- **The genesis seed reached every child process (audit finding A5, confirmed).** `scripts/src/demo.ts` spawned `xrpld`, the closer and the Nuxt dev server with `{ ...process.env, ...env }`, so each of them inherited `GENESIS_SEED`; none needs it, because the faucet that signs with it runs in the demo process. Children now get `childEnv(process.env, env)` (`scripts/src/child-env.ts`), which drops `GENESIS_SEED` even when a caller passes it again, and the demo removes it from its own environment once the signer is built.
+- **The faucet's only gate was the Origin header.** Any local process can send the page's origin. Chosen of the two options of the audit: a per-origin cap (10 fundings per origin per minute, then `429` with `Retry-After`), because it bounds the drain whoever calls, needs no change in the web app, and a per-run token handed to the web app would sit in its public runtime config, readable by any local process that can load the page. Not done: the token.
+- **Tests:** `scripts/src/demo.test.ts` gains a `childEnv` case (it failed before: the module did not exist) and a cap case with an injected clock (it failed before: the third request got `200`); 7 of 7 pass. `pnpm demo` itself was **not** run (no node was started for this change).
+
 ## 2026-10-24: audit 24.10, section A4 (the client's blind prediction)
 
 - **The simulated device predicted a clear review where the app goes blind (audit finding A4, confirmed).** `reviewLines` in `packages/ledger/src/screen.ts` printed an unknown flag as `Flags; 196608` and an unknown permission by its value, both as `clear`, and listed eleven permissions as `clear`; the app asks for blind signing (`ledger-app/src/xrp/flags.c`, `has_unknown_flags`; `session_permissions.c` returns no name) or refuses. Now `blind` for any `Flags` bit other than `tfFullyCanonicalSig` and the session's `tfAllTransactions` (both read from `server_definitions`), for a permission value outside the app's name table, and above `kPermissionMaxSize`; `0x80010000` reads `Allows; All transactions` and `0x80000000` alone shows nothing, as on the app. The app's permission names are mirrored in `kDevicePermissionNames`, and a test reads `session_permissions.c` and checks that both lists are equal.

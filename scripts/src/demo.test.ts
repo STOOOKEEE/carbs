@@ -8,6 +8,7 @@ import {
 import { alphanetDefinitions, alphanetServerDefinitions } from "@carbs/sessions/testing";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
+import { childEnv } from "./child-env.js";
 import { localConfig, portsOf } from "./config.js";
 import { createFaucetServer, fund, parseDestination } from "./faucet.js";
 
@@ -46,6 +47,17 @@ describe("local configuration", () => {
   it("reads the ports from the file", () => {
     expect(portsOf(CFG)).toEqual({ publicWs: 6006, adminWs: 6007 });
     expect(() => portsOf("[server]\n")).toThrow(/no port/);
+  });
+});
+
+describe("child processes", () => {
+  it("never receive the genesis seed, whatever the parent or the caller passes", () => {
+    const env = childEnv(
+      { GENESIS_SEED: "sSecret", PATH: "/bin", HOME: "/h" },
+      { NUXT_PUBLIC_BACKEND: "live", GENESIS_SEED: "sAgain" },
+    );
+    expect(env).toEqual({ PATH: "/bin", HOME: "/h", NUXT_PUBLIC_BACKEND: "live" });
+    expect(Object.keys(env)).not.toContain("GENESIS_SEED");
   });
 });
 
@@ -147,6 +159,47 @@ describe("dev faucet", () => {
           .status,
       ).toBe(404);
       expect(blobs).toHaveLength(1);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("caps how many accounts one origin can fund per window (429 above the cap)", async () => {
+    let now = 1_000_000;
+    let submits = 0;
+    const node = nodeDouble();
+    const client = {
+      async request(method: string) {
+        if (method === "submit") submits += 1;
+        return node.client.request(method);
+      },
+    };
+    const origins = ["http://localhost:3000", "http://127.0.0.1:3000"];
+    const server = createFaucetServer({ client, genesis }, origins, {
+      perWindow: 2,
+      windowMs: 60_000,
+      now: () => now,
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const post = (origin: string) =>
+        fetch(`${base}/accounts`, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin },
+          body: JSON.stringify({ destination }),
+        });
+      expect((await post(origins[0] ?? "")).status).toBe(200);
+      expect((await post(origins[0] ?? "")).status).toBe(200);
+      const refused = await post(origins[0] ?? "");
+      expect(refused.status).toBe(429);
+      expect(refused.headers.get("retry-after")).toBe("60");
+      expect(submits).toBe(2);
+      // Another origin has its own budget; the first gets its budget back after the window.
+      expect((await post(origins[1] ?? "")).status).toBe(200);
+      now += 60_001;
+      expect((await post(origins[0] ?? "")).status).toBe(200);
+      expect(submits).toBe(4);
     } finally {
       server.close();
     }
