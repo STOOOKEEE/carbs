@@ -632,7 +632,8 @@ err_t post_process_field(parseContext_t* context, field_t* field) {
             }
             // The session "Note" row is the app's own text; a signed field
             // claiming its id would let the sender write that row.
-            if (field->id == XRP_VL_SESSION_NOTE) {
+            if (field->id == XRP_VL_SESSION_NOTE ||
+                field->id == XRP_VL_SESSION_SCOPE) {
                 err.err = INVALID_STATE;
                 return err;
             }
@@ -665,6 +666,18 @@ err_t post_process_transaction(parseContext_t* context) {
         field->data_type = STI_ACCOUNT;
         field->id = XRP_ACCOUNT_REGULAR_KEY;
         field->data.ptr = NULL;  // Special value to indicate empty regular key
+    }
+
+    // A capped session (mode C) says what it may sign: a direct XRP payment,
+    // fees included in the cap. Its own row, before the Note.
+    if (context->transaction_type == TRANSACTION_SIGNING_SESSION_SET &&
+        has_field(context, STI_AMOUNT, XRP_UINT64_SESSION_CAP, true)) {
+        field_t* field;
+        CHECK(append_new_field(context, &field));
+        field->data_type = STI_VL;
+        field->id = XRP_VL_SESSION_SCOPE;
+        field->data.ptr = (uint8_t*)SESSION_SCOPE_CAP_TEXT;
+        field->length = sizeof(SESSION_SCOPE_CAP_TEXT) - 1;
     }
 
     // A session review ends with what the session key can never do

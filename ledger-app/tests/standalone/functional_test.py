@@ -303,6 +303,7 @@ def test_sign_valid_tx(
         "09-truncated.raw",
         "10-spoofed-note.raw",
         "11-eleven-permissions.raw",
+        "13-spoofed-scope.raw",
     ):
         if raw_tx_path.endswith(f"30-signing-session-set/{name}"):
             pytest.skip(f"skip session tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
