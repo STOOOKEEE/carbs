@@ -82,31 +82,52 @@ int io_send_response_pointer(const uint8_t* ptr, size_t size, uint16_t sw) {
     return 0;
 }
 
+/* As the OS (and Speculos, src/bolos/os_bip32.c, hdw_slip21) in HDW_SLIP21
+ * mode: only the 32-byte SLIP-21 key is written, at the start of the caller's
+ * buffer; the rest of the buffer is left as it was. */
+static uint8_t slip21_key[MLDSA_SEEDBYTES];
+static unsigned int slip21_mode;
+static uint8_t slip21_path[64];
+static unsigned int slip21_path_length;
+
 cx_err_t os_derive_bip32_with_seed_no_throw(
     unsigned int derivation_mode, cx_curve_t curve, const unsigned int* path,
     unsigned int path_length, unsigned char raw_privkey[64],
     unsigned char* chain_code, unsigned char* seed_key,
     unsigned int seed_key_length) {
-    (void)derivation_mode;
     (void)curve;
-    (void)path;
-    (void)path_length;
-    (void)chain_code;
     (void)seed_key;
     (void)seed_key_length;
-    memset(raw_privkey, 0x5A, 64);
+    assert_null(chain_code);
+    assert_true(path_length <= sizeof(slip21_path));
+    slip21_mode = derivation_mode;
+    memcpy(slip21_path, path, path_length);
+    slip21_path_length = path_length;
+    memcpy(raw_privkey, slip21_key, sizeof(slip21_key));
     return CX_OK;
 }
+
+/* A stand-in for ML-DSA-44.KeyGen_internal: the public key is a function of
+ * the seed only, so a test can tell which seed the app used. */
+static void stub_public_key(const uint8_t seed[MLDSA_SEEDBYTES],
+                            uint8_t pk[MLDSA44_PUBLICKEYBYTES]) {
+    for (size_t i = 0; i < MLDSA44_PUBLICKEYBYTES; i++) {
+        pk[i] = (uint8_t)(seed[i % MLDSA_SEEDBYTES] ^ (uint8_t)i);
+    }
+}
+
+static uint8_t keygen_seed[MLDSA_SEEDBYTES];
+static int keygens;
 
 cx_err_t MLDSA_internal_keygen(uint8_t* pk, size_t pk_len, uint8_t* sk,
                                size_t sk_len,
                                const uint8_t seed[MLDSA_SEEDBYTES],
                                MLDSA_param_t param) {
-    (void)seed;
-    (void)param;
-    for (size_t i = 0; i < pk_len; i++) {
-        pk[i] = (uint8_t)i;
-    }
+    assert_int_equal(param, MLDSA_44);
+    assert_int_equal(pk_len, MLDSA44_PUBLICKEYBYTES);
+    memcpy(keygen_seed, seed, MLDSA_SEEDBYTES);
+    keygens++;
+    stub_public_key(seed, pk);
     memset(sk, 0xA5, sk_len);
     return CX_OK;
 }
@@ -308,6 +329,14 @@ static int setup(void** state) {
     review_callback = NULL;
     signed_length = 0;
     signatures = 0;
+    for (size_t i = 0; i < sizeof(slip21_key); i++) {
+        slip21_key[i] = (uint8_t)(0xC0 + i);
+    }
+    slip21_mode = 0xFFFFFFFFU;
+    memset(slip21_path, 0, sizeof(slip21_path));
+    slip21_path_length = 0;
+    memset(keygen_seed, 0, sizeof(keygen_seed));
+    keygens = 0;
     test_storage.allow_blind_sign = BlindSignEnabled;
     memset(&test_storage.session_policy, 0,
            sizeof(test_storage.session_policy));
@@ -320,18 +349,89 @@ static int setup(void** state) {
 
 /* ------------------------------------------------------- the 0x10-0x12 path */
 
+/* Reads the whole public key through INS 0x10. */
+static size_t read_public_key(uint8_t* out, size_t capacity) {
+    size_t total = 0;
+    for (uint8_t index = 0;; index++) {
+        uint16_t sw = apdu(INS_PQ_GET_PUBLIC_KEY, index, 0, NULL, 0);
+        if (sw != SW_OK) {
+            assert_int_equal(sw, SW_WRONG_P1P2);
+            return total;
+        }
+        assert_true(total + last_data_length <= capacity);
+        memcpy(out + total, last_data, last_data_length);
+        total += last_data_length;
+    }
+}
+
 static void test_public_key_chunks(void** state) {
     (void)state;
+    uint8_t expected[MLDSA44_PUBLICKEYBYTES];
+    stub_public_key(slip21_key, expected);
     size_t total = 0;
     for (uint8_t index = 0; index < 6; index++) {
         assert_int_equal(apdu(INS_PQ_GET_PUBLIC_KEY, index, 0, NULL, 0), SW_OK);
-        for (size_t i = 0; i < last_data_length; i++) {
-            assert_int_equal(last_data[i], (uint8_t)(total + i));
-        }
+        assert_true(last_data_length <= PQ_CHUNK);
+        assert_memory_equal(last_data, expected + total, last_data_length);
         total += last_data_length;
     }
     assert_int_equal(total, MLDSA44_PUBLICKEYBYTES);
     assert_int_equal(apdu(INS_PQ_GET_PUBLIC_KEY, 6, 0, NULL, 0), SW_WRONG_P1P2);
+}
+
+/* The ML-DSA seed is the 32-byte key the OS returns for the SLIP-21 label,
+ * not bytes of the buffer the OS never writes: with those, every device
+ * derived ML-DSA-44.KeyGen_internal(32 zero bytes), a key anyone can
+ * compute. */
+static void test_key_is_derived_from_the_slip21_key(void** state) {
+    (void)state;
+    uint8_t public_key[MLDSA44_PUBLICKEYBYTES + PQ_CHUNK];
+    assert_int_equal(read_public_key(public_key, sizeof(public_key)),
+                     MLDSA44_PUBLICKEYBYTES);
+
+    static const char label[] = "\0carbs ML-DSA-44";
+    assert_int_equal(slip21_mode, HDW_SLIP21);
+    assert_int_equal(slip21_path_length, sizeof(label) - 1);
+    assert_memory_equal(slip21_path, label, sizeof(label) - 1);
+
+    static const uint8_t zero_seed[MLDSA_SEEDBYTES] = {0};
+    uint8_t zero_key[MLDSA44_PUBLICKEYBYTES];
+    stub_public_key(zero_seed, zero_key);
+    assert_memory_not_equal(public_key, zero_key, MLDSA44_PUBLICKEYBYTES);
+
+    uint8_t expected[MLDSA44_PUBLICKEYBYTES];
+    stub_public_key(slip21_key, expected);
+    assert_memory_equal(keygen_seed, slip21_key, MLDSA_SEEDBYTES);
+    assert_memory_equal(public_key, expected, MLDSA44_PUBLICKEYBYTES);
+
+    /* Signing derives the same key. */
+    message_t message;
+    load_signing_data(PAYMENT_A, &message);
+    memset(keygen_seed, 0, sizeof(keygen_seed));
+    assert_int_equal(send_signing_data(&message, 250), NO_SW);
+    approve();
+    assert_int_equal(last_sw, SW_OK);
+    assert_memory_equal(keygen_seed, slip21_key, MLDSA_SEEDBYTES);
+}
+
+/* An all-zero SLIP-21 output is not a key: no public key, no signature. */
+static void test_zero_slip21_output_is_refused(void** state) {
+    (void)state;
+    memset(slip21_key, 0, sizeof(slip21_key));
+
+    assert_int_equal(apdu(INS_PQ_GET_PUBLIC_KEY, 0, 0, NULL, 0), SW_INTERNAL);
+    assert_int_equal(apdu(INS_PQ_GET_PUBLIC_KEY, 1, 0, NULL, 0), SW_INTERNAL);
+    assert_int_equal(keygens, 0);
+
+    message_t message;
+    load_signing_data(PAYMENT_A, &message);
+    assert_int_equal(send_signing_data(&message, 250), NO_SW);
+    approve();
+    assert_int_equal(last_sw, SW_INTERNAL);
+    assert_int_equal(signatures, 0);
+    assert_int_equal(keygens, 0);
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                     SW_NO_SIGNATURE);
 }
 
 static void test_sign_reassembles_chunks(void** state) {
@@ -723,6 +823,8 @@ static void test_session_policy_refuses_unread_batch(void** state) {
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_public_key_chunks, setup),
+        cmocka_unit_test_setup(test_key_is_derived_from_the_slip21_key, setup),
+        cmocka_unit_test_setup(test_zero_slip21_output_is_refused, setup),
         cmocka_unit_test_setup(test_sign_reassembles_chunks, setup),
         cmocka_unit_test_setup(test_sign_requires_prefix, setup),
         cmocka_unit_test_setup(test_sign_rejects_unparsable_data, setup),

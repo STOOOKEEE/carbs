@@ -150,7 +150,8 @@ owner: the Stax's ML-DSA-44 root (Ledger account) or a passkey (Mac account)
 ```
 
 **1. A post-quantum root in hardware.** The XRP app on the Stax derives an ML-DSA-44 key from the
-24 words (SLIP-21, so the same key comes back after a reinstall) and signs XRPL transactions with
+24 words (SLIP-21, so the same key comes back after a reinstall; builds before the seed fix of 25
+October derived one public, all-zero-seed key on every device, see below) and signs XRPL transactions with
 it after showing them in clear. The account moves to it in three transactions, in an order the node
 enforces: `SetRegularKey` to the ML-DSA key, signed by the master key; a proof transaction signed
 by the ML-DSA key; then `asfDisableMaster`, which only the master key may set. The old classical
@@ -312,6 +313,18 @@ October), so neither they nor the XRPL Explorer serve these three transactions a
 left still reads on the ledger: each account has an ML-DSA key account as `RegularKey` and its
 master key disabled (`account_info`). The first two share the device's key account,
 `rDX7hJiDtUVUnN2tjRqswtuZcbE88yi9i2`: the same key came back after the app was reinstalled.
+
+> **Correction (25 October): the key of those two accounts is not secret.** The XRP app then
+> derived its ML-DSA-44 seed from bytes the OS never writes, so every device produced
+> `ML-DSA-44.KeyGen_internal(32 zero bytes)`, whose address is exactly
+> `rDX7hJiDtUVUnN2tjRqswtuZcbE88yi9i2`; "the same key came back after a reinstall" was the
+> symptom. `rGcT27…` and `rpxMto…` are test accounts with no value, controlled by anyone who runs
+> that key generation. The signatures were still made and checked on the Stax, but they prove the
+> signing path, not a hardware-held secret. The fixed app derives the key from the device's own
+> SLIP-21 key ([DEVLOG](./docs/DEVLOG.md), "the ML-DSA root key was the zero-seed key");
+> the throw-away spike account `rs3drH…` came from another app and another derivation (a BIP32
+> key, not in this repository), which this correction does not cover.
+
 Account page:
 [`rGcT27…`](https://custom.xrpl.org/alphanet.xrpl.org/accounts/rGcT27HiGhoJWYRxqg9jcnPboGD4RGuLLm).
 
