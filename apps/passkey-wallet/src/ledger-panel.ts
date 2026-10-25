@@ -3,13 +3,15 @@
 // Chrome or Edge only: WebHID is not in Safari or Firefox.
 
 import { describeLedgerError, getMlDsaPublicKey } from "@carbs/ledger";
+import { isValidClassicAddress } from "ripple-address-codec";
 import { deriveAddress } from "ripple-keypairs";
 
 import { element, guarded } from "./dom.ts";
 import { bytesToHex } from "./hex.ts";
 import type { SubmittedTx, TxJson } from "./ledger.ts";
-import { explorerLink, log, logError } from "./log.ts";
+import { explorerLink, log, logError, logOutcome } from "./log.ts";
 import { type Connection, requestFunding } from "./account.ts";
+import { paymentTx } from "./session.ts";
 import {
   type DeviceKey,
   type Stax,
@@ -20,6 +22,10 @@ import {
 } from "./stax.ts";
 
 const DROPS_PER_XRP = 1_000_000;
+/** The payment signed with the old classical key once the master key is disabled. */
+const CLASSIC_ATTEMPT_XRP = 1;
+/** What the ledger answers to the classical key of a migrated account. */
+const MASTER_DISABLED = "tefMASTER_DISABLED";
 /**
  * How long a read on the existing connection may take before the device counts as gone. Short:
  * the reconnection that follows still needs the click's user activation (5 s in Chrome) for
@@ -35,6 +41,7 @@ const ui = {
   payDestination: element("ledger-pay-destination", HTMLInputElement),
   payAmount: element("ledger-pay-amount", HTMLInputElement),
   payPq: element("ledger-pay-pq", HTMLInputElement),
+  tryClassic: element("ledger-try-classic", HTMLButtonElement),
 };
 
 let stax: Stax | undefined;
@@ -149,8 +156,10 @@ export async function refreshLedgerPanel(connection: Connection | undefined): Pr
     if (field instanceof HTMLInputElement || field instanceof HTMLButtonElement)
       field.disabled = state === undefined;
   }
+  // Never chosen by hand: the account decides, ML-DSA-44 once the master key is disabled.
   ui.payPq.checked = migrated;
-  ui.payPq.disabled = !migrated;
+  ui.payPq.disabled = true;
+  ui.tryClassic.hidden = !migrated;
 
   if (stax === undefined) {
     ui.info.textContent = "Stax non connectée (Chrome ou Edge, app XRP ouverte).";
@@ -211,5 +220,41 @@ export function setupLedgerPanel(
         ui.payPq.checked,
       );
     }),
+  );
+
+  ui.tryClassic.addEventListener(
+    "click",
+    run(async () => {
+      const connection = getConnection();
+      if (connection === undefined || stax === undefined) return;
+      await tryClassicKey(connection, stax);
+    }),
+  );
+}
+
+/**
+ * Signs a payment with the classical key of a migrated account: the ledger must refuse it
+ * (tefMASTER_DISABLED), the demo's proof that the old key no longer controls the account.
+ */
+async function tryClassicKey(connection: Connection, current: Stax): Promise<void> {
+  const destination = ui.payDestination.value.trim();
+  if (!isValidClassicAddress(destination))
+    throw new Error("saisissez une destination valide (adresse r…) ci-dessus");
+  log(
+    `Paiement de ${CLASSIC_ATTEMPT_XRP} XRP avec l'ancienne clé classique : validez sur la Stax…`,
+  );
+  const submitted = await submitSignedByStax(
+    connection,
+    current,
+    paymentTx(current.account.address, destination, CLASSIC_ATTEMPT_XRP),
+    false,
+  );
+  const refused = submitted.result === MASTER_DISABLED;
+  logOutcome(
+    refused
+      ? "Ancienne clé classique refusée comme prévu : la clé maître est désactivée."
+      : `Attendu ${MASTER_DISABLED} pour l'ancienne clé classique, obtenu :`,
+    submitted,
+    refused,
   );
 }
