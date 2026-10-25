@@ -254,14 +254,19 @@ verifyDigest(
  *
  * With strictP256Der (the fixP256StrictDer amendment), a P-256 signature must
  * be strict DER, exactly as long as its sequence says, with minimal integers,
- * and have a low S. Other key types ignore it.
+ * and have a low S. Other key types ignore it. It has no default: whether a
+ * P-256 signature is valid depends on the rules, so every caller says which.
  */
 [[nodiscard]] bool
-verify(
-    PublicKey const& publicKey,
-    Slice const& m,
-    Slice const& sig,
-    bool strictP256Der = false) noexcept;
+verify(PublicKey const& publicKey, Slice const& m, Slice const& sig, bool strictP256Der) noexcept;
+
+/**
+ * Verify a signature by a key that is not P-256 (secp256k1, Ed25519,
+ * ML-DSA-44). A P-256 signature's validity depends on fixP256StrictDer, so a
+ * P-256 key needs the form above: here it is refused.
+ */
+[[nodiscard]] bool
+verify(PublicKey const& publicKey, Slice const& m, Slice const& sig) noexcept;
 
 /**
  * Calculate the 160-bit node ID from a node public key.

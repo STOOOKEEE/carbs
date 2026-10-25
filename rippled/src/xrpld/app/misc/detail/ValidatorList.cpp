@@ -1289,7 +1289,8 @@ ValidatorList::verify(
         return {ListDisposition::Invalid, masterPubKey};
     }
 
-    if (!xrpl::verify(*signingKey, makeSlice(data), makeSlice(*sig)))
+    // A publisher's list is not a transaction: the lax P-256 form, unchanged.
+    if (!xrpl::verify(*signingKey, makeSlice(data), makeSlice(*sig), false))
     {
         JLOG(j_.warn()) << "Invalid signature in manifest from publisher: " << strHex(masterPubKey);
         return {ListDisposition::Invalid, masterPubKey};

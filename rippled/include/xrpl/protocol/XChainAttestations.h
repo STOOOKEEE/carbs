@@ -57,9 +57,10 @@ struct AttestationBase
     AttestationBase&
     operator=(AttestationBase const&) = default;
 
-    // verify that the signature attests to the data.
+    // verify that the signature attests to the data. strictP256Der: whether
+    // fixP256StrictDer is enabled (see xrpl::verify).
     [[nodiscard]] bool
-    verify(STXChainBridge const& bridge) const;
+    verify(STXChainBridge const& bridge, bool strictP256Der) const;
 
 protected:
     explicit AttestationBase(STObject const& o);

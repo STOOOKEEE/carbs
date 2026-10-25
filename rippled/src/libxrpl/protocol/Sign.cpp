@@ -106,7 +106,9 @@ verify(STObject const& st, HashPrefix const& prefix, PublicKey const& pk, SF_VL 
     Serializer ss;
     ss.add32(prefix);
     st.addWithoutSigningFields(ss);
-    return verify(pk, Slice(ss.data(), ss.size()), Slice(sig->data(), sig->size()));
+    // Manifests use this, outside any ledger's rules: the lax P-256 form,
+    // unchanged.
+    return verify(pk, Slice(ss.data(), ss.size()), Slice(sig->data(), sig->size()), false);
 }
 
 // Questions regarding buildMultiSigningData:

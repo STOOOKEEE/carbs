@@ -112,7 +112,8 @@ checkValidity(HashRouter& router, STTx const& tx, Rules const& rules)
     // isSignatureVerdictCacheable). Verify such a transaction on every call
     // and neither read nor record a verdict, so that none crosses the
     // activation in either direction. A verdict forced by forceValidity still
-    // holds. Remove this when PasskeyChallenge is retired in features.macro.
+    // holds. Remove this when PasskeyChallenge and P256StrictDer are retired in
+    // features.macro.
     bool const uncachedSig = !isSignatureVerdictCacheable(tx, rules) && !any(flags & kSfSigforced);
 
     if (!uncachedSig && any(flags & sigbadFlag))

@@ -4,25 +4,35 @@
 #include <test/jtx/amount.h>
 #include <test/jtx/envconfig.h>
 #include <test/jtx/fee.h>
+#include <test/jtx/last_ledger_sequence.h>
 #include <test/jtx/multisign.h>
 #include <test/jtx/pay.h>
+#include <test/jtx/paychan.h>
+#include <test/jtx/session.h>
 #include <test/jtx/sig.h>
+#include <test/jtx/ter.h>
+#include <test/jtx/txflags.h>
 #include <test/jtx/utility.h>
 #include <test/jtx/webauthn.h>
 
 #include <xrpld/app/main/Application.h>
 
 #include <xrpl/basics/Blob.h>
+#include <xrpl/basics/Buffer.h>
 #include <xrpl/basics/StringUtilities.h>
 #include <xrpl/basics/strHex.h>
 #include <xrpl/beast/unit_test/suite.h>
 #include <xrpl/core/HashRouter.h>
 #include <xrpl/json/json_value.h>
 #include <xrpl/protocol/Feature.h>
+#include <xrpl/protocol/Issue.h>
 #include <xrpl/protocol/KeyType.h>
 #include <xrpl/protocol/SField.h>
 #include <xrpl/protocol/STTx.h>
+#include <xrpl/protocol/STXChainBridge.h>
 #include <xrpl/protocol/TER.h>
+#include <xrpl/protocol/TxFlags.h>
+#include <xrpl/protocol/XChainAttestations.h>
 #include <xrpl/protocol/jss.h>
 #include <xrpl/tx/apply.h>
 
@@ -364,6 +374,156 @@ class P256StrictDer_test : public beast::unit_test::Suite
         BEAST_EXPECT(checkValidity(router, *highS.stx, preFixRules).first == Validity::Valid);
     }
 
+    // A session's witness co-signs through STTx::checkSign, in its own role:
+    // its high-S form verifies only without the fix.
+    void
+    testSessionWitness(FeatureBitset features, bool strict)
+    {
+        testcase(std::string("session witness, ") + (strict ? "with" : "without") + " the fix");
+        using namespace test::jtx;
+
+        Env env{*this, envconfig(), strict ? features : features - fixP256StrictDer};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const key{"key"};
+        Account const witness{"witness", KeyType::P256};
+        env.fund(XRP(10000), alice, bob, witness);
+        env.close();
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions), session::Witness(witness));
+        env.close();
+
+        auto const jt = env.jt(
+            pay(alice, bob, XRP(10)),
+            Sig(key),
+            Sig(sfWitnessSignature, witness),
+            LastLedgerSeq(env.current()->seq() + 10));
+        auto const highS = edited(jt, [](json::Value& jv) {
+            alter(jv[sfWitnessSignature.jsonName], sfTxnSignature, flipS);
+        });
+        if (!BEAST_EXPECT(jt.stx && highS.stx))
+            return;
+
+        auto& router = env.app().getHashRouter();
+        auto const rules = env.current()->rules();
+        BEAST_EXPECT(highS.stx->getTransactionID() != jt.stx->getTransactionID());
+        BEAST_EXPECT(checkValidity(router, *jt.stx, rules).first == Validity::Valid);
+        BEAST_EXPECT(
+            checkValidity(router, *highS.stx, rules).first ==
+            (strict ? Validity::SigBad : Validity::Valid));
+
+        auto const before = env.balance(bob);
+        env.submit(jt);
+        env.close();
+        BEAST_EXPECT(env.balance(bob) == before + XRP(10));
+    }
+
+    // A payment channel claim signed by a P-256 channel key: the claim's
+    // Signature is not a signing field and is checked in preflight, outside
+    // STTx::checkSign. Without the fix its high-S form and its form with a
+    // byte appended are accepted, under a new transaction ID; with it they are
+    // temBAD_SIGNATURE, and channel_verify answers as the claim is checked.
+    void
+    testPayChanClaim(FeatureBitset features, bool strict)
+    {
+        testcase(
+            std::string("payment channel claim, ") + (strict ? "with" : "without") + " the fix");
+        using namespace test::jtx;
+        using namespace std::chrono_literals;
+
+        Env env{*this, envconfig(), strict ? features : features - fixP256StrictDer};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const channelKey{"channelKey", KeyType::P256};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+
+        auto const chan = paychan::channel(alice, bob, env.seq(alice));
+        env(paychan::create(alice, bob, XRP(1000), 100s, channelKey.pk()));
+        env.close();
+
+        auto const authorize = [&](STAmount const& amount) {
+            auto const sig = paychan::signClaimAuth(channelKey.pk(), channelKey.sk(), chan, amount);
+            return Blob(sig.data(), sig.data() + sig.size());
+        };
+        auto const claim = [&](STAmount const& amount, Blob const& sig) {
+            return paychan::claim(bob, chan, amount, amount, makeSlice(sig), channelKey.pk());
+        };
+        auto const verified = [&](STAmount const& amount, Blob const& sig) {
+            auto const rv = env.rpc(
+                "channel_verify",
+                strHex(channelKey.pk().slice()),
+                to_string(chan),
+                std::to_string(amount.xrp().drops()),
+                strHex(sig));
+            return rv[jss::result][jss::signature_verified].asBool();
+        };
+        auto const expected = strict ? Ter(temBAD_SIGNATURE) : Ter(tesSUCCESS);
+
+        auto const first = authorize(XRP(10));
+        BEAST_EXPECT(verified(XRP(10), first));
+        BEAST_EXPECT(verified(XRP(10), flipS(first)) == !strict);
+        BEAST_EXPECT(verified(XRP(10), appendByte(first)) == !strict);
+        env(claim(XRP(10), flipS(first)), expected);
+        env.close();
+        BEAST_EXPECT(paychan::channelBalance(*env.current(), chan) == (strict ? XRP(0) : XRP(10)));
+
+        auto const second = authorize(XRP(20));
+        env(claim(XRP(20), appendByte(second)), expected);
+        env.close();
+        BEAST_EXPECT(paychan::channelBalance(*env.current(), chan) == (strict ? XRP(0) : XRP(20)));
+
+        // The canonical form is accepted either way.
+        env(claim(XRP(30), authorize(XRP(30))));
+        env.close();
+        BEAST_EXPECT(paychan::channelBalance(*env.current(), chan) == XRP(30));
+    }
+
+    // A cross-chain attestation by a P-256 key is checked in preflight with
+    // AttestationBase::verify, which now takes the rules: the high-S form
+    // verifies only without the fix.
+    void
+    testXChainAttestation()
+    {
+        testcase("cross-chain attestation");
+        using namespace test::jtx;
+
+        Account const lockingDoor{"lockingDoor"};
+        Account const issuingDoor{"issuingDoor"};
+        Account const signer{"signer", KeyType::P256};
+        Account const sender{"sender"};
+        Account const reward{"reward"};
+        STXChainBridge const bridge{lockingDoor.id(), xrpIssue(), issuingDoor.id(), xrpIssue()};
+
+        attestations::AttestationClaim const att{
+            bridge,
+            signer.id(),
+            signer.pk(),
+            signer.sk(),
+            sender.id(),
+            XRP(1),
+            reward.id(),
+            true,
+            1,
+            std::nullopt};
+        Blob const der(att.signature.data(), att.signature.data() + att.signature.size());
+        Blob const highS = flipS(der);
+        attestations::AttestationClaim const flipped{
+            signer.id(),
+            signer.pk(),
+            Buffer(highS.data(), highS.size()),
+            sender.id(),
+            XRP(1),
+            reward.id(),
+            true,
+            1,
+            std::nullopt};
+
+        BEAST_EXPECT(att.verify(bridge, false));
+        BEAST_EXPECT(att.verify(bridge, true));
+        BEAST_EXPECT(flipped.verify(bridge, false));
+        BEAST_EXPECT(!flipped.verify(bridge, true));
+    }
+
 public:
     void
     run() override
@@ -377,8 +537,11 @@ public:
             testMultiSign(all, strict);
             testPasskeySignatureWithoutP256(all, strict);
             testTxnSignatureNextToPasskey(all, strict);
+            testPayChanClaim(all, strict);
+            testSessionWitness(all, strict);
         }
         testCacheAcrossTheFix(all);
+        testXChainAttestation();
     }
 };
 
