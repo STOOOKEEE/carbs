@@ -46,4 +46,4 @@ exec "$PYTHON" -m ledgerblue.loadApp \
     --targetId 0x33200004 --targetVersion="" --apiLevel 27 \
     --fileName "$HEX" --appName "Security Key" --appFlags 0x200 \
     --delete --tlv --dataSize "$data_size" --installparamsSize "$params_size" --nocrc \
-    "${extra[@]}"
+    ${extra[@]+"${extra[@]}"}
