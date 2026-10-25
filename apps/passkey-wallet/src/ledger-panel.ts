@@ -96,9 +96,7 @@ async function signClassicTx(
   const unsigned: TxJson = { ...tx, SigningPubKey: account.publicKey };
   const signingData = encodeForSigning(unsigned, defs);
   const fields = hexToBytes(signingData).subarray(SIGNING_PREFIX_BYTES);
-  const signature = bytesToHex(
-    await signClassic(device, kDefaultXrpPath, CLASSIC_CURVE, fields),
-  );
+  const signature = bytesToHex(await signClassic(device, kDefaultXrpPath, CLASSIC_CURVE, fields));
   if (!verify(signingData, signature, account.publicKey)) {
     throw new Error("the Ledger signature does not verify under the account key");
   }
