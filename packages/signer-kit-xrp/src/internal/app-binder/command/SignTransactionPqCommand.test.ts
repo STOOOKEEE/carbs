@@ -9,7 +9,7 @@ import {
   INS,
   XRP_CLA,
 } from "@internal/app-binder/command/utils/apduHeaderUtils";
-import { type XrpAppCommandError } from "@internal/app-binder/command/utils/xrpApplicationErrors";
+import { type XrpSessionCommandError } from "@internal/app-binder/command/utils/sessionApplicationErrors";
 
 // A stand-in chunk; the command writes whatever chunk it is given.
 const CHUNK = Uint8Array.from([0x53, 0x54, 0x58, 0x00, 0x12, 0x00]);
@@ -151,7 +151,9 @@ describe("SignTransactionPqCommand", () => {
         if (isSuccessCommandResult(result)) {
           assert.fail("Expected an error");
         }
-        expect((result.error as XrpAppCommandError).errorCode).toBe(errorCode);
+        expect((result.error as XrpSessionCommandError).errorCode).toBe(
+          errorCode,
+        );
       },
     );
   });

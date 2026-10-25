@@ -11,7 +11,7 @@ import {
 import { Just, Nothing } from "purify-ts";
 import { vi } from "vitest";
 
-import { XrpAppCommandError } from "@internal/app-binder/command/utils/xrpApplicationErrors";
+import { XrpSessionCommandError } from "@internal/app-binder/command/utils/sessionApplicationErrors";
 
 import { SendSignTransactionPqTask } from "./SendSignTransactionPqTask";
 
@@ -184,7 +184,7 @@ describe("SendSignTransactionPqTask", () => {
 
   it("should propagate a refusal on the last chunk and read no signature", async () => {
     // GIVEN the session policy refuses the transaction
-    const error = new XrpAppCommandError({
+    const error = new XrpSessionCommandError({
       message: "Session refused by the session policy set on the device",
       errorCode: "6986",
     });
@@ -205,7 +205,7 @@ describe("SendSignTransactionPqTask", () => {
 
   it("should stop sending after an error mid-loop", async () => {
     // GIVEN the app refuses the second chunk
-    const error = new XrpAppCommandError({
+    const error = new XrpSessionCommandError({
       message: "Invalid data",
       errorCode: "6a80",
     });
@@ -253,7 +253,7 @@ describe("SendSignTransactionPqTask", () => {
 
   it("should propagate an error while reading the signature", async () => {
     // GIVEN no signature to read
-    const error = new XrpAppCommandError({
+    const error = new XrpSessionCommandError({
       message: "No ML-DSA-44 signature to read",
       errorCode: "6982",
     });

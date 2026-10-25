@@ -16,7 +16,7 @@ import {
   SignTransactionPqCommand,
   type SignTransactionPqCommandResponse,
 } from "@internal/app-binder/command/SignTransactionPqCommand";
-import { type XrpErrorCodes } from "@internal/app-binder/command/utils/xrpApplicationErrors";
+import { type XrpSessionErrorCodes } from "@internal/app-binder/command/utils/sessionApplicationErrors";
 import {
   ML_DSA_44_SIGNATURE_LENGTH,
   PQ_MAX_SIGNING_DATA_LENGTH,
@@ -59,7 +59,7 @@ export class SendSignTransactionPqTask {
     this._logger = args.loggerFactory("SendSignTransactionPqTask");
   }
 
-  async run(): Promise<CommandResult<PqSignature, XrpErrorCodes>> {
+  async run(): Promise<CommandResult<PqSignature, XrpSessionErrorCodes>> {
     const { signingData } = this.args;
 
     if (!startsWithSigningPrefix(signingData)) {

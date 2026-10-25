@@ -286,6 +286,18 @@ describe("GetSessionPolicyCommand", () => {
     expect(result.data.profiles[4]!.permissions).toStrictEqual([0xfffffffe]);
   });
 
+  it("should refuse a profile with more permissions than the app stores (2)", () => {
+    // GIVEN three permissions for the trading profile
+    const records = DEFAULT_RECORDS.map((r) =>
+      r.id === 2 ? { ...r, permissions: [8, 9, 10] } : r,
+    );
+
+    // THEN
+    expect(parseError(serialize({ records }))).toEqual(
+      new Error("Session policy profile 2 lists 3 permissions, at most 2"),
+    );
+  });
+
   it("should refuse a version 1 answer", () => {
     expect(parseError(serialize({ version: 1 }))).toEqual(
       new Error("Session policy format 1 is not supported (expected 2)"),

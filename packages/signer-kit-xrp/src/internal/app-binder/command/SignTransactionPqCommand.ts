@@ -21,10 +21,10 @@ import {
   XRP_CLA,
 } from "./utils/apduHeaderUtils";
 import {
-  XRP_APP_ERRORS,
-  XrpAppCommandErrorFactory,
-  type XrpErrorCodes,
-} from "./utils/xrpApplicationErrors";
+  XRP_SESSION_APP_ERRORS,
+  XrpSessionCommandErrorFactory,
+  type XrpSessionErrorCodes,
+} from "./utils/sessionApplicationErrors";
 
 const SIGNATURE_LENGTH_SIZE = 2;
 
@@ -59,7 +59,7 @@ export class SignTransactionPqCommand
     Command<
       SignTransactionPqCommandResponse,
       SignTransactionPqCommandArgs,
-      XrpErrorCodes
+      XrpSessionErrorCodes
     >
 {
   readonly name = "SignTransactionPq";
@@ -68,8 +68,8 @@ export class SignTransactionPqCommand
 
   private readonly errorHelper = new CommandErrorHelper<
     SignTransactionPqCommandResponse,
-    XrpErrorCodes
-  >(XRP_APP_ERRORS, XrpAppCommandErrorFactory);
+    XrpSessionErrorCodes
+  >(XRP_SESSION_APP_ERRORS, XrpSessionCommandErrorFactory);
 
   constructor(args: SignTransactionPqCommandArgs) {
     this.args = args;
@@ -92,7 +92,7 @@ export class SignTransactionPqCommand
 
   parseResponse(
     apduResponse: ApduResponse,
-  ): CommandResult<SignTransactionPqCommandResponse, XrpErrorCodes> {
+  ): CommandResult<SignTransactionPqCommandResponse, XrpSessionErrorCodes> {
     return Maybe.fromNullable(
       this.errorHelper.getError(apduResponse),
     ).orDefaultLazy(() => {

@@ -84,7 +84,7 @@ const { observable: policy$ } = signer.getSessionPolicy();
 
 The matching device action factories are exported too (`GetPqPublicKeyDeviceActionFactory`, `SignTransactionPqDeviceActionFactory`, `GetSessionPolicyDeviceActionFactory`), so the flows can be nested in another device action, as the upstream factories can.
 
-Status words added to the error mapping, answered on both signing paths before any review:
+Status words of such an app, answered on both signing paths before any review. They are mapped by the ML-DSA sign command only, in a separate map (`XRP_SESSION_APP_ERRORS`, `command/utils/sessionApplicationErrors.ts`) that spreads the upstream one, which stays unchanged; on the upstream classical command they remain generic device exchange errors that carry the status word:
 
 - `6815`: a session transaction (`SigningSessionSet`, `SigningSessionDelete`, or a `Batch` holding one) that the app cannot show in full; session transactions are never blind-signed, whatever the setting.
 - `6986`: a session the user's session policy refuses; the device shows why.
@@ -94,7 +94,7 @@ Nothing in this extension changes the upstream methods' behaviour; the upstream 
 
 ### Building in the carbs workspace
 
-`pnpm install` builds the kit (`scripts/build.mjs`: esbuild bundles `src/index.ts` into `lib/esm/index.js` with the path aliases resolved, tsc and tsc-alias emit `lib/types`). Tests run on upstream's Vitest 3.2.6 and the format check on upstream's Prettier 3.5.3 and settings (`config/`), so that this code stays ready for an upstream pull request (`UPSTREAM-PR.md`).
+`pnpm install` builds the kit (`scripts/build.mjs`: esbuild bundles `src/index.ts` into `lib/esm/index.js` with the path aliases resolved, tsc and tsc-alias emit `lib/types`). Tests run on upstream's Vitest 3.2.6 and the format check on upstream's Prettier 3.5.3 and settings (`config/`), so that this code stays ready for an upstream pull request (`UPSTREAM-PR.md`). The build runs as the `prepare` script: with `pnpm install --ignore-scripts` (or `ignore-scripts=true` in `.npmrc`) `lib/` is not there and every consumer fails to resolve the package; run `pnpm --filter @carbs/device-signer-kit-xrp build` then.
 
 ## Development
 

@@ -12,7 +12,7 @@ import { type Mock } from "vitest";
 import { assign, createMachine } from "xstate";
 
 import { SignTransactionPqDAStep } from "@api/app-binder/SignTransactionPqDeviceActionTypes";
-import { XrpAppCommandError } from "@internal/app-binder/command/utils/xrpApplicationErrors";
+import { XrpSessionCommandError } from "@internal/app-binder/command/utils/sessionApplicationErrors";
 import { makeDeviceActionInternalApiMock } from "@internal/app-binder/device-action/__test-utils__/makeInternalApi";
 import { testDeviceActionStates } from "@internal/app-binder/device-action/__test-utils__/testDeviceActionStates";
 
@@ -130,7 +130,7 @@ describe("SignTransactionPqDeviceAction", () => {
 
     it("forwards a command error from the sign task", () =>
       new Promise<void>((resolve, reject) => {
-        const error = new XrpAppCommandError({
+        const error = new XrpSessionCommandError({
           message: "Session refused by the session policy set on the device",
           errorCode: "6986",
         });

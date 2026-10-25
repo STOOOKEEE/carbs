@@ -6,12 +6,7 @@
  */
 
 import { Curve } from "@carbs/device-signer-kit-xrp";
-import {
-  hexToBytes,
-  kMlDsa44PublicKeyLength,
-  kMlDsa44SignatureLength,
-  kTxSignPrefix,
-} from "@carbs/sessions";
+import { hexToBytes, kTxSignPrefix } from "@carbs/sessions";
 import {
   kInsGetAppConfiguration,
   kInsGetPublicKey,
@@ -101,23 +96,19 @@ export async function signClassic(
 
 /** `INS 0x10` (the kit's `getPqPublicKey`): the 1 312-byte ML-DSA-44 public key in 250-byte chunks. */
 export async function getMlDsaPublicKey(transport: XrpTransport): Promise<Uint8Array> {
-  const publicKey = await runDeviceAction(
+  return runDeviceAction(
     kitFlows(transport).getPqPublicKey({ skipOpenApp: kSkipOpenApp }),
     kInsPqGetPublicKey,
   );
-  if (publicKey.length !== kMlDsa44PublicKeyLength) {
-    throw new DeviceContractError(
-      `expected a ${kMlDsa44PublicKeyLength}-byte ML-DSA-44 key, the device gave ${publicKey.length}`,
-    );
-  }
-  return publicKey;
 }
 
 /**
  * `INS 0x11` then `0x12` (the kit's `signTransactionPq`): send `STX\0 ‖ fields` (at most 2 048
  * bytes, the 1 312-byte `SigningPubKey` included), the device reviews it through the app's parser,
  * answers the signature length on the last chunk, then the 2 420-byte signature is read in 250-byte
- * chunks. A status word of either instruction is reported against `0x11`.
+ * chunks. A status word of either instruction is reported against `0x11`. The kit checks the
+ * length of every chunk and of the announced signature; a malformed answer is its
+ * `InvalidResponseFormatError` (a DMK error object).
  */
 export async function signMlDsa(
   transport: XrpTransport,
@@ -129,16 +120,10 @@ export async function signMlDsa(
   if (signingData.length > kPqMaxMessage) {
     throw new DeviceContractError(`the device signs at most ${kPqMaxMessage} bytes with ML-DSA`);
   }
-  const signature = await runDeviceAction(
+  return runDeviceAction(
     kitFlows(transport).signTransactionPq(signingData, { skipOpenApp: kSkipOpenApp }),
     kInsPqSign,
   );
-  if (signature.length !== kMlDsa44SignatureLength) {
-    throw new DeviceContractError(
-      `expected a ${kMlDsa44SignatureLength}-byte signature, the device gave ${signature.length}`,
-    );
-  }
-  return signature;
 }
 
 /**

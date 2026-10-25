@@ -26,7 +26,7 @@ We know these instructions exist only in a fork of app-xrp today, so the command
 
 Also:
 
-- `XRP_APP_ERRORS` maps `6815` (a session transaction the app cannot show in full: never blind-signed) and `6986` (refused by the session policy), with messages; on `INS 0x12` only, `6982` means that no signature is waiting.
+- A separate map, `XRP_SESSION_APP_ERRORS` (which spreads `XRP_APP_ERRORS`, left unchanged), maps for the ML-DSA sign command `6815` (a session transaction the app cannot show in full: never blind-signed) and `6986` (refused by the session policy), with messages; on `INS 0x12` only, `6982` means that no signature is waiting.
 - `SignerXrp.signTransaction` and the README now say that the app prepends `STX\0` itself and that the kit forwards the bytes unchanged, which our integration log found missing (a client passing `encodeForSigning` output gets the prefix signed twice). This part applies to the official app and could be its own small pull request.
 - `signTransactionPq` takes the signing data **with** `STX\0`, since the node verifies pure ML-DSA-44 over the whole buffer; the task refuses data without the prefix or above 2,048 bytes before any APDU.
 
@@ -39,7 +39,8 @@ Run on Vitest 3.2.6, as the monorepo pins it: on Vitest 4 the upstream `SignTran
 ## Not done, and what a reviewer should know
 
 - **No device test.** Nothing of this extension was run on a real device: the commands were tested against mocks and against carbs' software double of the app contract. The same instructions, sent by an earlier hand-written client (in 250-byte `0x11` chunks where the kit sends 255; the app accepts any chunk size up to 255), were proven on a Stax with the carbs app: its ML-DSA-44 signatures were accepted by the public AlphaNet.
-- ESLint was not run: the monorepo's ESLint config is private. Prettier 3.5.3 with the monorepo's settings passes.
+- ESLint was not run: the monorepo's ESLint config is private. Import order and lint rules may need fixes. Prettier 3.5.3 with the monorepo's settings passes.
+- Adding methods to the `SignerXrp` interface is a breaking change for anyone who implements it (a mock, a wrapper); callers are not affected.
 - The extension targets a fork of app-xrp. Its instructions (`0x08`, `0x10` to `0x12`) and status words (`6815`, `6986`) are documented in carbs' `docs/device-contract.md`.
 
 ## Checklist before sending

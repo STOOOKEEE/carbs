@@ -15,7 +15,7 @@ Where each instruction lives in the kit (`packages/signer-kit-xrp/src/internal/a
 | `0x10`              | `getPqPublicKey` (`getMlDsaPublicKey`)            | `GetPqPublicKeyCommand`, `GetPqPublicKeyTask`, `ReadPqChunksTask` (ours)                | `GetPqPublicKeyDeviceActionFactory` (ours, `CallTaskInAppDeviceAction`)          |
 | `0x11`, then `0x12` | `signTransactionPq` (`signMlDsa`)                 | `SignTransactionPqCommand`, `GetPqSignatureCommand`, `SendSignTransactionPqTask` (ours) | `SignTransactionPqDeviceAction` (ours, built like `SignTransactionDeviceAction`) |
 
-The status words `0x6815` and `0x6986` are in the kit's `XRP_APP_ERRORS` (`command/utils/xrpApplicationErrors.ts`); on `0x12`, `GetPqSignatureCommand` reads `0x6982` as "no ML-DSA-44 signature to read".
+The status words `0x6815` and `0x6986` are mapped by `SignTransactionPqCommand` in a separate map, `XRP_SESSION_APP_ERRORS` (`command/utils/sessionApplicationErrors.ts`), so the kit's shared map stays upstream's; on `0x04` (the upstream command) they arrive as an unknown device exchange error carrying the status word, which `packages/ledger` turns into the same `DeviceError`; on `0x12`, `GetPqSignatureCommand` reads `0x6982` as "no ML-DSA-44 signature to read".
 
 ## 1. APDUs
 

@@ -8,7 +8,7 @@ import {
 } from "@ledgerhq/device-management-kit";
 
 import { type PqSignature } from "@api/model/PqSignature";
-import { type XrpErrorCodes } from "@internal/app-binder/command/utils/xrpApplicationErrors";
+import { type XrpSessionErrorCodes } from "@internal/app-binder/command/utils/sessionApplicationErrors";
 
 export type SignTransactionPqDAOutput = PqSignature;
 
@@ -31,7 +31,7 @@ export type SignTransactionPqDAInput = {
 
 export type SignTransactionPqDAError =
   | OpenAppDAError
-  | CommandErrorResult<XrpErrorCodes>["error"];
+  | CommandErrorResult<XrpSessionErrorCodes>["error"];
 
 type SignTransactionPqDARequiredInteraction =
   | OpenAppDARequiredInteraction

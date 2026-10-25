@@ -10,13 +10,13 @@ export const INS = {
   SIGN: 0x04,
   GET_APP_CONFIGURATION: 0x06,
   /**
-   * The session policy of the XRP app that supports signing sessions (the
-   * carbs fork of app-xrp, `src/apdu/messages/get_session_policy.c`).
+   * The session policy of an XRP app that supports signing sessions
+   * (`src/apdu/messages/get_session_policy.c` in such an app).
    */
   GET_SESSION_POLICY: 0x08,
   /**
-   * ML-DSA-44 root key of the XRP app that supports it (the carbs fork of
-   * app-xrp, `src/pq/pq_root.h`): the public key, read in chunks.
+   * ML-DSA-44 root key of an XRP app that supports it (`src/pq/pq_root.h` in
+   * such an app): the public key, read in chunks.
    */
   PQ_GET_PUBLIC_KEY: 0x10,
   /** The signing data to sign with the ML-DSA-44 key, in chunks. */

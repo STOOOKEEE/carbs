@@ -21,7 +21,7 @@ import {
   SignTransactionPqDAStep,
 } from "@api/app-binder/SignTransactionPqDeviceActionTypes";
 import { type PqSignature } from "@api/model/PqSignature";
-import { type XrpErrorCodes } from "@internal/app-binder/command/utils/xrpApplicationErrors";
+import { type XrpSessionErrorCodes } from "@internal/app-binder/command/utils/sessionApplicationErrors";
 import { APP_NAME } from "@internal/app-binder/constants";
 import { SendSignTransactionPqTask } from "@internal/app-binder/task/SendSignTransactionPqTask";
 
@@ -30,7 +30,7 @@ export type MachineDependencies = {
     input: {
       transaction: Uint8Array;
     };
-  }) => Promise<CommandResult<PqSignature, XrpErrorCodes>>;
+  }) => Promise<CommandResult<PqSignature, XrpSessionErrorCodes>>;
 };
 
 /**

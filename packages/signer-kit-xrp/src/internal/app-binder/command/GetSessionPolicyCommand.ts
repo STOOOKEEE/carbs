@@ -45,6 +45,12 @@ const MODE_BITS: ReadonlyArray<[SessionMode, number]> = [
   ["permissions", 0x04],
 ];
 
+/**
+ * `SESSION_PROFILE_MAX_PERMISSIONS`: the app stores at most this many
+ * permissions per profile, so a longer list is not an answer it can give.
+ */
+const SESSION_PROFILE_MAX_PERMISSIONS = 2;
+
 /** `SESSION_POLICY_NO_LIMIT`: a limit of the default policy that is not set. */
 const NO_LIMIT = 0;
 
@@ -140,6 +146,11 @@ function parseProfile(
   const maxDurationSeconds = required(parser.extract32BitUInt(), what);
   const maxTxCount = required(parser.extract32BitUInt(), what);
   const permissionsCount = required(parser.extract8BitUInt(), what);
+  if (permissionsCount > SESSION_PROFILE_MAX_PERMISSIONS) {
+    throw new SessionPolicyFormatError(
+      `Session policy profile ${index} lists ${permissionsCount} permissions, at most ${SESSION_PROFILE_MAX_PERMISSIONS}`,
+    );
+  }
   const permissions = Array.from({ length: permissionsCount }, () =>
     required(parser.extract32BitUInt(), what),
   );

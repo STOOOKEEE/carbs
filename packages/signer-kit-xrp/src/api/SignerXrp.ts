@@ -40,8 +40,8 @@ export interface SignerXrp {
    * (`INS 0x10`): 1,312 bytes, derived on the device from the 24 words, so
    * the same seed always gives the same key. Nothing is shown on the device.
    *
-   * Requires an XRP app with the post-quantum root (the carbs fork of
-   * app-xrp); another app answers `6d00`.
+   * Requires an XRP app with an ML-DSA-44 root key; an app without it
+   * answers `6d00`.
    */
   getPqPublicKey: (options?: PqPublicKeyOptions) => GetPqPublicKeyDAReturnType;
 
@@ -70,8 +70,8 @@ export interface SignerXrp {
    * limits of each session profile. The host can read it, never write it.
    * Nothing is shown on the device.
    *
-   * Requires an XRP app that supports signing sessions (the carbs fork of
-   * app-xrp); another app answers `6d00`.
+   * Requires an XRP app that supports signing sessions; an app without them
+   * answers `6d00`.
    */
   getSessionPolicy: (
     options?: SessionPolicyOptions,
