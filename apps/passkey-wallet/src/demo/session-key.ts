@@ -1,6 +1,6 @@
 // The algorithm of the agent's session key, as the agent announces it on the stage timeline:
-// its first event carries one of these codes, read by the demo page for the Agent ID badge
-// and the header claim. Pure module, shared by the agent script and the page.
+// its first event carries one of these codes, read by the demo page for the Agent ID badge.
+// Pure module, shared by the agent script and the page.
 
 export type SessionKeyAlgorithm = "ml-dsa-44" | "secp256k1";
 
