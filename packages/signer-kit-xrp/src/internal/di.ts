@@ -9,6 +9,7 @@ import { appBindingModuleFactory } from "@internal/app-binder/di/appBinderModule
 import { externalTypes } from "@internal/externalTypes";
 import { addressModuleFactory } from "@internal/use-cases/address/di/addressModule";
 import { configModuleFactory } from "@internal/use-cases/config/di/configModule";
+import { pqModuleFactory } from "@internal/use-cases/pq/di/pqModule";
 import { transactionModuleFactory } from "@internal/use-cases/transaction/di/transactionModule";
 
 type MakeContainerProps = {
@@ -37,6 +38,7 @@ export const makeContainer = ({ dmk, sessionId }: MakeContainerProps) => {
     configModuleFactory(),
     addressModuleFactory(),
     transactionModuleFactory(),
+    pqModuleFactory(),
   );
 
   return container;

@@ -15,6 +15,13 @@ export {
   type GetAppConfigDAOutput,
   type GetAppConfigDAReturnType,
 } from "@api/app-binder/GetAppConfigDeviceActionTypes";
+export { GetPqPublicKeyDeviceActionFactory } from "@api/app-binder/GetPqPublicKeyDeviceActionFactory";
+export {
+  type GetPqPublicKeyDAError,
+  type GetPqPublicKeyDAIntermediateValue,
+  type GetPqPublicKeyDAOutput,
+  type GetPqPublicKeyDAReturnType,
+} from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
 export { SignTransactionDeviceActionFactory } from "@api/app-binder/SignTransactionDeviceActionFactory";
 export {
   type SignTransactionDAError,
@@ -29,6 +36,8 @@ export { type AddressOptions } from "@api/model/AddressOptions";
 export { type AppConfig } from "@api/model/AppConfig";
 export { type AppConfigOptions } from "@api/model/AppConfigOptions";
 export { Curve } from "@api/model/Curve";
+export { type PqPublicKey } from "@api/model/PqPublicKey";
+export { type PqPublicKeyOptions } from "@api/model/PqPublicKeyOptions";
 export { type Signature } from "@api/model/Signature";
 export { type TransactionOptions } from "@api/model/TransactionOptions";
 export { type SignerXrp } from "@api/SignerXrp";

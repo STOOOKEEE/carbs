@@ -9,6 +9,7 @@ import { inject, injectable } from "inversify";
 
 import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceActionTypes";
 import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
+import { type GetPqPublicKeyDAReturnType } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
 import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
 import { type Curve } from "@api/model/Curve";
 import { APP_NAME } from "@internal/app-binder/constants";
@@ -16,6 +17,7 @@ import { externalTypes } from "@internal/externalTypes";
 
 import { GetAppConfigCommand } from "./command/GetAppConfigCommand";
 import { GetAddressDeviceActionFactory } from "./device-action/GetAddressDeviceActionFactory";
+import { GetPqPublicKeyDeviceActionFactory } from "./device-action/GetPqPublicKeyDeviceActionFactory";
 import { SignTransactionDeviceActionFactory } from "./device-action/SignTransactionDeviceActionFactory";
 
 @injectable()
@@ -71,6 +73,17 @@ export class XrpAppBinder {
         ...args,
         loggerFactory: this.dmkLoggerFactory,
       }),
+    });
+  }
+
+  /**
+   * Reads the ML-DSA-44 public key of the app's post-quantum root through
+   * {@link GetPqPublicKeyDeviceActionFactory}.
+   */
+  getPqPublicKey(args: { skipOpenApp: boolean }): GetPqPublicKeyDAReturnType {
+    return this.dmk.executeDeviceAction({
+      sessionId: this.sessionId,
+      deviceAction: GetPqPublicKeyDeviceActionFactory(args),
     });
   }
 }

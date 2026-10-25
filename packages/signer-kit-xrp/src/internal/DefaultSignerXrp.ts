@@ -6,9 +6,11 @@ import { type Container } from "inversify";
 
 import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceActionTypes";
 import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
+import { type GetPqPublicKeyDAReturnType } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
 import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
 import { type AddressOptions } from "@api/model/AddressOptions";
 import { type AppConfigOptions } from "@api/model/AppConfigOptions";
+import { type PqPublicKeyOptions } from "@api/model/PqPublicKeyOptions";
 import { type TransactionOptions } from "@api/model/TransactionOptions";
 import { type SignerXrp } from "@api/SignerXrp";
 import { makeContainer } from "@internal/di";
@@ -16,6 +18,8 @@ import { addressTypes } from "@internal/use-cases/address/di/addressTypes";
 import { type GetAddressUseCase } from "@internal/use-cases/address/GetAddressUseCase";
 import { configTypes } from "@internal/use-cases/config/di/configTypes";
 import { type GetAppConfigUseCase } from "@internal/use-cases/config/GetAppConfigUseCase";
+import { pqTypes } from "@internal/use-cases/pq/di/pqTypes";
+import { type GetPqPublicKeyUseCase } from "@internal/use-cases/pq/GetPqPublicKeyUseCase";
 import { transactionTypes } from "@internal/use-cases/transaction/di/transactionTypes";
 import { type SignTransactionUseCase } from "@internal/use-cases/transaction/SignTransactionUseCase";
 
@@ -54,5 +58,11 @@ export class DefaultSignerXrp implements SignerXrp {
     return this._container
       .get<SignTransactionUseCase>(transactionTypes.SignTransactionUseCase)
       .execute(derivationPath, transaction, options);
+  }
+
+  getPqPublicKey(options?: PqPublicKeyOptions): GetPqPublicKeyDAReturnType {
+    return this._container
+      .get<GetPqPublicKeyUseCase>(pqTypes.GetPqPublicKeyUseCase)
+      .execute(options);
   }
 }

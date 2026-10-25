@@ -9,6 +9,11 @@ export const INS = {
   GET_PUBLIC_KEY: 0x02,
   SIGN: 0x04,
   GET_APP_CONFIGURATION: 0x06,
+  /**
+   * ML-DSA-44 root key of the XRP app that supports it (the carbs fork of
+   * app-xrp, `src/pq/pq_root.h`): the public key, read in chunks.
+   */
+  PQ_GET_PUBLIC_KEY: 0x10,
 } as const;
 
 export const P1_DEFAULT = 0x00 as const;
