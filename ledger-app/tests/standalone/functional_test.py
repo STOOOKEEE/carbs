@@ -5,6 +5,7 @@ export LEDGER_PROXY_ADDRESS=127.0.0.1 LEDGER_PROXY_PORT=9999
 pytest-3 -v -s
 """
 
+import weakref
 from pathlib import Path
 
 import pytest
@@ -156,11 +157,14 @@ def test_sign_reject(
     assert len(err.value.data) == 0
 
 
-_blind_signing_on = [False]
+# Emulators (backends) that already have blind signing on. A backend lives for
+# a whole device run, but pytest may start a fresh one for the same device
+# later, with a fresh NVM: track the backend, not the device.
+_blind_signing_on: weakref.WeakSet[BackendInterface] = weakref.WeakSet()
 
 
-def _enable_blind_signing(device: Device, navigator: Navigator) -> None:
-    if _blind_signing_on[0]:
+def _enable_blind_signing(backend: BackendInterface, device: Device, navigator: Navigator) -> None:
+    if backend in _blind_signing_on:
         return
     if device.type is DeviceType.APEX_P:
         coordinates = (263, 95)
@@ -174,7 +178,7 @@ def _enable_blind_signing(device: Device, navigator: Navigator) -> None:
         ],
         screen_change_before_first_instruction=False,
     )
-    _blind_signing_on[0] = True
+    _blind_signing_on.add(backend)
 
 
 def _check_blind_sign_rejection(backend: BackendInterface, xrp: XRPClient, message: bytes) -> None:
@@ -252,7 +256,7 @@ def test_blind_sign_enabled(
 
     snapname = Path(blind_sign_raw_tx_path).stem
 
-    _enable_blind_signing(device, navigator)
+    _enable_blind_signing(backend, device, navigator)
 
     backend.wait_for_home_screen()
     with xrp.sign(DEFAULT_BIP32_PATH + message):
@@ -304,9 +308,39 @@ def test_sign_valid_tx(
         "10-spoofed-note.raw",
         "11-eleven-permissions.raw",
         "13-spoofed-scope.raw",
+        "16-duplicate-cap.raw",
     ):
         if raw_tx_path.endswith(f"30-signing-session-set/{name}"):
             pytest.skip(f"skip session tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
+    # carbs: two session modes at once; the policy refuses them (unit-tested
+    # in test_policy.c), the node too.
+    for name in ("14-flag-and-cap.raw", "15-permissions-and-cap.raw"):
+        if raw_tx_path.endswith(f"30-signing-session-set/{name}"):
+            pytest.skip(f"skip node-invalid session tx: '{Path(raw_tx_path).stem}'")
+    # carbs: Batch vectors that must go blind or be refused (unit-tested in
+    # test_tx.c).
+    for name in (
+        "03-unsupported-inner-type.raw",
+        "04-inner-fee-not-zero.raw",
+        "05-memos-in-inner.raw",
+        "06-session-after-field-limit.raw",
+    ):
+        if raw_tx_path.endswith(f"32-batch/{name}"):
+            pytest.skip(f"skip Batch tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
+    # carbs: session vectors refused even with blind signing on; their own
+    # test is session_agent_id_test.py.
+    for name in (
+        "02-unknown-field-refused.raw",
+        "03-batch-session-refused.raw",
+        "04-spoofed-agent-id.raw",
+        "05-duplicate-session-key.raw",
+    ):
+        if raw_tx_path.endswith(f"34-session-agent-id/{name}"):
+            pytest.skip(f"skip refused session tx: '{Path(raw_tx_path).stem}'")
+    # carbs: session policy vectors, signed or refused under a policy set in
+    # session_policy_test.py
+    if "/33-session-policy/" in raw_tx_path:
+        pytest.skip(f"skip session policy tx: '{Path(raw_tx_path).stem}'")
 
     xrp = XRPClient(backend, navigator)
 

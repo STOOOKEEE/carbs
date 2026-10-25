@@ -22,6 +22,7 @@
 #include <os_io_usb.h>
 #include <string.h>
 
+#include "blind_signing.h"
 #include "constants.h"
 #include "crypto_helpers.h"
 #include "global.h"
@@ -29,6 +30,7 @@
 #include "idle_menu.h"
 #include "io.h"
 #include "ledger_assert.h"
+#include "signing_session.h"
 #include "swap.h"
 #include "transaction.h"
 #include "xrp_helpers.h"
@@ -244,6 +246,16 @@ int handle_packet_content(uint8_t p1, uint8_t p2, uint8_t* work_buffer,
         // thrown, causing the processing to abort and the transaction context
         // to be reset.
         int exception = parse_tx(&parse_context);
+        if (exception == SESSION_BLIND_SIGN_REFUSED) {
+            // The session policy answers first (0x6986), as for a
+            // transaction the review can show (review_transaction()).
+            if (refused_by_session_policy()) {
+                return 0;
+            }
+            // Never offered for blind signing, whatever the setting says.
+            ui_error_session_blind_signing();
+            return send_error(0x6800 | SESSION_BLIND_SIGN_REFUSED);
+        }
         if (exception && exception != BLIND_SIGN_REQUIRED) {
             return send_error(0x6800 | (exception & 0x7FF));
         }

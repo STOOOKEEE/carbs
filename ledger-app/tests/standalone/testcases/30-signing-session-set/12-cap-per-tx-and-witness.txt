@@ -1,6 +1,7 @@
 Transaction Type; Open session
 Account;   rEmnmhwxmkDk    j9jKiibNuXx     P25VYHJ5Euy   
 Session key;   rHH1fLR86zy5    uZjZXT8iEa4     CHK145ksjAK   
+Agent ID; B2B2-7F3B
 Network ID; 24100
 Valid for; 5 minutes
 Fee; XRP 0.000012

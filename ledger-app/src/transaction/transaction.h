@@ -23,6 +23,11 @@
 
 typedef void (*resultAction_t)(unsigned int result);
 
+// carbs: checks the transaction in parse_context against the session policy.
+// When it does not fit, shows the refusal (which answers 0x6986) and
+// returns true.
+bool refused_by_session_policy(void);
+
 void review_transaction(parseResult_t *transaction,
                         action_t on_approve,
                         action_t on_reject,

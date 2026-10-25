@@ -237,9 +237,9 @@ typedef struct {
     char buf[MAX_FIELD_LEN];
 } field_value_t;
 
-bool is_normal_account_field(field_t *field);
 const char *resolve_field_name(field_t *field);
 bool is_field_hidden(field_t *field);
 bool is_field_recognized(field_t *field);
+void format_field_title(field_t *field, field_name_t *title);
 
 #endif  // LEDGER_APP_XRP_FIELDS_H
