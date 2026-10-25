@@ -103,8 +103,7 @@
   --layer-1: var(--brand-blue);
   --layer-2: var(--brand-violet);
 
-  /* The page background layer (Ledger mode paints silk here) */
-  --backdrop: none;
+  /* Blur behind the panels: none here; the Ledger theme sets it over its silk backdrop */
   --panel-blur: 0px;
 
   /* ---- Type ---- */

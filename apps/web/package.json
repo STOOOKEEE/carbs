@@ -9,7 +9,6 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "lint": "nuxt prepare && eslint .",
-    "type-check": "nuxt typecheck",
     "test": "node --test server/utils/inline-scripts.test.mjs && vitest run",
     "typecheck": "nuxt typecheck",
     "live-run": "vitest run --config vitest.manual.config.ts"

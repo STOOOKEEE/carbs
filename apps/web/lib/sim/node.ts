@@ -3,16 +3,18 @@
  * result matrix of 6.13, so the screens can be built and tested before the real node is
  * wired in. It is NOT the ledger: no consensus, no real signatures (see keys.ts), no
  * granular permissions, no tickets in use, no Batch, no Firewall. Every result it returns
- * is shown with the SIMULATED badge. Replaced by the live node in M3.
+ * is shown with the SIMULATED badge. The live node (`lib/live`) is the other backend.
  */
+import {
+  kLastLedgerSequenceOffset,
+  kMaxSessionDuration,
+  kPermissionMaxSize,
+  kSessionFeeMultiple,
+  kSessionMaxLedgerWindow,
+} from "@carbs/sessions";
 import {
   ASF_DISABLE_MASTER,
   DEFAULT_FEE_DROPS,
-  LAST_LEDGER_OFFSET,
-  MAX_SESSION_DURATION_SEC,
-  PERMISSION_MAX_SIZE,
-  SESSION_FEE_MULTIPLE,
-  SESSION_MAX_LEDGER_WINDOW,
   SIM_BASE_FEE_DROPS,
   SIM_FAUCET_DROPS,
   SIM_LEDGER_CLOSE_SEC,
@@ -257,7 +259,7 @@ export class SimulatedNode implements NodePort, SimClock {
     };
     if (info !== undefined) common.Sequence = info.sequence;
     if (options.omitLastLedger !== true) {
-      common.LastLedgerSequence = this.openLedger() + LAST_LEDGER_OFFSET;
+      common.LastLedgerSequence = this.openLedger() + kLastLedgerSequenceOffset;
     }
     return common;
   }
@@ -422,14 +424,14 @@ export class SimulatedNode implements NodePort, SimClock {
       typeof duration !== "number" ||
       !Number.isInteger(duration) ||
       duration < 1 ||
-      duration > MAX_SESSION_DURATION_SEC
+      duration > kMaxSessionDuration
     ) {
       return "temBAD_EXPIRATION";
     }
     if (permissionsPresent) {
       const permissions = tx.Permissions as unknown[];
       if (permissions.length === 0) return "temARRAY_EMPTY";
-      if (permissions.length > PERMISSION_MAX_SIZE) return "temARRAY_TOO_LARGE";
+      if (permissions.length > kPermissionMaxSize) return "temARRAY_TOO_LARGE";
       const seen = new Set<unknown>();
       for (const value of permissions) {
         if (typeof value !== "string" || seen.has(value)) return "temMALFORMED";
@@ -484,7 +486,7 @@ export class SimulatedNode implements NodePort, SimClock {
 
     // 2. LastLedgerSequence present and near.
     const last = tx.LastLedgerSequence;
-    if (typeof last !== "number" || last > this.openLedger() + SESSION_MAX_LEDGER_WINDOW) {
+    if (typeof last !== "number" || last > this.openLedger() + kSessionMaxLedgerWindow) {
       return "tefSESSION_TX_NOT_ALLOWED";
     }
 
@@ -492,7 +494,7 @@ export class SimulatedNode implements NodePort, SimClock {
     if (!ownClose && !(this.closeTime < session.expiration)) return "tefSESSION_EXPIRED";
 
     // 4. Fee ceiling, every mode, the own close included.
-    const ceiling = SIM_BASE_FEE_DROPS + SESSION_FEE_MULTIPLE * SIM_BASE_FEE_DROPS;
+    const ceiling = SIM_BASE_FEE_DROPS + kSessionFeeMultiple * SIM_BASE_FEE_DROPS;
     const fee = Number(tx.Fee);
     if (fee > ceiling) return "tefSESSION_LIMIT";
 

@@ -1,0 +1,20 @@
+---
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+PointerAlignment: Right
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros:
+  Enabled: true
+AllowAllParametersOfDeclarationOnNextLine: false
+IncludeBlocks: Preserve
+SortIncludes:
+  Enabled: false
+SpaceAfterCStyleCast: true
+AllowShortCaseLabelsOnASingleLine: false
+AllowAllArgumentsOnNextLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+BinPackArguments: false
+BinPackParameters: false
+---

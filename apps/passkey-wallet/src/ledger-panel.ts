@@ -237,7 +237,10 @@ export function setupLedgerPanel(
  * (tefMASTER_DISABLED), the demo's proof that the old key no longer controls the account.
  */
 async function tryClassicKey(connection: Connection, current: Stax): Promise<void> {
-  const destination = ui.payDestination.value.trim();
+  // The ledger refuses the signature before looking at the destination, so with an empty
+  // field any valid other address will do: the Stax's own ML-DSA address.
+  const typed = ui.payDestination.value.trim();
+  const destination = typed === "" ? current.pqKey.address : typed;
   if (!isValidClassicAddress(destination))
     throw new Error("saisissez une destination valide (adresse r…) ci-dessus");
   log(

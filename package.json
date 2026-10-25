@@ -10,8 +10,8 @@
   "scripts": {
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "prettier --write . && pnpm --filter @carbs/device-signer-kit-xrp run prettier:fix",
+    "format:check": "prettier --check . && pnpm --filter @carbs/device-signer-kit-xrp run prettier",
     "demo": "pnpm --filter @carbs/demo start"
   },
   "devDependencies": {

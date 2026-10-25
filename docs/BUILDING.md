@@ -59,3 +59,7 @@ cmake --build <build>
 ### Fuzzing the transaction parser
 
 The app's fuzzer is `ledger-app/fuzzing/` (libFuzzer, run by ClusterFuzzLite in Docker with the Ledger SDK). On a Mac without Docker, the SDK or a clang with libFuzzer, `ledger-app/fuzzing/native/run.sh [seconds]` builds the same entry point (`fuzzing/src/fuzz_tx.c`: parse, then format every field) against the SDK test doubles of `unit-tests/`, with AddressSanitizer and UndefinedBehaviorSanitizer, and feeds it random mutations of the ClusterFuzzLite corpus and of every test vector (`tests/standalone/testcases`, the signing session, Batch and policy vectors included). It is not coverage-guided; a crash stops the run and saves its input.
+
+## The Security Key app (`security-key-app/`)
+
+Ledger's FIDO2 app with ML-DSA-44 passkeys. Built in the same image with `make BOLOS_SDK=/opt/stax-secure-sdk APP_DIR=/app` from `security-key-app/` (`APP_DIR` because a git worktree is not a git repository inside the container); unit tests, sideloading and the device test script are in [security-key-app/CARBS.md](../security-key-app/CARBS.md).

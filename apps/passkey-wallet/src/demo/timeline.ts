@@ -8,6 +8,8 @@ import {
   isTimelinePage,
 } from "../../server/agent-events.ts";
 import { type Layer, TONE_ICONS, explainCode, refusingLayer, toneOf } from "./explain.ts";
+import { showSessionKey } from "./session-key-badge.ts";
+import { sessionKeyAlgorithmOf } from "./session-key.ts";
 import { ui } from "./ui.ts";
 
 /** What fits in the column at 1440x900 without scrolling. */
@@ -42,7 +44,8 @@ function span(className: string, text: string): HTMLSpanElement {
 
 function detailOf(event: TimelineRecord): string | undefined {
   const parts: string[] = [];
-  if (event.code !== undefined) {
+  // A session key announcement is shown by its badge, not as a code.
+  if (event.code !== undefined && sessionKeyAlgorithmOf(event.code) === undefined) {
     const explanation = explainCode(event.code);
     parts.push(explanation === undefined ? event.code : `${event.code}: ${explanation}`);
   }
@@ -88,6 +91,8 @@ function show(event: TimelineRecord): void {
     clearRun();
     lastAgentId = event.agentId;
   }
+  const algorithm = sessionKeyAlgorithmOf(event.code);
+  if (algorithm !== undefined) showSessionKey(algorithm);
   if (placeholder) {
     ui.timeline.innerHTML = "";
     placeholder = false;
@@ -104,8 +109,8 @@ function show(event: TimelineRecord): void {
 }
 
 /**
- * Clears the timeline, the layer counters and the Stax message; the budget follows, as it
- * only shows the current agent's session (timelineAgentId).
+ * Clears the timeline, the layer counters, the Stax message and the session key badge; the
+ * budget follows, as it only shows the current agent's session (timelineAgentId).
  */
 export function clearRun(): void {
   lastAgentId = undefined;
@@ -117,6 +122,7 @@ export function clearRun(): void {
   ui.timeline.replaceChildren(waiting);
   placeholder = true;
   ui.staxMessage.hidden = true;
+  showSessionKey(undefined);
   for (const layer of ["device", "ledger"] as const) {
     refusals[layer] = 0;
     ui.layers[layer].count.textContent = "0 refused";
