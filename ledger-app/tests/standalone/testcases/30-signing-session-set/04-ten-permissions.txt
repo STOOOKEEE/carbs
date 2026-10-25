@@ -14,4 +14,4 @@ Allows [7]; TrustSet
 Allows [8]; NFTokenCreateOffer
 Allows [9]; TrustlineAuthorize
 Allows [10]; PaymentMint
-Note; Cannot change keys, signers or the account
+Note; Cannot change keys or signers

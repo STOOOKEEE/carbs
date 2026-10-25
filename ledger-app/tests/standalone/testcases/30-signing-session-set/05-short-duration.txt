@@ -5,4 +5,5 @@ Network ID; 24100
 Valid for; 45 s
 Fee; XRP 0.000016
 Max spend; XRP 1.5
-Note; Cannot change keys, signers or the account
+Allows; XRP payments only, fees included
+Note; Cannot change keys or signers

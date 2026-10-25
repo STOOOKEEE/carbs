@@ -16,7 +16,8 @@ import {
 } from "../ports";
 import { KEY_BYTES, accountIdOf, signWith, simPublicKey } from "./keys";
 
-const NOTE = "Cannot change keys, signers or the account";
+const NOTE = "Cannot change keys or signers";
+const CAP_SCOPE = "XRP payments only, fees included";
 
 function fee(tx: TxJson): { label: string; value: string } {
   return { label: "Fee", value: `${tx.Fee} drops` };
@@ -39,6 +40,7 @@ export function reviewTransaction(tx: TxJson): DeviceReview {
         }
       } else if (tx.SessionCap !== undefined) {
         lines.push({ label: "Max spend", value: formatXrp(Number(tx.SessionCap)) });
+        lines.push({ label: "Allows", value: CAP_SCOPE });
       } else if (((tx.Flags ?? 0) & TF_ALL_TRANSACTIONS) !== 0) {
         lines.push({ label: "Allows", value: "All transactions" });
       }
