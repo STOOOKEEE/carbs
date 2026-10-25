@@ -7,12 +7,8 @@ import NeedAccount from "~/components/ui/NeedAccount.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
-import {
-  DEFAULT_CAP_XRP,
-  DEFAULT_SESSION_DURATION_SEC,
-  PERMISSION_MAX_SIZE,
-  SESSION_DURATION_CHOICES_SEC,
-} from "~/lib/constants";
+import { kDefaultSessionDuration, kPermissionMaxSize } from "@carbs/sessions";
+import { DEFAULT_CAP_XRP, SESSION_DURATION_CHOICES_SEC } from "~/lib/constants";
 import { useBackend, useDemo } from "~/lib/context";
 import { formatCountdown, formatDuration, formatXrp, shortAddress, xrpToDrops } from "~/lib/format";
 import type { NodeResult, SessionMode } from "~/lib/ports";
@@ -35,7 +31,7 @@ const MODES: readonly { id: SessionMode; title: string; body: string }[] = [
 
 const form = reactive({
   mode: "P" as SessionMode,
-  durationSec: DEFAULT_SESSION_DURATION_SEC as number,
+  durationSec: kDefaultSessionDuration as number,
   permissions: ACTIONS.map((a) => a.type).filter((t) => sessionPermissionChoices().includes(t)),
   capXrp: DEFAULT_CAP_XRP,
 });
@@ -62,7 +58,7 @@ const capPercent = computed(() => {
   if (session === null || session.capDrops === null || session.capDrops === 0) return 0;
   return Math.min(100, ((session.spentDrops ?? 0) / session.capDrops) * 100);
 });
-const tooMany = computed(() => form.permissions.length > PERMISSION_MAX_SIZE);
+const tooMany = computed(() => form.permissions.length > kPermissionMaxSize);
 const canOpen = computed(
   () =>
     !state.busy &&
@@ -79,7 +75,7 @@ const openHint = computed(() => {
   if (state.sessionKey !== null) return null;
   if (form.mode === "P" && form.permissions.length === 0)
     return "Tick at least one transaction type.";
-  if (form.mode === "P" && tooMany.value) return `Tick at most ${PERMISSION_MAX_SIZE} types.`;
+  if (form.mode === "P" && tooMany.value) return `Tick at most ${kPermissionMaxSize} types.`;
   return null;
 });
 const openLabel = computed(() =>
@@ -141,7 +137,7 @@ async function close(): Promise<void> {
           </label>
 
           <fieldset v-if="form.mode === 'P'" class="space-y-1">
-            <legend class="eyebrow mb-1">Allowed types (at most {{ PERMISSION_MAX_SIZE }})</legend>
+            <legend class="eyebrow mb-1">Allowed types (at most {{ kPermissionMaxSize }})</legend>
             <div class="grid grid-cols-2 gap-1 text-sm">
               <label v-for="type in choices" :key="type" class="flex items-center gap-2">
                 <input v-model="form.permissions" type="checkbox" :value="type" /> {{ type }}

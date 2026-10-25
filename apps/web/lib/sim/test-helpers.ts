@@ -1,4 +1,5 @@
-import { LAST_LEDGER_OFFSET, TF_FULLY_CANONICAL_SIG } from "../constants";
+import { kLastLedgerSequenceOffset } from "@carbs/sessions";
+import { TF_FULLY_CANONICAL_SIG } from "../constants";
 import type { KeyHandle, NodeResult, TxJson } from "../ports";
 import { SimulatedNode, type SimulatedNodeOptions } from "./node";
 import { SimulatedWallet } from "./wallet";
@@ -38,7 +39,7 @@ export async function send(
     Fee: "12",
     Flags: TF_FULLY_CANONICAL_SIG,
     Sequence: info?.sequence ?? 0,
-    LastLedgerSequence: server.ledgerIndex + 1 + LAST_LEDGER_OFFSET,
+    LastLedgerSequence: server.ledgerIndex + 1 + kLastLedgerSequenceOffset,
     ...tx,
     ...extra,
   };

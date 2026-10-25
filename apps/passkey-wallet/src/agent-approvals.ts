@@ -4,6 +4,7 @@
 // the stage demo (demo/) only differ in how they show it.
 
 import { DeviceError, describeLedgerError } from "@carbs/ledger";
+import { kRippleEpochOffset } from "@carbs/sessions";
 
 import {
   AGENT_REQUESTS_PATH,
@@ -23,8 +24,6 @@ import { RpcError } from "./rpc.ts";
 import { openSessionTx, paymentTx } from "./session.ts";
 
 const DROPS_PER_XRP = 1_000_000;
-/** Seconds between the Unix epoch and the XRPL epoch (2000-01-01). */
-const RIPPLE_EPOCH_OFFSET_S = 946_684_800;
 const MS_PER_SECOND = 1_000;
 /** MemoType of the escalated Payment: the agent's own words, for the human to read. */
 const INTENT_MEMO_TYPE = "agent-intent";
@@ -218,5 +217,5 @@ export async function readAgentSession(
 
 /** Seconds from now to an XRPL-epoch time (negative once it passed). */
 export function secondsUntil(rippleTime: number, nowMs: number = Date.now()): number {
-  return rippleTime - (Math.floor(nowMs / MS_PER_SECOND) - RIPPLE_EPOCH_OFFSET_S);
+  return rippleTime - (Math.floor(nowMs / MS_PER_SECOND) - kRippleEpochOffset);
 }
