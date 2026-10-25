@@ -117,7 +117,8 @@ A session for an existing (`Account`, `SessionKey`) pair is `tecDUPLICATE`; a se
 Other results:
 
 - `Owner` equal to `Account`: `temMALFORMED`;
-- a missing session: `tecNO_ENTRY`.
+- a missing session: `tecNO_ENTRY`;
+- without `SigningSessions` or `PermissionDelegationV1_1`: `temDISABLED` (case 7).
 
 The rules are at `rippled/src/libxrpl/tx/transactors/session/SigningSessionDelete.cpp:28`, `:41`, and the tests are case 18.
 
@@ -130,7 +131,7 @@ One function decides whether a transaction is session-signed: `signingSessionOf`
 3. it is single-signed with a key of a known type (secp256k1, Ed25519, P-256 or ML-DSA-44) and has no `Signers`;
 4. a session exists for (`Account`, `AccountID(SigningPubKey)`).
 
-Every other shape follows the existing rules. A session key that is used with a `Delegate`, multi-signed, sponsored, as a counterparty signer or as a Batch inner signer meets the ordinary signature check, which answers `tefBAD_AUTH` (case 14). The same holds when a session key signs for another account (case 15).
+Every other shape follows the existing rules, and a session key meets the ordinary signature check there (case 14): used with a `Delegate`, with a fee sponsor, as a counterparty signer or as a Batch inner signer it gets `tefBAD_AUTH`; as a multi-signer, which is not in the account's signer list, it gets `tefBAD_SIGNATURE`. A session key signing for another account gets `tefBAD_AUTH` (case 15).
 
 The **own close** is a session-signed `SigningSessionDelete` without `Owner` whose `SessionKey` is the signer (`rippled/src/libxrpl/tx/SigningSession.cpp:94`).
 
@@ -140,21 +141,19 @@ In `invokePreclaim`, when the predicate holds, `Transactor::invokeCheckSession<T
 
 Its rules apply in this order (`rippled/src/libxrpl/tx/Transactor.cpp:1055`, comments at `:1073-1131`):
 
+0. **Not a pseudo-account**, else `tefBAD_AUTH` (`rippled/src/libxrpl/tx/Transactor.cpp:1066-1069`, case 24): the refusal of `Transactor::checkSign` that this path replaces.
 1. **Eligibility**, else `tefSESSION_TX_NOT_ALLOWED`:
    - the own close is always eligible;
+   - otherwise, a type that checks its own signature (`Batch`, `LoanSet`) is never eligible, whatever the mode;
    - mode A: a delegable type that is not excluded;
    - mode P: the same type condition, then the XLS-75 sequence of `checkPermission` with the session entry in place of the delegate entry, then `T::checkGranularSemantics`; every refusal there is mapped to the `tef`, because a retriable `ter` would keep the transaction in the node's retry loop;
    - mode C: a direct XRP `Payment` from a closed whitelist (`rippled/src/libxrpl/tx/SigningSession.cpp:104`). Its only flag may be `tfFullyCanonicalSig`, and its only fields besides the common ones are `Destination`, `DestinationTag` and `Amount`. `SendMax`, `Paths`, `DeliverMin`, partial payments, `tfSponsorCreatedAccount`, `InvoiceID` and every other type are refused (case 12);
-   - a type that checks its own signature (`Batch`, `LoanSet`) is never eligible.
 2. **`LastLedgerSequence`** is present and at most 256 ledgers ahead, else `tefSESSION_TX_NOT_ALLOWED` (case 17b). A transaction that was refused, held and retried must not land under a later session opened with the same key.
 3. **Expiry**: the session signs strictly before `Expiration`, else `tefSESSION_EXPIRED`. The own close is exempt (case 10).
 4. **Fee ceiling**: `Fee ≤ base fee of the type + 1000 × base fee unit`, else `tefSESSION_LIMIT`. This applies in every mode, the own close included. Types whose required fee is the owner-reserve increment (`AMMCreate`, `LedgerStateFix`) stay usable (case 13).
 5. **Cap**, mode C only, the own close excepted: `Fee + Amount ≤ SessionCap − SessionSpent`, else `tefSESSION_LIMIT` (case 11).
 
-Replacing `T::checkSign` drops two checks, and the hook redoes them:
-
-- the refusal of pseudo-accounts (`tefBAD_AUTH`, case 24);
-- the unknown key type, which is part of the predicate.
+Replacing `T::checkSign` drops two checks, and the hook redoes them: the refusal of pseudo-accounts (rule 0), and the unknown key type, which is part of the predicate.
 
 The 68 transaction types a session may sign in mode A, and the 7 granular permissions it may hold in mode P, are pinned by test 9b. A new delegable type fails that test until someone decides on it.
 
@@ -186,10 +185,10 @@ The transaction queue may admit several session transactions against the same `S
 
 `ValidSigningSession` is a member of the `InvariantChecks` tuple (`rippled/include/xrpl/tx/invariants/InvariantCheck.h:566`), so it runs in both passes, including the one after a reset. It is implemented at `rippled/src/libxrpl/tx/invariants/SigningSessionInvariant.cpp:70`, `:98`.
 
-1. Only `SigningSessionSet` creates a session, and only `SigningSessionDelete` or `AccountDelete` removes one. The owner count moves by one with each, or one less on the account when a ticket is consumed.
-2. `Account`, `SessionKey`, `Expiration`, `Permissions`, `SessionCap` and the mode flag never change. A session has exactly one mode, and `SessionSpent` exists only with `SessionCap`, at 0 when created. `Expiration` lies within 600 seconds of the parent close time when the session is created.
-3. `SessionSpent` only increases, never above `SessionCap`, and only in a transaction its session signed. The own close is exempt.
-4. A mode-C session transaction that does not delete its session takes no more XRP from the account than `SessionSpent` counts. It raises no owner count and changes no sponsoring count. This ties the counter to the real outflow rather than to declared fields.
+1. Only `SigningSessionSet` creates a session, and only `SigningSessionDelete` or `AccountDelete` removes one. The owner count moves by one with each, or one less on the account when a ticket is consumed; for `AccountDelete`, which deletes the account root as well, the count is not checked.
+2. `Account`, `SessionKey`, `Expiration`, `Permissions`, `SessionCap` and the mode flag never change. At creation, a session has exactly one mode, and `SessionSpent` exists only with `SessionCap`, at 0; later, the fixed fields above keep the mode, and `SessionSpent` moves only under rule 3. `Expiration` lies within 600 seconds of the parent close time when the session is created.
+3. `SessionSpent` only increases, never above `SessionCap`, and only in a transaction its session signed and that is not its own close: the own close is never counted and never moves it.
+4. A mode-C session transaction other than the own close that does not delete its session takes no more XRP from the account than `SessionSpent` counts. It raises no owner count and changes no sponsoring count. This ties the counter to the real outflow rather than to declared fields.
 5. A session-signed transaction never changes the account's `RegularKey`, master-disable flag, signer list, passkey list, delegate entries, beneficiary or firewall, nor another session of the account.
 
 The invariant recognizes a session-signed transaction even after its own close has erased the session. It uses the predicate without the existence test (`sessionKeyletOf`, `rippled/src/libxrpl/tx/SigningSession.cpp:57`): the session counts as pre-existing if it was visited with a `before` state, or was not visited and still exists. Each rule has a test on a mutated view (case 21).

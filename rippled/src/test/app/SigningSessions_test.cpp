@@ -88,6 +88,12 @@ class SigningSessions_test : public beast::unit_test::Suite
         return env.le(keylet::signingSession(account.id(), sessionKey.id()));
     }
 
+    static Keylet
+    sessionKeylet(jtx::Account const& account, jtx::Account const& key)
+    {
+        return keylet::signingSession(account.id(), key.id());
+    }
+
     static bool
     inOwnerDirectory(jtx::Env& env, jtx::Account const& account, uint256 const& key)
     {
@@ -1747,6 +1753,39 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(env.balance(sponsor) == sponsorBalance - fee * 2);
     }
 
+    // The predicate itself: isSessionSigned is the boolean form of
+    // signingSessionOf, and both answer the shapes of spec 6.4.
+    void
+    testPredicate(FeatureBitset features)
+    {
+        testcase("the session-signed predicate");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+        env.close();
+
+        auto const lls = LastLedgerSeq(env.current()->seq() + 10);
+        auto check = [&](JTx const& jt, bool expected) {
+            auto const& view = *env.current();
+            BEAST_EXPECT(isSessionSigned(view, *jt.stx) == expected);
+            BEAST_EXPECT(signingSessionOf(view, *jt.stx).has_value() == expected);
+        };
+
+        auto const signedByKey = env.jt(pay(alice, bob, XRP(1)), Sig(key), lls);
+        check(signedByKey, true);
+        BEAST_EXPECT(
+            signingSessionOf(*env.current(), *signedByKey.stx)->key ==
+            sessionKeylet(alice, key).key);
+
+        check(env.jt(pay(alice, bob, XRP(1)), lls), false);            // the master key
+        check(env.jt(pay(bob, alice, XRP(1)), Sig(key), lls), false);  // another account
+        check(env.jt(pay(alice, bob, XRP(1)), delegate::As(bob), Sig(key), lls), false);
+    }
+
 public:
     void
     run() override
@@ -1764,6 +1803,7 @@ public:
         testRpc(all);
         testSponsorship(all);
         testSettings(all);
+        testPredicate(all);
         testEnumeration(all);
         testModes(all);
         testSessionKey(all);
