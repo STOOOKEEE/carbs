@@ -54,6 +54,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
 };
 
 if (GENESIS_SEED === undefined) throw new Error("GENESIS_SEED is not set");
