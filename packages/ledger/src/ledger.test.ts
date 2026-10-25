@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
-import { sha256 } from "@noble/hashes/sha2.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { verify as keypairsVerify } from "ripple-keypairs";
 import {
   addressFromPublicKey,
@@ -11,6 +12,7 @@ import {
   encodeForSigning,
   generateClassicSeed,
   hexToBytes,
+  kPermissionMaxSize,
   signTransaction,
   type TxJson,
 } from "@carbs/sessions";
@@ -27,7 +29,13 @@ import {
   kSw,
 } from "./apdu.js";
 import { DeviceContractError, signMlDsa } from "./commands.js";
-import { formatDuration, formatXrp, parseScreenVector, reviewLines } from "./screen.js";
+import {
+  formatDuration,
+  formatXrp,
+  kDevicePermissionNames,
+  parseScreenVector,
+  reviewLines,
+} from "./screen.js";
 import { deviceClassicSigner, deviceMlDsaSigner } from "./signers.js";
 import { SimulatedDevice } from "./simulated-device.js";
 import { bip39Seed, deviceMlDsaSeed, slip21Node } from "./slip21.js";
@@ -92,6 +100,76 @@ describe("review lines match the device track's frozen vectors", () => {
       "XRP 20",
       "XRP 1.5",
     ]);
+  });
+});
+
+/** A device vector as the device sees it: the `.raw` bytes. */
+async function rawVector(name: string): Promise<Uint8Array> {
+  return new Uint8Array(await readFile(new URL(`${name}.raw`, vectors)));
+}
+
+describe("the client predicts blind signing where the device goes blind", () => {
+  it("07-unknown-flag: a Flags bit the app does not know (0x00020000 next to tfAllTransactions)", async () => {
+    const tx = decodeTx(
+      bytesToHex(await rawVector("30-signing-session-set/07-unknown-flag")),
+      defs,
+    );
+    expect(tx["Flags"]).toBe(0x00030000);
+    expect(reviewLines(tx, defs).kind).toBe("blind");
+  });
+
+  it("11-eleven-permissions: more permissions than a session holds (the app refuses)", async () => {
+    const tx = decodeTx(
+      bytesToHex(await rawVector("30-signing-session-set/11-eleven-permissions")),
+      defs,
+    );
+    expect(tx["Permissions"]).toHaveLength(kPermissionMaxSize + 1);
+    expect(reviewLines(tx, defs).kind).toBe("blind");
+  });
+
+  it("06-unknown-permission: a permission value the app cannot name", async () => {
+    // The codec cannot decode the value 999999 at all, so the bytes of the vector never reach a
+    // review in the client; the decoded form is built here, with the value as a number.
+    const raw = await rawVector("30-signing-session-set/06-unknown-permission");
+    expect(() => decodeTx(bytesToHex(raw), defs)).toThrow();
+    const { tx } = await vector("30-signing-session-set/02-mode-permissions");
+    tx["Permissions"] = [
+      { Permission: { PermissionValue: "Payment" } },
+      { Permission: { PermissionValue: 999999 } },
+    ];
+    expect(reviewLines(tx, defs).kind).toBe("blind");
+    tx["Permissions"] = [{ Permission: { PermissionValue: "NotAPermission" } }];
+    expect(reviewLines(tx, defs).kind).toBe("blind");
+  });
+
+  it("reads tfFullyCanonicalSig as no rule: 0x80010000 is All transactions, 0x80000000 shows nothing", async () => {
+    const { tx, lines } = await vector("30-signing-session-set/01-mode-all");
+    tx["Flags"] = 0x80010000;
+    expect(reviewLines(tx, defs)).toEqual({ kind: "clear", lines });
+    tx["Flags"] = 0x80000000;
+    const review = reviewLines(tx, defs);
+    expect(review.kind).toBe("clear");
+    expect(review.lines.map((line) => line.label)).not.toContain("Allows");
+    expect(review.lines.map((line) => line.label)).not.toContain("Flags");
+  });
+
+  it("goes blind on any other Flags bit, for every type", async () => {
+    const { tx } = await vector("31-signing-session-delete/01-own-close");
+    tx["Flags"] = 0x00010000;
+    expect(reviewLines(tx, defs).kind).toBe("blind");
+    const payment = await vector("01-payment/01-basic");
+    payment.tx["Flags"] = 0x00020000;
+    expect(reviewLines(payment.tx, defs).kind).toBe("blind");
+  });
+
+  it("knows exactly the permission names the app shows", async () => {
+    const source = await readFile(
+      new URL("../../../ledger-app/src/xrp/session_permissions.c", import.meta.url),
+      "utf8",
+    );
+    const names = [...source.matchAll(/return "([A-Za-z0-9]+)";/gu)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThan(50);
+    expect([...kDevicePermissionNames].sort()).toEqual([...new Set(names)].sort());
   });
 });
 
@@ -170,8 +248,13 @@ describe("ML-DSA-44 root key through the contract (SIMULATED device)", () => {
   it('derives the key as the device does: SLIP-21 "carbs ML-DSA-44", last 32 bytes, KeyGen_internal', () => {
     const seed = deviceMlDsaSeed(bip39Seed(kSpeculosMnemonic));
     const { publicKey } = ml_dsa44.keygen(seed);
-    // Vector for the device-track owner: compare with `INS 0x10` on Speculos (default seed).
-    expect(bytesToHex(seed)).toBe(bytesToHex(deviceMlDsaSeed(bip39Seed(kSpeculosMnemonic))));
+    // SLIP-0021 by hand, independently of slip21.ts: m = HMAC-SHA512("Symmetric key seed", seed),
+    // node = HMAC-SHA512(m[0..32], 0x00 ‖ label); the ML-DSA seed is node[32..64].
+    const utf8 = (text: string) => new TextEncoder().encode(text);
+    const master = hmac(sha512, utf8("Symmetric key seed"), bip39Seed(kSpeculosMnemonic));
+    const node = hmac(sha512, master.subarray(0, 32), Uint8Array.of(0, ...utf8("carbs ML-DSA-44")));
+    expect(seed).toHaveLength(32);
+    expect(bytesToHex(seed)).toBe(bytesToHex(node.subarray(32, 64)));
     // The vector of docs/device-contract.md (UNVERIFIED on a device until the owner compares it).
     expect(bytesToHex(sha256(publicKey))).toBe(
       "DDDC0737CF9BC347D07D45C562A355192DAA22CBCD5432F5FB8B40CD3525F948",

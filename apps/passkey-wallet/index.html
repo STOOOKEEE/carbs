@@ -134,6 +134,23 @@
           >
           <button id="session-open" type="button">Ouvrir la session</button>
         </div>
+        <div class="actions">
+          <fieldset>
+            <legend>Batch : une seule validation du propriétaire</legend>
+            <label
+              >Destination du premier paiement
+              <input id="session-batch-destination" placeholder="r…"
+            /></label>
+            <label
+              >Montant (XRP)
+              <input id="session-batch-amount" type="number" min="0.000001" step="any" value="1"
+            /></label>
+            <button id="session-open-batch" type="button">Ouvrir et payer (Batch)</button>
+            <button id="session-revoke-all" type="button" class="secondary">
+              Révoquer toutes les sessions (Batch)
+            </button>
+          </fieldset>
+        </div>
         <form id="session-pay-form">
           <label
             >Destination <input id="session-pay-destination" required placeholder="r…"
@@ -164,6 +181,9 @@
           <button id="attack-no-witness" type="button" class="secondary">
             Payer sans le témoin
           </button>
+          <button id="attack-batch" type="button" class="secondary">
+            Clé de session : signer un Batch
+          </button>
           <button id="session-close" type="button" class="secondary">
             Fermer la session (par la clé)
           </button>
@@ -171,6 +191,29 @@
             Payer après la fermeture
           </button>
         </div>
+      </section>
+
+      <section id="agent-section">
+        <h2>Agent IA</h2>
+        <p class="muted">
+          L'agent demande un budget (mode C : plafond, max par paiement, expiration courte) que vous
+          approuvez sur la Stax ; il paie ensuite seul avec sa clé de session, et le ledger refuse
+          tout dépassement. Un achat au-dessus de sa limite vous est soumis pour signature sur la
+          Stax.
+        </p>
+        <div id="agent-status" class="muted">Serveur du wallet : connexion…</div>
+        <p id="agent-stax-hint" class="muted">
+          Connectez la Stax dans la section Ledger pour approuver les demandes.
+        </p>
+        <h3>Session de l'agent</h3>
+        <div id="agent-session" class="muted">Aucune session d'agent approuvée.</div>
+        <div class="actions">
+          <button id="agent-revoke" type="button" class="secondary" disabled>Couper l'agent</button>
+        </div>
+        <h3>Demandes en attente</h3>
+        <div id="agent-pending">Aucune demande en attente.</div>
+        <h3>Historique</h3>
+        <ol id="agent-history"></ol>
       </section>
 
       <section>

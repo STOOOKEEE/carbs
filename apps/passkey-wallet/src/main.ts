@@ -1,5 +1,7 @@
-// Page wiring: the passkey wallet (no device) and the Ledger panel, one shared node connection.
+// Page wiring: the passkey wallet (no device), the Ledger, session and AI agent panels,
+// one shared node connection.
 
+import { refreshAgentPanel, setupAgentPanel } from "./agent-panel.ts";
 import { NODE_URL } from "./config.ts";
 import { element, guarded } from "./dom.ts";
 import { accountInfo, loadDefinitions, read } from "./ledger.ts";
@@ -77,6 +79,7 @@ async function refresh(): Promise<void> {
   await refreshPasskeyWallet();
   await refreshLedgerPanel(connection);
   await refreshSessionPanel(connection);
+  await refreshAgentPanel(connection);
 }
 
 const run = (action: () => Promise<void>) => guarded(action, logError, refresh);
@@ -150,6 +153,7 @@ setupSessionPanel(
   () => wallet,
   refresh,
 );
+setupAgentPanel(() => connection, refresh);
 
 async function start(): Promise<void> {
   const node = await NodeClient.connect(NODE_URL);

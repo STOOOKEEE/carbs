@@ -5,6 +5,7 @@ import { XrplDefinitions, encode, encodeForSigning } from "ripple-binary-codec";
 import type { DefinitionsData } from "ripple-binary-codec/dist/enums/xrpl-definitions-base";
 import { deriveAddress, deriveKeypair, sign } from "ripple-keypairs";
 
+import { batchFee, isBatch, withInnerSequences } from "./batch.ts";
 import { type NodeClient, RpcError, type RpcResult } from "./rpc.ts";
 
 /** How many ledgers a transaction may wait before it expires (LastLedgerSequence). */
@@ -75,7 +76,10 @@ export async function accountInfo(
   }
 }
 
-/** Sequence, Fee (the open ledger fee) and LastLedgerSequence. */
+/**
+ * Sequence, Fee (the open ledger fee) and LastLedgerSequence. A Batch also gets its inner
+ * Sequences (after the outer one) and the fee of all its parts; its inner Fee stays "0".
+ */
 export async function autofill(
   node: NodeClient,
   defs: XrplDefinitions,
@@ -85,13 +89,19 @@ export async function autofill(
   if (typeof account !== "string") throw new Error("the transaction has no Account");
   const info = await node.request("account_info", { account, ledger_index: "current" });
   const current = await node.request("ledger_current");
+  const sequence = readNumber(info, ["account_data", "Sequence"]);
   const filled: TxJson = {
-    ...tx,
-    Sequence: readNumber(info, ["account_data", "Sequence"]),
+    ...(isBatch(tx) ? withInnerSequences(tx, sequence) : tx),
+    Sequence: sequence,
     LastLedgerSequence: readNumber(current, ["ledger_current_index"]) + LEDGER_WINDOW,
   };
+  // The node's `fee` answer is the open ledger fee of a one-base-fee transaction.
   const fee = await node.request("fee", { tx_blob: encode(filled, defs) });
-  return { ...filled, Fee: String(readNumber(fee, ["drops", "open_ledger_fee"])) };
+  const openLedgerFee = readNumber(fee, ["drops", "open_ledger_fee"]);
+  return {
+    ...filled,
+    Fee: String(isBatch(filled) ? batchFee(filled, openLedgerFee) : openLedgerFee),
+  };
 }
 
 /** Signs with a classical key derived from a family seed (the account's master key). */

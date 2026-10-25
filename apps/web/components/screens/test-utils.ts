@@ -13,6 +13,7 @@ import {
   BACKEND_KEY,
   DEMO_KEY,
   DEVICE_PROMPT_KEY,
+  DEVICE_SELECTION_KEY,
   LIVE_EXPOSURE_KEY,
   LIVE_MIGRATION_KEY,
   MIGRATION_KEY,
@@ -64,6 +65,7 @@ export function mountScreen(
           app.provide(MIGRATION_KEY, ctx.migration);
           app.provide(DEVICE_PROMPT_KEY, ctx.prompt);
           app.provide(NETWORK_KEY, ctx.network);
+          app.provide(DEVICE_SELECTION_KEY, ctx.deviceSelection);
           app.provide(LIVE_EXPOSURE_KEY, ctx.liveExposure);
           app.provide(LIVE_MIGRATION_KEY, ctx.liveMigration);
           app.provide(WALLETS_KEY, wallets);
