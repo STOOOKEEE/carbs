@@ -1013,15 +1013,21 @@ static void test_profile_vectors(void** state) {
                           300,
                           200);
 
-    // Policy off: nothing is checked, the review still names the profile
-    // (the real app's game and trading openings, field report from a Stax)
+    // Policy off: nothing is checked, so the review does not name the profile
+    // (a "Profile" row would say that limits apply which nobody checked)
     session_policy_t off = {0};
     assert_true(check_vector(PROFILE_VECTORS "04-profile-game.raw", &off, &verdict));
     assert_false(verdict.has_profile);
-    assert_profile_row("Game");
+    assert_int_equal(row_index(STI_VL, XRP_VL_SESSION_PROFILE), -1);
+    assert_true(row_index(STI_ACCOUNT, XRP_ACCOUNT_AGENT_ID) > 0);
     assert_true(check_vector(PROFILE_VECTORS "07-profile-trading.raw", &off, &verdict));
-    assert_profile_row("Trading");
+    assert_int_equal(row_index(STI_VL, XRP_VL_SESSION_PROFILE), -1);
     assert_true(check_vector(PROFILE_VECTORS "09-profile-unknown.raw", &off, &verdict));
+    assert_int_equal(row_index(STI_VL, XRP_VL_SESSION_PROFILE), -1);
+
+    // Policy on but refused: no review is shown; the row is not left either
+    assert_false(check_vector(PROFILE_VECTORS "05-profile-game-above-cap.raw", &policy, &verdict));
+    assert_int_equal(row_index(STI_VL, XRP_VL_SESSION_PROFILE), -1);
 }
 
 int main() {

@@ -41,6 +41,16 @@ static internal_storage_t test_storage;
 #include "../../src/apdu/global.c"
 #include "../../src/pq/pq_root.c"
 
+/* The status words of the device contract (docs/device-contract.md, 1.3),
+ * as numbers, so that a renamed constant cannot change what is asserted. */
+#define SW_OK 0x9000
+#define SW_WRONG_DATA 0x6A80
+#define SW_DENY 0x6985
+#define SW_WRONG_LENGTH 0x6700
+#define SW_WRONG_P1P2 0x6B00
+#define SW_INTERNAL 0x6F00
+_Static_assert(SW_NO_SIGNATURE == 0x6982, "INS 0x12 without a signature");
+
 /* ---------------------------------------------------------------- doubles */
 
 parseContext_t parse_context; /* defined by sign_transaction.c in the app */
@@ -166,6 +176,11 @@ void display_blind_signed_review(parseResult_t* transaction_param,
     blind_review_screens++;
     review_callback = callback;
 }
+
+/* As review_menu_request_cancelled() in ui/transaction/review_menu_nbgl.c:
+ * the status page then says the request was cancelled, not "signed". */
+static int cancelled_screens;
+void review_menu_request_cancelled(void) { cancelled_screens++; }
 
 /* The classical handlers that entry.c dispatches to: not under test here. */
 int handle_get_public_key(uint8_t p1, uint8_t p2, uint8_t* data_buffer,
@@ -337,6 +352,7 @@ static int setup(void** state) {
     slip21_path_length = 0;
     memset(keygen_seed, 0, sizeof(keygen_seed));
     keygens = 0;
+    cancelled_screens = 0;
     test_storage.allow_blind_sign = BlindSignEnabled;
     memset(&test_storage.session_policy, 0,
            sizeof(test_storage.session_policy));
@@ -601,6 +617,7 @@ static void test_other_instruction_cancels_review(void** state) {
         approve();
         assert_int_equal(signatures, 0);
         assert_int_equal(answers, before);
+        assert_int_equal(cancelled_screens, 1);
         assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
                          SW_NO_SIGNATURE);
     }
@@ -620,6 +637,98 @@ static void test_approval_checks_reviewed_bytes(void** state) {
     assert_int_equal(last_sw, SW_WRONG_DATA);
     assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
                      SW_NO_SIGNATURE);
+}
+
+/* An approval after an instruction change belongs to a request that is gone:
+ * it writes nothing into tmp_ctx (now the new instruction's memory) and the
+ * status page says so instead of "Transaction signed". */
+static void test_stale_approval_writes_nothing(void** state) {
+    (void)state;
+    message_t a;
+    load_signing_data(PAYMENT_A, &a);
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+
+    assert_int_equal(apdu(INS_SIGN, 0, 0, NULL, 0), SW_OK);
+    /* What the new instruction keeps there, e.g. classical transaction bytes. */
+    PQ->message_length = 1234;
+    tmpCtx_t before = tmp_ctx;
+
+    int answered = answers;
+    approve();
+    assert_int_equal(answers, answered);
+    assert_int_equal(signatures, 0);
+    assert_memory_equal(&tmp_ctx, &before, sizeof(tmp_ctx));
+    assert_int_equal(cancelled_screens, 1);
+}
+
+/* After an instruction change tmp_ctx is not ours: the classical INS_SIGN
+ * buffers up to MAX_RAW_TX bytes there without parsing them
+ * (sign_transaction.c, handle_packet_content), over every field of
+ * pqContext_t. Bytes laid out as a pending review of other signing data must
+ * not get that data signed when the user approves what the screen shows. */
+static void test_stale_approval_ignores_a_forged_review(void** state) {
+    (void)state;
+    _Static_assert(sizeof(((transactionContext_t*)0)->raw_tx) >=
+                       sizeof(pqContext_t),
+                   "classical raw_tx covers the whole ML-DSA context");
+    message_t a, b;
+    load_signing_data(PAYMENT_A, &a);
+    load_signing_data(PAYMENT_B, &b);
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+
+    assert_int_equal(apdu(INS_SIGN, 0, 0, NULL, 0), SW_OK);
+    memset(&tmp_ctx, 0x01, sizeof(tmp_ctx)); /* every flag reads true */
+    memcpy(PQ->message, b.bytes, b.length);
+    PQ->message_length = (uint32_t)b.length;
+    assert_true(hash_message(PQ->review_hash));
+
+    approve();
+    assert_int_equal(signatures, 0);
+    assert_int_equal(cancelled_screens, 1);
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                     SW_NO_SIGNATURE);
+}
+
+/* Any new signing request drops the previous signature, whatever its P1/P2,
+ * so INS 0x12 never returns a signature of an earlier request. */
+static void test_new_request_drops_the_old_signature(void** state) {
+    (void)state;
+    static const uint8_t byte = 0;
+    message_t a, b;
+    load_signing_data(PAYMENT_A, &a);
+    load_signing_data(PAYMENT_B, &b);
+
+    /* A refused P1/P2. */
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    approve();
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0), SW_OK);
+    assert_int_equal(apdu(INS_PQ_SIGN, 0, 2, &byte, 1), SW_WRONG_P1P2);
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                     SW_NO_SIGNATURE);
+
+    /* A request that starts with a "next chunk" (P1 = 1), then is rejected. */
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    approve();
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0), SW_OK);
+    uint16_t sw = apdu(INS_PQ_SIGN, 1, 1, b.bytes, b.length);
+    if (sw == NO_SW) {
+        reject();
+    }
+    assert_int_equal(apdu(INS_PQ_GET_SIGNATURE, 0, 0, NULL, 0),
+                     SW_NO_SIGNATURE);
+}
+
+/* A "next chunk" (P1 = 1) with nothing before it is refused, as the
+ * classical path refuses a subsequent packet without a first one. */
+static void test_next_chunk_needs_a_first_chunk(void** state) {
+    (void)state;
+    message_t a;
+    load_signing_data(PAYMENT_A, &a);
+    assert_int_equal(apdu(INS_PQ_SIGN, 1, 1, a.bytes, a.length),
+                     SW_WRONG_DATA);
+    assert_int_equal(apdu(INS_PQ_SIGN, 1, 0, a.bytes, 10), SW_WRONG_DATA);
+    assert_int_equal(review_screens + blind_review_screens, 0);
+    assert_int_equal(PQ->message_length, 0);
 }
 
 /* After the review ends (signed or rejected), the next request is served. */
@@ -837,6 +946,11 @@ int main(void) {
         cmocka_unit_test_setup(test_review_refuses_partial_chunks, setup),
         cmocka_unit_test_setup(test_other_instruction_cancels_review, setup),
         cmocka_unit_test_setup(test_approval_checks_reviewed_bytes, setup),
+        cmocka_unit_test_setup(test_stale_approval_writes_nothing, setup),
+        cmocka_unit_test_setup(test_stale_approval_ignores_a_forged_review,
+                               setup),
+        cmocka_unit_test_setup(test_new_request_drops_the_old_signature, setup),
+        cmocka_unit_test_setup(test_next_chunk_needs_a_first_chunk, setup),
         cmocka_unit_test_setup(test_review_lock_ends_with_the_review, setup),
         cmocka_unit_test_setup(test_blind_signing_disabled_refuses, setup),
         cmocka_unit_test_setup(test_blind_signing_enabled_reviews, setup),

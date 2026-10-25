@@ -25,3 +25,9 @@
 
 void display_review_menu(parseResult_t *transaction_param, resultAction_t callback);
 void display_blind_signed_review(parseResult_t *transaction_param, resultAction_t callback);
+
+// carbs: called by a review callback whose request is gone (the host switched
+// instruction during the review, so nothing was signed or answered): the
+// status page then says the request was cancelled instead of "signed" or
+// "rejected".
+void review_menu_request_cancelled(void);
