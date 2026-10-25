@@ -5,7 +5,7 @@
  * holds and what it logged.
  */
 import { reactive } from "vue";
-import { BLACKHOLE_ADDRESS } from "./constants";
+import { kBlackholeAddress } from "@carbs/sessions";
 import { xrpToDrops } from "./format";
 import {
   DeviceRejectedError,
@@ -298,7 +298,7 @@ export function createDemo(backend: Backend) {
       await stepTx(
         "SetRegularKey to the blackhole address, signed by the master key",
         master,
-        build.setRegularKey(masterKey.address, BLACKHOLE_ADDRESS),
+        build.setRegularKey(masterKey.address, kBlackholeAddress),
       );
       await stepTx(
         "AccountSet asfDisableMaster, signed by the master key",

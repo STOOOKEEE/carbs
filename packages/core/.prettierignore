@@ -1,2 +1,0 @@
-# Recorded node answers stay byte for byte (the root .prettierignore says the same)
-src/**/fixtures/*.json

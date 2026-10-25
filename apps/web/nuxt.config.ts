@@ -66,13 +66,13 @@ export default defineNuxtConfig({
     },
   },
 
-  // Vite configuration for polyfills (similar to next.config.js webpack config)
+  // Browser stand-ins for the Node built-ins (Buffer, events, process) that the wallet
+  // libraries expect, kept from the create-xrp template (plugins/buffer.client.ts sets Buffer).
   vite: {
     resolve: {
       alias: {
         buffer: "buffer/",
         events: "events/",
-        stream: "stream-browserify",
       },
     },
     define: {
@@ -123,7 +123,8 @@ export default defineNuxtConfig({
     },
   },
 
-  // Keep the starter as a client-rendered Nuxt app while wallet adapters initialize.
+  // Client-rendered: the wallet adapters, WebCrypto and WebHID exist in the browser only, and
+  // `nuxt generate` writes a static site (docs/DEPLOY.md).
   ssr: false,
 
   typescript: {
