@@ -23,6 +23,12 @@
 #define XRP_STARRAY_PERMISSIONS       29
 #define XRP_STOBJECT_PERMISSION       15
 
+// carbs protections on top of the spec (PR #29): largest single payment, and
+// the account that must co-sign every session transaction. Its WitnessSignature
+// is not a signing field, so the device never parses it.
+#define XRP_UINT64_SESSION_MAX_PER_TX 49   // SessionMaxPerTx, Amount (XRP only)
+#define XRP_ACCOUNT_SESSION_WITNESS   35   // SessionWitness, AccountID
+
 // SigningSessionSet flag: mode A (6.1). SigningSessionDelete has no flag.
 #define TF_ALL_TRANSACTIONS 0x00010000u
 

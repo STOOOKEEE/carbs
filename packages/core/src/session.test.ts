@@ -1,23 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { decodeAccountID } from "ripple-address-codec";
+import { verify as keypairsVerify } from "ripple-keypairs";
 import { bytesToHex, concatBytes } from "./bytes.js";
 import {
   kLastLedgerSequenceOffset,
   kMaxSessionDuration,
   kSessionMaxLedgerWindow,
 } from "./constants.js";
-import { decodeTx, encodeTx, sha512Half } from "./encode.js";
+import { DefinitionsError } from "./definitions.js";
+import { decodeTx, encodeForSigning, encodeTx, sha512Half, type TxJson } from "./encode.js";
+import { resultError, SessionNoWitnessError } from "./errors.js";
+import { classicSignerFromSeed, generateClassicSeed } from "./keys/classic.js";
 import { createSessionKey } from "./keys/p256-session.js";
 import {
   buildSessionDelete,
   buildSessionSet,
   SessionParamsError,
   SessionSignError,
+  signAsWitness,
   signingSessionIndex,
   signWithSessionKey,
+  witnessSigningData,
   type TxCommonFields,
 } from "./session.js";
-import { simulatedSessionDefinitions } from "./testing/simulated-definitions.js";
+import {
+  simulatedSessionDefinitions,
+  standaloneDefinitions,
+} from "./testing/simulated-definitions.js";
 
 const defs = simulatedSessionDefinitions();
 const account = "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK";
@@ -194,5 +203,127 @@ describe("signing with a session key", () => {
       buildSessionDelete({ account, sessionKey, common }),
     ];
     for (const tx of built) expect(typeof tx["LastLedgerSequence"]).toBe("number");
+  });
+});
+
+describe("carbs protections: per-transaction bound and witness (SIMULATED definitions)", () => {
+  const witness = "rawnHFk1gPQeEBC88cXbetXLqw3hnqk4pE";
+  const capMode = { kind: "cap", capDrops: 20_000_000n } as const;
+  const base = { account, sessionKey, durationSec: 600, mode: capMode, common };
+
+  it("writes SessionMaxPerTx and SessionWitness, and the encoder keeps them", () => {
+    const tx = buildSessionSet(
+      { ...base, mode: { ...capMode, maxPerTxDrops: 5_000_000n }, witness },
+      defs,
+    );
+    expect(tx).toMatchObject({
+      SessionCap: "20000000",
+      SessionMaxPerTx: "5000000",
+      SessionWitness: witness,
+    });
+    expect(decodeTx(encodeTx(tx, defs), defs)).toMatchObject({
+      SessionMaxPerTx: "5000000",
+      SessionWitness: witness,
+    });
+    const plain = buildSessionSet(base, defs);
+    expect(plain["SessionMaxPerTx"]).toBeUndefined();
+    expect(plain["SessionWitness"]).toBeUndefined();
+    const all = buildSessionSet({ ...base, mode: { kind: "all" }, witness }, defs);
+    expect(all["SessionWitness"]).toBe(witness);
+    // The bound may equal the cap.
+    expect(
+      buildSessionSet({ ...base, mode: { ...capMode, maxPerTxDrops: capMode.capDrops } }, defs)[
+        "SessionMaxPerTx"
+      ],
+    ).toBe("20000000");
+  });
+
+  it("refuses what preflight refuses, with the node's code", () => {
+    expectCode(
+      () => buildSessionSet({ ...base, mode: { ...capMode, maxPerTxDrops: 0n } }, defs),
+      "temBAD_AMOUNT",
+    );
+    expectCode(
+      () =>
+        buildSessionSet(
+          { ...base, mode: { ...capMode, maxPerTxDrops: capMode.capDrops + 1n } },
+          defs,
+        ),
+      "temBAD_AMOUNT",
+    );
+    expectCode(() => buildSessionSet({ ...base, witness: account }, defs), "temMALFORMED");
+    expectCode(() => buildSessionSet({ ...base, witness: sessionKey }, defs), "temMALFORMED");
+    expectCode(() => buildSessionSet({ ...base, witness: "nope" }, defs), "temMALFORMED");
+  });
+
+  it("refuses a protection the node does not serve", () => {
+    const node = standaloneDefinitions();
+    expect(() =>
+      buildSessionSet({ ...base, mode: { ...capMode, maxPerTxDrops: 1n } }, node),
+    ).toThrow(DefinitionsError);
+    expect(() => buildSessionSet({ ...base, witness }, node)).toThrow(DefinitionsError);
+  });
+
+  const payment: TxJson = {
+    TransactionType: "Payment",
+    Account: account,
+    Destination: witness,
+    Amount: "1000000",
+    Fee: "12",
+    Sequence: 9,
+    LastLedgerSequence: 120,
+  };
+
+  for (const algorithm of ["ecdsa-secp256k1", "ed25519"] as const) {
+    it(`co-signs WTS\\0 ‖ the session-signed fields with a ${algorithm} witness`, async () => {
+      const key = await createSessionKey();
+      const sessionSigned = await signWithSessionKey(payment, key, defs, 100);
+      const witnessKey = classicSignerFromSeed(generateClassicSeed(algorithm));
+      const cosigned = await signAsWitness(sessionSigned.tx, witnessKey, defs);
+
+      const expectedData = concatBytes(
+        Uint8Array.of(0x57, 0x54, 0x53, 0x00),
+        encodeForSigning(sessionSigned.tx, defs).subarray(4),
+      );
+      expect(witnessSigningData(sessionSigned.tx, defs)).toEqual(expectedData);
+      const witnessSignature = cosigned.tx["WitnessSignature"] as {
+        SigningPubKey: string;
+        TxnSignature: string;
+      };
+      expect(witnessSignature.SigningPubKey).toBe(bytesToHex(witnessKey.publicKey));
+      expect(
+        keypairsVerify(
+          bytesToHex(expectedData),
+          witnessSignature.TxnSignature,
+          witnessSignature.SigningPubKey,
+        ),
+      ).toBe(true);
+
+      // WitnessSignature is not a signing field: the session key's signing data is unchanged.
+      expect(encodeForSigning(cosigned.tx, defs)).toEqual(encodeForSigning(sessionSigned.tx, defs));
+      expect(cosigned.tx["TxnSignature"]).toBe(sessionSigned.tx["TxnSignature"]);
+      expect(decodeTx(cosigned.blob, defs)["WitnessSignature"]).toEqual(witnessSignature);
+      expect(cosigned.hash).not.toBe(sessionSigned.hash);
+    });
+  }
+
+  it("co-signs only a session-signed transaction, never with the session key", async () => {
+    const key = await createSessionKey();
+    const witnessKey = classicSignerFromSeed(generateClassicSeed());
+    await expect(signAsWitness(payment, witnessKey, defs)).rejects.toThrow(SessionSignError);
+    await expect(
+      signAsWitness({ ...payment, SigningPubKey: key.publicKeyHex }, witnessKey, defs),
+    ).rejects.toThrow(SessionSignError);
+    const sessionSigned = await signWithSessionKey(payment, key, defs, 100);
+    await expect(signAsWitness(sessionSigned.tx, key, defs)).rejects.toThrow(/own witness/);
+  });
+
+  it("maps tefSESSION_NO_WITNESS, read by name from the definitions", () => {
+    const code = defs.resultCode("tefSESSION_NO_WITNESS");
+    expect(code).toBe(defs.resultCode("tefFIREWALL_BLOCK") + 4);
+    expect(defs.resultName(code)).toBe("tefSESSION_NO_WITNESS");
+    const error = resultError("tefSESSION_NO_WITNESS", "");
+    expect(error).toBeInstanceOf(SessionNoWitnessError);
+    expect(error.included).toBe(false);
   });
 });

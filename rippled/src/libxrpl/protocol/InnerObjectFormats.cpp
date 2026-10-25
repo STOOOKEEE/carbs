@@ -185,6 +185,16 @@ InnerObjectFormats::InnerObjectFormats()
             {sfSigners, SoeOptional},
         });
 
+    // A signing session's witness: one key, single-signed. Both fields are
+    // optional here, as for the other role signatures, so a signer can fill
+    // them in; STTx::checkSign refuses a witness without a key.
+    add(sfWitnessSignature.jsonName,
+        sfWitnessSignature.getCode(),
+        {
+            {sfSigningPubKey, SoeOptional},
+            {sfTxnSignature, SoeOptional},
+        });
+
     // One entry in a confidential ballot ciphertext vector: an ElGamal
     // ciphertext, plus (on cast transactions) the matching Pedersen
     // commitment used for the aggregated range proof.

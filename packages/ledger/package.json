@@ -12,8 +12,11 @@
   },
   "dependencies": {
     "@carbs/sessions": "workspace:*",
+    "@ledgerhq/device-management-kit": "1.11.0",
+    "@ledgerhq/device-transport-kit-web-hid": "1.2.4",
     "@noble/hashes": "2.4.0",
-    "ripple-address-codec": "5.0.1"
+    "ripple-address-codec": "5.0.1",
+    "rxjs": "7.8.2"
   },
   "devDependencies": {
     "@noble/post-quantum": "0.7.1",

@@ -487,6 +487,20 @@ Final review gate, round 2 (an independent reviewer, model Opus, read-only, on `
 - The live-run driver now asserts the node's codes (it only printed them), and a stray separator row of the feedback table is gone.
 - **Listed, not changed:** `FIANSO-SPEC.md` (the owner's reference) still says in its UNVERIFIED list, item 4, that no node has accepted an `@noble/post-quantum` signature; the step-6 entry above records one accepted (`238EA325…`), so the owner may update the line. `rippled/src/test/app/MPToken_test.cpp` gained a `SigningSessionSet` case required by that suite's exhaustiveness check (nothing removed or weakened); its commit does not carry the justification PLAN 1.8 asks for, and it is given here. `infra/compose.yaml` builds `apps/passkey-wallet/Dockerfile`, which is not on `develop` (already recorded).
 
+## 2026-10-25: per-payment cap, witness and Batch, ported onto develop
+
+**What.** The two protections of the first implementation (`STOOOKEEE/n2-signing-sessions`) on top of develop's sessions: `SessionMaxPerTx` (AMOUNT 49, mode C only, `tefSESSION_LIMIT` above it) and `SessionWitness` (ACCOUNT 35) with the co-signature `WitnessSignature` (OBJECT 43, prefix `WTS\0`, `tefSESSION_NO_WITNESS`; the own close is exempt). `@carbs/sessions` opens sessions with both and co-signs as the witness. A new suite `SigningSessionsBatch` and `buildBatch`.
+
+**Why.** Develop is the reviewed base; the protections were the only protocol work that existed only on the other branch. Numbers were free on develop, so the shared wire format does not change. Sofiane still has to accept both protections (they are not in the spec).
+
+**Path.** Merging the two branches was set aside: about twenty rippled files conflict and several clean merges would define things twice. `SessionMaxPerTx` keeps `temMALFORMED` without a cap and `temBAD_AMOUNT` for a bad amount, like develop's `SessionCap`.
+
+**Batch.** The AlphaNet observation (a key migration in one Batch returns `tesSUCCESS` and applies nothing) is explained and pinned in a test: an inner transaction has no signature, so the inner `asfDisableMaster` fails with `tecNEED_MASTER_KEY` and, under `tfAllOrNothing`, every inner change is discarded while the outer Batch keeps its `tesSUCCESS`. A session key cannot sign an outer Batch (`tefSESSION_TX_NOT_ALLOWED`, Batch overrides `checkSign`) nor be a `BatchSigner` (`tefBAD_AUTH`).
+
+**Tests** (Mac, Debug): `SigningSessions` with `SigningSessionsBatch` 47 cases / 2681 checks, `InvariantsSigningSession` 9 / 1079, `STTx`, `Batch`, `PasskeyWebAuthn`, `PasskeyRelay`, `AccountDelete` 0 failures; `Delegate` and `MPToken` keep their base failure (docs/base-failures.txt). `@carbs/sessions` 99 tests.
+
+**Bugs & fix.** The first witness test disabled the witness's master key with its regular key: `tecNEED_MASTER_KEY`; only the master key may set `asfDisableMaster`.
+
 ## 2026-10-24: audit 24.10, section A (the ML-DSA path of the app)
 
 - **Review lock on the ML-DSA path (audit finding A1, confirmed).** While the review of transaction A was on screen, `INS 0x11` kept accepting chunks, so a host could replace the buffer with B and the approval of A signed B; a switch to another instruction during the review zeroed `tmp_ctx` and the approval signed an empty message. The classical path refuses both (`ledger-app/src/apdu/messages/sign_transaction.c:273-285`, and `sign_transaction()` outside `PENDING_REVIEW`). Now: a `reviewing` flag and the SHA-256 of the reviewed bytes in the PQ context; every `0x11` chunk during the review gets `0x6A80`; the approval signs only bytes with the reviewed hash and signs nothing after an instruction change. `INS 0x10` needs no check of its own: entry.c resets the context, and so cancels the review, before any other instruction runs.

@@ -188,6 +188,7 @@ enum TEFcodes : TERUnderlyingType {
     tefSESSION_EXPIRED,
     tefSESSION_LIMIT,
     tefSESSION_TX_NOT_ALLOWED,
+    tefSESSION_NO_WITNESS,
 };
 
 //------------------------------------------------------------------------------

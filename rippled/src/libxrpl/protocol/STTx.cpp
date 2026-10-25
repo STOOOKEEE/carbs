@@ -300,6 +300,18 @@ STTx::checkSign(Rules const& rules) const
             return std::unexpected("Sponsor: " + ret.error());
     }
 
+    // A signing session's witness signs with one key; whether that key belongs
+    // to the session's witness is checked against the ledger
+    // (Transactor::checkSession).
+    if (isFieldPresent(sfWitnessSignature))
+    {
+        auto const witnessSignatureObj = getFieldObject(sfWitnessSignature);
+        if (witnessSignatureObj.getFieldVL(sfSigningPubKey).empty())
+            return std::unexpected("Witness: a witness signs with a single key.");
+        if (auto const ret = checkSign(rules, witnessSignatureObj, SignatureRole::Witness); !ret)
+            return std::unexpected("Witness: " + ret.error());
+    }
+
     // Verify batch signer signatures here so they are cached with the rest
     // of signature checking.
     if (isFieldPresent(sfBatchSigners))

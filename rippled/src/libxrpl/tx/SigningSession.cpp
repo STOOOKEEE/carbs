@@ -1,17 +1,20 @@
 #include <xrpl/tx/SigningSession.h>
 
+#include <xrpl/basics/Slice.h>
 #include <xrpl/basics/chrono.h>
 #include <xrpl/ledger/ReadView.h>
 #include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Indexes.h>
 #include <xrpl/protocol/Keylet.h>
+#include <xrpl/protocol/LedgerFormats.h>
 #include <xrpl/protocol/Permissions.h>
 #include <xrpl/protocol/PublicKey.h>
 #include <xrpl/protocol/Rules.h>
 #include <xrpl/protocol/SField.h>
 #include <xrpl/protocol/STAmount.h>
 #include <xrpl/protocol/STLedgerEntry.h>
+#include <xrpl/protocol/STObject.h>
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TxFlags.h>
 #include <xrpl/protocol/TxFormats.h>
@@ -140,6 +143,27 @@ isSessionExpired(ReadView const& view, SLE const& session)
 {
     return view.parentCloseTime() >=
         NetClock::time_point{NetClock::duration{session.getFieldU32(sfExpiration)}};
+}
+
+bool
+isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witness)
+{
+    if (!tx.isFieldPresent(sfWitnessSignature))
+        return false;
+
+    auto const pk = tx.getFieldObject(sfWitnessSignature).getFieldVL(sfSigningPubKey);
+    if (!publicKeyType(makeSlice(pk)))
+        return false;
+
+    auto const sle = view.read(keylet::account(witness));
+    if (!sle)
+        return false;
+
+    auto const signer = calcAccountID(PublicKey(makeSlice(pk)));
+    if (signer == witness)
+        return !sle->isFlag(lsfDisableMaster);
+
+    return (*sle)[~sfRegularKey] == signer;
 }
 
 }  // namespace xrpl
