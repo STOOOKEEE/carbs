@@ -31,6 +31,13 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 - `ledger_entry`, `account_objects`: A `SigningSession` entry may carry `SessionMaxPerTx` (the most one payment of a mode-C session may send) and `SessionWitness` (an account that co-signs every session transaction).
 - `sign`: With `signature_target` set to `WitnessSignature`, the witness of a signing session signs the transaction into its `WitnessSignature` field.
 
+### Changes
+
+- `submit`: A transaction carrying `WitnessSignature` while the `SigningSessions` amendment is disabled is refused with `temDISABLED`.
+- `submit`: A session-signed transaction that uses `TicketSequence` is refused with `tefSESSION_TX_NOT_ALLOWED`, except the session's own close (`SigningSessionDelete` without `Owner`, signed by the session key).
+- `submit`: The session's own close, signed by the session key, may pay at most the base fee of its type; a higher `Fee` is refused with `tefSESSION_LIMIT` (other session-signed transactions keep the margin of 1000 base fee units).
+- `submit`: A session-signed transaction that would replace, in the transaction queue, a transaction its session key did not sign (same `Sequence` or `TicketSequence`) is refused with `telCAN_NOT_QUEUE_FEE`, whatever its fee, including when its fee would let it into the open ledger.
+
 ### Bugfixes
 
 - `submit`: With `fixPasskeyChallenge` enabled, a transaction signed through WebAuthn (`PasskeySignature`) is no longer refused with `invalidTransaction` ("fails local checks: Invalid signature.") on a server where `char` is signed: the WebAuthn challenge is now compared with the signing data byte for byte. Before the amendment is enabled, a refused WebAuthn transaction is answered "fails local checks: Invalid signature." each time it is submitted, instead of the cached "Transaction has bad signature."

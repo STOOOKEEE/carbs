@@ -21,6 +21,7 @@
 #include <test/jtx/pay.h>
 #include <test/jtx/regkey.h>
 #include <test/jtx/sendmax.h>
+#include <test/jtx/seq.h>
 #include <test/jtx/session.h>
 #include <test/jtx/sig.h>
 #include <test/jtx/sponsor.h>
@@ -126,6 +127,21 @@ class SigningSessions_test : public beast::unit_test::Suite
             env.close();
             BEAST_EXPECT(!sessionEntry(env, alice, key));
             env.require(Owners(alice, 0));
+        }
+
+        // The witness co-signature, on any transaction, needs the amendment:
+        // before it, no transaction makes the node verify one.
+        {
+            Env env{*this, features - featureSigningSessions};
+            Account const alice{"alice"}, bob{"bob"}, witness{"witness"};
+            env.fund(XRP(10000), alice, bob, witness);
+            env.close();
+
+            auto const balance = env.balance(alice);
+            env(pay(alice, bob, XRP(1)), Sig(sfWitnessSignature, witness), Ter(temDISABLED));
+            env.close();
+            BEAST_EXPECT(env.balance(alice) == balance);
+            env(pay(alice, bob, XRP(1)));
         }
     }
 
@@ -373,6 +389,48 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         env.require(Owners(alice, 0));
         BEAST_EXPECT(!sessionEntry(env, alice, key));
+    }
+
+    // A session-signed transaction may not use a ticket, the own close
+    // excepted: the tickets stay for the owner, who can revoke by ticket
+    // while the key holds the sequence, and for multi-signed transactions.
+    void
+    testSessionTickets(FeatureBitset features)
+    {
+        testcase("tickets and session-signed transactions");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+        env(ticket::create(alice, 2));
+        env.close();
+        auto const first = env.seq(alice) - 2;
+        env.require(Owners(alice, 3), tickets(alice, 2));
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)),
+            ticket::Use(first),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(ticket::create(alice, 1),
+            ticket::Use(first),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        env.require(Owners(alice, 3), tickets(alice, 2));
+
+        // The own close may use one.
+        env(session::del(alice, key), ticket::Use(first), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+        env.require(Owners(alice, 1), tickets(alice, 1));
     }
 
     // Case 19: sessions are not obligations, AccountDelete removes them.
@@ -854,8 +912,8 @@ class SigningSessions_test : public beast::unit_test::Suite
     }
 
     // Case 13, the fee ceiling: Fee <= base fee of the type + 1000 base fee
-    // units, in every mode, the own close included; a refused transaction
-    // claims no fee.
+    // units, in every mode; the own close's ceiling is its base fee alone; a
+    // refused transaction claims no fee.
     void
     testFeeCeiling(FeatureBitset features)
     {
@@ -897,15 +955,42 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(env.balance(alice) == balance);
 
-        // The own close keeps the ceiling.
+        // The own close gets no margin: its ceiling is the base fee, so past
+        // the cap or the expiry it costs one base fee at most.
+        auto const closeFee = env.current()->fees().base;
         env(session::del(alice, keyA),
             Sig(keyA),
-            Fee(ceiling + drops(1)),
+            Fee(closeFee + drops(1)),
             lls(),
             Ter(tefSESSION_LIMIT));
-        env(session::del(alice, keyA), Sig(keyA), Fee(ceiling), lls());
+        env(session::del(alice, keyA), Sig(keyA), Fee(ceiling), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        env(session::del(alice, keyA), Sig(keyA), Fee(closeFee), lls());
         env.close();
         BEAST_EXPECT(!sessionEntry(env, alice, keyA));
+        BEAST_EXPECT(env.balance(alice) == balance - closeFee);
+
+        // In mode C with the cap used up, the own close above the base fee is
+        // refused, and at the base fee it applies: the account loses the cap
+        // and one base fee, nothing more.
+        Account const keyC{"keyC"};
+        env(session::set(alice, keyC, 600), session::Cap(XRP(1) + base));
+        env.close();
+        env(pay(alice, bob, XRP(1)), Sig(keyC), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, keyC) == XRP(1) + base);
+        auto const spentOut = env.balance(alice);
+        env(session::del(alice, keyC), Sig(keyC), Fee(ceiling), lls(), Ter(tefSESSION_LIMIT));
+        env(session::del(alice, keyC),
+            Sig(keyC),
+            Fee(closeFee + drops(1)),
+            lls(),
+            Ter(tefSESSION_LIMIT));
+        env(session::del(alice, keyC), Sig(keyC), Fee(closeFee), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, keyC));
+        BEAST_EXPECT(env.balance(alice) == spentOut - closeFee);
     }
 
     // Case 13: types whose required fee is the owner reserve increment pass
@@ -1245,7 +1330,7 @@ class SigningSessions_test : public beast::unit_test::Suite
     }
 
     // Case 23 and 13: every path that claims a fee counts it, the amount only
-    // on success; a payment by ticket applies.
+    // on success; a payment by ticket is refused.
     void
     testModeCAccounting(FeatureBitset features)
     {
@@ -1271,15 +1356,20 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 2);
 
-        // A payment by ticket applies and consumes the ticket.
+        // A payment by ticket is refused, claims nothing and leaves the
+        // ticket: the tickets of the account are not the session's.
         env(ticket::create(alice, 1));
         env.close();
         auto const ticketSeq = env.seq(alice) - 1;
         env.require(Owners(alice, 2));
-        env(pay(alice, bob, XRP(1)), ticket::Use(ticketSeq), Sig(key), lls());
+        env(pay(alice, bob, XRP(1)),
+            ticket::Use(ticketSeq),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
         env.close();
-        env.require(Owners(alice, 1));
-        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 3 + XRP(1));
+        env.require(Owners(alice, 2), tickets(alice, 1));
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 2);
 
         // The fee-claim reset: the destination holds more XRP than exists, so
         // the first invariant pass fails; after the reset only the fee
@@ -1297,7 +1387,7 @@ class SigningSessions_test : public beast::unit_test::Suite
         auto const before = env.balance(alice);
         env(pay(alice, bob, XRP(1)), Sig(key), lls(), Ter(tecINVARIANT_FAILED));
         BEAST_EXPECT(env.balance(alice) == before - fee);
-        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 4 + XRP(1));
+        BEAST_EXPECT(sessionSpent(env, alice, key) == fee * 3);
     }
 
     // Case 17: a session key later made the RegularKey stays bounded until its
@@ -1796,6 +1886,35 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(queuedFor(alice) == 0);
         env.close();
         BEAST_EXPECT(env.balance(alice) == before - deleteFee);
+
+        // Revocation: the owner's close of a third session waits in the queue
+        // on the account's next sequence. The session key cannot displace it
+        // with a payment on that sequence, neither through the queue with a
+        // fee above the replacement threshold nor straight into the open
+        // ledger with the highest fee its ceiling allows.
+        Account const key3{"key3"};
+        env(session::set(alice, key3, 600), Txflags(tfAllTransactions));
+        env.close();
+        fillOpenLedger();
+        auto const seq = env.seq(alice);
+        auto const bobBefore = env.balance(bob);
+        env(session::del(alice, key3), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        auto const base = env.current()->fees().base;
+        for (auto const fee : {base * 2, base + base * kSessionFeeMultiple})
+        {
+            env(pay(alice, bob, XRP(1)),
+                Sig(key3),
+                Seq(seq),
+                Fee(fee),
+                LastLedgerSeq(env.current()->seq() + 10),
+                Ter(telCAN_NOT_QUEUE_FEE));
+        }
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key3));
+        BEAST_EXPECT(env.balance(bob) == bobBefore);
     }
 
     // Case 24: a session cannot sign for a pseudo-account (the refusal of
@@ -2033,6 +2152,7 @@ public:
         testDelete(all);
         testMptCap(all);
         testByTicket(all);
+        testSessionTickets(all);
         testAccountDelete(all);
         testRpc(all);
         testSponsorship(all);

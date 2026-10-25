@@ -91,6 +91,13 @@ ValidSigningSession::visitEntry(bool isDelete, SLE::const_ref before, SLE::const
         case ltFIREWALL:
             authority_.push_back(change);
             break;
+        case ltSPONSORSHIP:
+        case ltSUBSCRIPTION:
+        case ltCREDENTIAL:
+        case ltDID:
+            if (!before && !isDelete)
+                excludedCreated_ = true;
+            break;
         default:
             break;
     }
@@ -100,7 +107,7 @@ bool
 ValidSigningSession::finalize(
     STTx const& tx,
     TER const,
-    XRPAmount const,
+    XRPAmount const fee,
     ReadView const& view,
     beast::Journal const& j)
 {
@@ -213,7 +220,18 @@ ValidSigningSession::finalize(
     bool const accountChanged =
         accountIt != accounts_.end() && accountIt->second.first && accountIt->second.second;
 
-    // Rule 4: a mode-C session transaction that keeps its session.
+    // Rule 4: a mode-C session transaction other than the own close.
+    if (!ownClose && sessionBefore->isFieldPresent(sfSessionCap))
+    {
+        if (!isSessionCapPayment(tx))
+            fail("a mode-C session transaction is not a session cap payment");
+
+        if (auto const maxPerTx = (*sessionBefore)[~sfSessionMaxPerTx]; maxPerTx && sessionAfter &&
+            spentOf(sessionAfter) - spentOf(sessionBefore) - fee > maxPerTx->xrp())
+            fail("a mode-C session transaction counted more than its SessionMaxPerTx");
+    }
+
+    // The rest of rule 4 when the transaction keeps its session.
     if (!ownClose && sessionAfter && sessionAfter->isFieldPresent(sfSessionCap) && accountChanged)
     {
         auto const& [before, after] = accountIt->second;
@@ -253,6 +271,9 @@ ValidSigningSession::finalize(
             break;
         }
     }
+
+    if (excludedCreated_)
+        fail("a session-signed transaction created a sponsorship, subscription, credential or DID");
 
     return ok;
 }
