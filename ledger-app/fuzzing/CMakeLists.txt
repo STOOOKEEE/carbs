@@ -46,6 +46,8 @@ add_library(xrp
   ../src/xrp/amount.c
   ../src/xrp/amount.h
   ../src/xrp/array.h
+  ../src/xrp/batch.c
+  ../src/xrp/batch.h
   ../src/xrp/fields.c
   ../src/xrp/fields.h
   ../src/xrp/field_sort.c
@@ -64,6 +66,8 @@ add_library(xrp
   ../src/xrp/readers.h
   ../src/xrp/ascii_strings.c
   ../src/xrp/ascii_strings.h
+  ../src/xrp/session_permissions.c
+  ../src/xrp/session_permissions.h
   ../src/xrp/time.c
   ../src/xrp/time.h
   ../src/xrp/transaction_types.h
@@ -79,6 +83,7 @@ include_directories(
     ../src/xrp
     ../src/apdu/messages
     ../src/apdu
+    ../src/policy
 )
 
 add_executable(fuzz_tx

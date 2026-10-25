@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
+    />
+    <title>carbs · Hash Blaster, every shot on the XRPL</title>
+    <link rel="stylesheet" href="/src/demo/demo.css" />
+    <link rel="stylesheet" href="/src/apps/game/game.css" />
+  </head>
+  <body>
+    <header class="demo-header">
+      <h1>
+        Hash Blaster
+        <span class="dot">·</span>
+        <span class="accent">every shot is an XRPL payment, signed by a session key</span>
+      </h1>
+      <p id="game-connection" class="status">Connecting…</p>
+    </header>
+
+    <main class="game-grid">
+      <section class="column arena-column" aria-label="Arena">
+        <div class="arena-head">
+          <h2>Arena</h2>
+          <p class="arena-prices">
+            <span id="game-price-duck" class="price-duck"></span>
+            <span id="game-price-golden" class="price-golden"></span>
+          </p>
+        </div>
+        <div id="game-arena" class="arena">
+          <p id="game-arena-hint" class="arena-hint">
+            Open a session to play: one approval, then no more prompts.
+          </p>
+          <p id="game-arena-banner" class="arena-banner" hidden></p>
+        </div>
+        <dl class="shot-stats">
+          <div>
+            <dt>Fired</dt>
+            <dd id="game-fired">0</dd>
+          </div>
+          <div class="stat-pending">
+            <dt>Pending</dt>
+            <dd id="game-pending">0</dd>
+          </div>
+          <div class="stat-validated">
+            <dt>Validated</dt>
+            <dd id="game-validated">0</dd>
+          </div>
+          <div class="stat-hits">
+            <dt>Hits</dt>
+            <dd id="game-hits">0</dd>
+          </div>
+          <div class="stat-won">
+            <dt>Won</dt>
+            <dd id="game-won">0 XRP</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="column centre-column" aria-label="Session on the ledger">
+        <div class="agent-id-card">
+          <p class="label">Agent ID of the game key</p>
+          <p id="game-agent-id" class="agent-id game-agent-id">––––-––––</p>
+          <p class="hint">The Stax shows the same Agent ID when you open the session</p>
+        </div>
+        <div class="budget-card">
+          <p class="label">Session on the ledger</p>
+          <p class="meter-line">
+            <span id="game-spent">0</span> <span class="of">/</span>
+            <span id="game-cap">–</span> XRP
+          </p>
+          <div class="gauge"><div id="game-spent-fill" class="gauge-fill"></div></div>
+          <p class="meter-line">
+            <span id="game-count">0</span> <span class="of">/</span>
+            <span id="game-max-count">–</span> tx
+          </p>
+          <div class="gauge"><div id="game-count-fill" class="gauge-fill count-fill"></div></div>
+          <dl class="budget-facts">
+            <div>
+              <dt>Max per payment</dt>
+              <dd id="game-max-per-tx">–</dd>
+            </div>
+            <div>
+              <dt>Time left</dt>
+              <dd id="game-countdown">–</dd>
+            </div>
+          </dl>
+          <p id="game-session-state" class="session-state">No session yet.</p>
+        </div>
+        <div
+          id="game-tx-grid"
+          class="tx-grid"
+          aria-label="One cell per session-signed transaction"
+        ></div>
+      </section>
+
+      <section class="column control-column" aria-label="Controls">
+        <h2>Owner, once</h2>
+        <p id="game-owner" class="owner-status"></p>
+        <div class="button-row">
+          <button id="game-open-stax" type="button" class="primary">Open with Ledger Stax</button>
+          <button id="game-open-touchid" type="button" class="secondary">Touch ID</button>
+        </div>
+        <h2>Try to abuse</h2>
+        <div class="button-row">
+          <button id="game-abuse-bet" type="button" class="abuse"></button>
+          <button id="game-abuse-auto" type="button" class="abuse">Auto-clicker</button>
+        </div>
+        <button id="game-open-greedy" type="button" class="abuse device-abuse"></button>
+        <button id="game-close" type="button" class="secondary">Close session</button>
+        <p id="game-message" class="game-message" hidden></p>
+        <ol id="game-refusals" class="refusals"></ol>
+      </section>
+    </main>
+
+    <footer class="layers">
+      <div id="game-layer-device" class="layer layer-device">
+        <span class="layer-name">Device:</span>
+        <span class="layer-what">Stax profile Game, at opening</span>
+        <span id="game-layer-device-count" class="layer-count">0 refused</span>
+      </div>
+      <div id="game-layer-ledger" class="layer layer-ledger">
+        <span class="layer-name">Ledger:</span>
+        <span class="layer-what">SigningSessions, at every shot</span>
+        <span id="game-layer-ledger-count" class="layer-count">0 refused</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/apps/game/main.ts"></script>
+  </body>
+</html>

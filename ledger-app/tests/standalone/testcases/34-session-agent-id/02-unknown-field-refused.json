@@ -1,0 +1,13 @@
+{
+  "TransactionType": "SigningSessionSet",
+  "Account": "rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK",
+  "Fee": "12",
+  "Sequence": 100,
+  "LastLedgerSequence": 5000,
+  "NetworkID": 24100,
+  "SigningPubKey": "03B41C770E3DE7B0DB75688B86BC574473CF4801990AB9A3F4EF74C02B56D45F55",
+  "Flags": 65536,
+  "SessionKey": "rEmnmhwxmkDkj9jKiibNuXxP25VYHJ5Euy",
+  "SessionDuration": 600,
+  "_note": "30-signing-session-set/01-mode-all + UINT32 field id 48 (20 30 00000001), a field the app cannot name"
+}

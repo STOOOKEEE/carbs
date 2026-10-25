@@ -19,6 +19,11 @@ const kStatusHints = new Map<number, string>([
   [kSw.claNotSupported, "the open app is not the XRP app"],
   [kSw.wrongData, "the XRP app refused the data"],
   [kSw.wrongLength, "the transaction is too large for the XRP app"],
+  [kSw.sessionPolicyRefused, "blocked by your session policy on the device"],
+  [
+    kSw.sessionBlindRefused,
+    "session transactions are never blind-signed: the device cannot show this one in clear",
+  ],
 ]);
 
 function stringField(error: object, key: string): string | undefined {

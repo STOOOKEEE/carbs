@@ -1,0 +1,491 @@
+/* The ticket desk: the stage demo's visual language (dark, large type, two guardrail layers). */
+
+:root {
+  color-scheme: dark;
+  --bg: #07090d;
+  --panel: #11151d;
+  --line: #262d3a;
+  --text: #f4f6fa;
+  --muted: #a3acbb;
+  --ok: #3ddc84;
+  --ledger: #ff5a5f;
+  --device: #b98cff;
+  --waiting: #ffb020;
+  --accent: #5b8cff;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100vh;
+  padding: 18px 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+/* Header */
+
+.mint-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 24px;
+}
+
+.mint-header h1 {
+  flex: 1 1 auto;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.mint-header .dot {
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+.mint-header .accent {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.status {
+  font-size: 15px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.status.problem {
+  color: var(--ledger);
+}
+
+/* Columns */
+
+.mint-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+}
+
+.column h2 {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hint {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #0c1017;
+}
+
+.rules-profile {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--device);
+}
+
+.rules-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* Buttons */
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+button {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.abuse-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+button.abuse {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  background: #1a0f12;
+  color: var(--text);
+  border-color: var(--ledger);
+}
+
+button.abuse.device {
+  background: #150f1f;
+  border-color: var(--device);
+}
+
+.expect {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Messages */
+
+.message {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 17px;
+  font-weight: 600;
+  background: #0c1017;
+}
+
+.message-info {
+  color: var(--muted);
+}
+
+.message-ok {
+  color: var(--ok);
+}
+
+.message-error {
+  color: var(--ledger);
+}
+
+/* Session card */
+
+.agent-id {
+  font-family: var(--mono);
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.big-figure {
+  font-size: 44px;
+  font-weight: 800;
+}
+
+.big-figure .of {
+  color: var(--muted);
+}
+
+.gauge {
+  height: 14px;
+  border-radius: 7px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.gauge-fill {
+  width: var(--fill, 0%);
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.4s;
+}
+
+.gauge-fill.warning {
+  background: var(--waiting);
+}
+
+.facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.facts dt {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.facts dd.expired {
+  color: var(--ledger);
+}
+
+.session-state {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.session-idle {
+  color: var(--muted);
+}
+
+.session-open {
+  color: var(--ok);
+}
+
+.session-over {
+  color: var(--ledger);
+}
+
+/* Gallery */
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: #0c1017;
+}
+
+.ticket-fresh {
+  border: 1px solid var(--ok);
+}
+
+.ticket-seat {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.ticket-number {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.ticket-id {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Activity */
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #0c1017;
+}
+
+.event-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.event-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.event-text {
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.event-code {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.event-detail,
+.event-expected,
+.event-link {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.event-ok .event-icon,
+.event-ok .event-code {
+  color: var(--ok);
+}
+
+.event-ledger {
+  border: 1px solid var(--ledger);
+}
+
+.event-ledger .event-icon,
+.event-ledger .event-code,
+.event-ledger .event-detail {
+  color: var(--ledger);
+}
+
+.event-device {
+  border: 1px solid var(--device);
+}
+
+.event-device .event-icon,
+.event-device .event-code,
+.event-device .event-detail {
+  color: var(--device);
+}
+
+.event-info .event-text {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* Footer: the two guardrail layers */
+
+.layers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.layer {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 12px 22px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  color: var(--muted);
+  transition:
+    border-color 0.3s,
+    background 0.3s,
+    color 0.3s;
+}
+
+.layer-name {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.layer-what {
+  font-size: 19px;
+}
+
+.layer-count {
+  margin-left: auto;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.layer-device.lit {
+  border-color: var(--device);
+  color: var(--device);
+}
+
+.layer-ledger.lit {
+  border-color: var(--ledger);
+  color: var(--ledger);
+}
+
+.layer-device.flash {
+  background: color-mix(in srgb, var(--device) 22%, transparent);
+  animation: pulse 0.8s ease-in-out 3;
+}
+
+.layer-ledger.flash {
+  background: color-mix(in srgb, var(--ledger) 22%, transparent);
+  animation: pulse 0.8s ease-in-out 3;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.02);
+  }
+}

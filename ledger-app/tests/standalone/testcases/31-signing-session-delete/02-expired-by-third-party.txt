@@ -1,5 +1,6 @@
 Transaction Type; Close session
 Account;   rHH1fLR86zy5    uZjZXT8iEa4     CHK145ksjAK   
 Session key;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
+Agent ID; 388F-F428
 Fee; XRP 0.000012
 Owner;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   

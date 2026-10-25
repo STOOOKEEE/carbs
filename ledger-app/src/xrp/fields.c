@@ -19,6 +19,7 @@
 
 #include <string.h>
 
+#include "batch.h"
 #include "common.h"
 #include "flags.h"
 #include "sign_transaction.h"
@@ -29,15 +30,23 @@
         field->array_info.type == 0)                   \
     return true
 
-bool is_normal_account_field(field_t* field) {
-    return field->data_type == STI_ACCOUNT &&
-           field->id == XRP_ACCOUNT_ACCOUNT && field->array_info.type == 0;
-}
-
 // Returned by resolve_field_name() when no case below matches. Kept as one
 // named constant so is_field_recognized() can identify that exact case by
 // pointer, instead of duplicating this function's switch statements.
 static const char UNKNOWN_FIELD_NAME[] = "Unknown";
+
+// A SigningSessionSet's only flag is its mode A: read as a rule. A Batch's
+// flag is its mode. An inner transaction of a Batch is named by its own type.
+static const char* flags_field_name(const field_t* field) {
+    switch (field_transaction_type(field)) {
+        case TRANSACTION_SIGNING_SESSION_SET:
+            return "Allows";
+        case TRANSACTION_BATCH:
+            return "Batch mode";
+        default:
+            return "Flags";
+    }
+}
 
 const char* resolve_field_name(field_t* field) {
     if (field->data_type == STI_UINT16) {
@@ -61,11 +70,7 @@ const char* resolve_field_name(field_t* field) {
             case 1:
                 return "Network ID";
             case 2:
-                // A SigningSessionSet's only flag is its mode A: read as a rule.
-                return parse_context.transaction_type ==
-                               TRANSACTION_SIGNING_SESSION_SET
-                           ? "Allows"
-                           : "Flags";
+                return flags_field_name(field);
             case 3:
                 return "Source Tag";
             case 4:
@@ -264,6 +269,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Session key";
             case XRP_ACCOUNT_SESSION_WITNESS:
                 return "Witness";
+            case XRP_ACCOUNT_AGENT_ID:
+                return "Agent ID";
         }
     }
 
@@ -348,6 +355,10 @@ bool is_field_hidden(field_t* field) {
     HIDE(STI_UINT32, XRP_UINT32_LAST_LEDGER_SEQUENCE);
     HIDE(STI_VL, XRP_VL_SIGNING_PUB_KEY);
 
+    if (is_batch_fixed_field(field)) {
+        return true;
+    }
+
     if (field->data_type == STI_ARRAY || field->data_type == STI_OBJECT ||
         field->data_type == STI_PATHSET) {
         // Field is only used to instruct parsing code how to handle following
@@ -360,4 +371,32 @@ bool is_field_hidden(field_t* field) {
     }
 
     return false;
+}
+
+// Title of a review row. An inner transaction of a Batch opens with "Tx i/n"
+// (its type is the value) and its fields need no index: they follow that
+// header.
+void format_field_title(field_t* field, field_name_t* title) {
+    bool is_inner = is_batch_inner_field(field);
+
+    if (is_inner && is_transaction_type_field(field)) {
+        snprintf(title->buf, sizeof(title->buf), "Tx %d/%d",
+                 field->array_info.index1, parse_context.batch.inner_count);
+        return;
+    }
+
+    strncpy(title->buf, resolve_field_name(field), sizeof(title->buf));
+    title->buf[sizeof(title->buf) - 1] = '\0';
+    if (is_inner) {
+        return;
+    }
+
+    size_t len = strlen(title->buf);
+    if (field->array_info.type == ARRAY_PATHSET) {
+        snprintf(title->buf + len, sizeof(title->buf) - len, " [P%d: S%d]",
+                 field->array_info.index1, field->array_info.index2);
+    } else if (field->array_info.type != ARRAY_NONE) {
+        snprintf(title->buf + len, sizeof(title->buf) - len, " [%d]",
+                 field->array_info.index1);
+    }
 }
