@@ -85,7 +85,7 @@ export class SimulatedDevice implements ApduTransport {
   async exchange(apdu: Apdu): Promise<ApduResponse> {
     if (apdu.cla !== kCla) return sw(kSw.claNotSupported);
     // `handle_apdu` resets the transaction context when the instruction changes (entry.c:40-42);
-    // the ML-DSA signature lives outside that context (pq_root.c:58-60).
+    // the ML-DSA signature lives outside that context (pq_root.c:60-62).
     if (apdu.ins !== this.#lastIns) {
       this.#signState = "idle";
       this.#raw = [];
