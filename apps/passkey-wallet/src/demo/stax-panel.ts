@@ -114,6 +114,7 @@ async function refuse(record: AgentRequestRecord): Promise<void> {
 function decide(record: AgentRequestRecord, action: () => Promise<void>): () => void {
   return guarded(
     async () => {
+      if (busy.has(record.id)) return;
       busy.add(record.id);
       renderedKey = "";
       try {

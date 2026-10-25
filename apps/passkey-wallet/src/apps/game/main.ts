@@ -343,13 +343,12 @@ function setup(): void {
     run(() => openSession(staxOwner, GREEDY_GAME_SESSION)),
   );
   ui.abuseBet.addEventListener("click", withPlay(betTooMuch));
-  ui.abuseAuto.addEventListener(
-    "click",
-    withPlay(async (current) => {
-      if (autoClicking) autoClicking = false;
-      else await autoClick(current);
-    }),
-  );
+  // Not passed the click: the button stays on, its second click stops the auto-clicker.
+  const startAutoClick = withPlay(autoClick);
+  ui.abuseAuto.addEventListener("click", () => {
+    if (autoClicking) autoClicking = false;
+    else startAutoClick();
+  });
   ui.close.addEventListener("click", withPlay(closeSession));
 }
 
