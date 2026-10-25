@@ -8,9 +8,11 @@ import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceAct
 import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
 import { type GetPqPublicKeyDAReturnType } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
 import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
+import { type SignTransactionPqDAReturnType } from "@api/app-binder/SignTransactionPqDeviceActionTypes";
 import { type AddressOptions } from "@api/model/AddressOptions";
 import { type AppConfigOptions } from "@api/model/AppConfigOptions";
 import { type PqPublicKeyOptions } from "@api/model/PqPublicKeyOptions";
+import { type PqTransactionOptions } from "@api/model/PqTransactionOptions";
 import { type TransactionOptions } from "@api/model/TransactionOptions";
 import { type SignerXrp } from "@api/SignerXrp";
 import { makeContainer } from "@internal/di";
@@ -20,6 +22,7 @@ import { configTypes } from "@internal/use-cases/config/di/configTypes";
 import { type GetAppConfigUseCase } from "@internal/use-cases/config/GetAppConfigUseCase";
 import { pqTypes } from "@internal/use-cases/pq/di/pqTypes";
 import { type GetPqPublicKeyUseCase } from "@internal/use-cases/pq/GetPqPublicKeyUseCase";
+import { type SignTransactionPqUseCase } from "@internal/use-cases/pq/SignTransactionPqUseCase";
 import { transactionTypes } from "@internal/use-cases/transaction/di/transactionTypes";
 import { type SignTransactionUseCase } from "@internal/use-cases/transaction/SignTransactionUseCase";
 
@@ -64,5 +67,14 @@ export class DefaultSignerXrp implements SignerXrp {
     return this._container
       .get<GetPqPublicKeyUseCase>(pqTypes.GetPqPublicKeyUseCase)
       .execute(options);
+  }
+
+  signTransactionPq(
+    signingData: Uint8Array,
+    options?: PqTransactionOptions,
+  ): SignTransactionPqDAReturnType {
+    return this._container
+      .get<SignTransactionPqUseCase>(pqTypes.SignTransactionPqUseCase)
+      .execute(signingData, options);
   }
 }

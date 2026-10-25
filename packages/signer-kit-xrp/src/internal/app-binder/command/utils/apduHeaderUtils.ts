@@ -14,6 +14,10 @@ export const INS = {
    * app-xrp, `src/pq/pq_root.h`): the public key, read in chunks.
    */
   PQ_GET_PUBLIC_KEY: 0x10,
+  /** The signing data to sign with the ML-DSA-44 key, in chunks. */
+  PQ_SIGN: 0x11,
+  /** The last ML-DSA-44 signature, read in chunks. */
+  PQ_GET_SIGNATURE: 0x12,
 } as const;
 
 export const P1_DEFAULT = 0x00 as const;
@@ -49,3 +53,14 @@ export const P2_RETURN_CHAIN_CODE = 0x01 as const;
  */
 export const P1_SUBSEQUENT_CHUNK = 0x01 as const;
 export const P1_MORE_CHUNKS = 0x80 as const;
+
+/**
+ * P1 and P2 of the chunked ML-DSA Sign APDU (`INS 0x11`). Unlike `INS 0x04`,
+ * they are two separate values: P1 is `00` on the first chunk (the app empties
+ * its buffer) and `01` on the next ones; P2 is `01` on the last chunk, which
+ * starts the review, and `00` before it.
+ */
+export const PQ_P1_FIRST_CHUNK = 0x00 as const;
+export const PQ_P1_NEXT_CHUNK = 0x01 as const;
+export const PQ_P2_MORE_CHUNKS = 0x00 as const;
+export const PQ_P2_LAST_CHUNK = 0x01 as const;

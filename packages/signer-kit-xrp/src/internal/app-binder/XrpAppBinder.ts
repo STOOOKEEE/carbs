@@ -11,6 +11,7 @@ import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceAct
 import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
 import { type GetPqPublicKeyDAReturnType } from "@api/app-binder/GetPqPublicKeyDeviceActionTypes";
 import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
+import { type SignTransactionPqDAReturnType } from "@api/app-binder/SignTransactionPqDeviceActionTypes";
 import { type Curve } from "@api/model/Curve";
 import { APP_NAME } from "@internal/app-binder/constants";
 import { externalTypes } from "@internal/externalTypes";
@@ -19,6 +20,7 @@ import { GetAppConfigCommand } from "./command/GetAppConfigCommand";
 import { GetAddressDeviceActionFactory } from "./device-action/GetAddressDeviceActionFactory";
 import { GetPqPublicKeyDeviceActionFactory } from "./device-action/GetPqPublicKeyDeviceActionFactory";
 import { SignTransactionDeviceActionFactory } from "./device-action/SignTransactionDeviceActionFactory";
+import { SignTransactionPqDeviceActionFactory } from "./device-action/SignTransactionPqDeviceActionFactory";
 
 @injectable()
 export class XrpAppBinder {
@@ -84,6 +86,24 @@ export class XrpAppBinder {
     return this.dmk.executeDeviceAction({
       sessionId: this.sessionId,
       deviceAction: GetPqPublicKeyDeviceActionFactory(args),
+    });
+  }
+
+  /**
+   * Signs with the ML-DSA-44 key through
+   * {@link SignTransactionPqDeviceActionFactory}, the signing data passed as
+   * a factory arg (direct execute path).
+   */
+  signTransactionPq(args: {
+    transaction: Uint8Array;
+    skipOpenApp: boolean;
+  }): SignTransactionPqDAReturnType {
+    return this.dmk.executeDeviceAction({
+      sessionId: this.sessionId,
+      deviceAction: SignTransactionPqDeviceActionFactory({
+        ...args,
+        loggerFactory: this.dmkLoggerFactory,
+      }),
     });
   }
 }

@@ -31,6 +31,15 @@ export {
   type SignTransactionDAReturnType,
   SignTransactionDAStep,
 } from "@api/app-binder/SignTransactionDeviceActionTypes";
+export { SignTransactionPqDeviceActionFactory } from "@api/app-binder/SignTransactionPqDeviceActionFactory";
+export {
+  type SignTransactionPqDAError,
+  type SignTransactionPqDAInput,
+  type SignTransactionPqDAIntermediateValue,
+  type SignTransactionPqDAOutput,
+  type SignTransactionPqDAReturnType,
+  SignTransactionPqDAStep,
+} from "@api/app-binder/SignTransactionPqDeviceActionTypes";
 export { type Address } from "@api/model/Address";
 export { type AddressOptions } from "@api/model/AddressOptions";
 export { type AppConfig } from "@api/model/AppConfig";
@@ -38,6 +47,8 @@ export { type AppConfigOptions } from "@api/model/AppConfigOptions";
 export { Curve } from "@api/model/Curve";
 export { type PqPublicKey } from "@api/model/PqPublicKey";
 export { type PqPublicKeyOptions } from "@api/model/PqPublicKeyOptions";
+export { type PqSignature } from "@api/model/PqSignature";
+export { type PqTransactionOptions } from "@api/model/PqTransactionOptions";
 export { type Signature } from "@api/model/Signature";
 export { type TransactionOptions } from "@api/model/TransactionOptions";
 export { type SignerXrp } from "@api/SignerXrp";

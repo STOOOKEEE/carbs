@@ -6,6 +6,8 @@ import {
 import { from } from "rxjs";
 import { vi } from "vitest";
 
+import { SignTransactionPqDeviceAction } from "@internal/app-binder/device-action/SignTransactionPq/SignTransactionPqDeviceAction";
+
 import { DefaultSignerXrp } from "./DefaultSignerXrp";
 
 /** The signer methods that drive the post-quantum root and the session policy. */
@@ -67,6 +69,31 @@ describe("DefaultSignerXrp extensions", () => {
       // THEN
       const callArgs = executeDeviceAction.mock
         .calls[0]![0] as ExecuteDeviceActionCallArgs;
+      expect(callArgs.deviceAction.input.skipOpenApp).toBe(true);
+    });
+  });
+
+  describe("signTransactionPq", () => {
+    it("should delegate to the use case with the signing data", () => {
+      // GIVEN
+      const { executeDeviceAction, expectedResult, signer } = setup();
+      const signingData = Uint8Array.from([0x53, 0x54, 0x58, 0x00, 0x12]);
+
+      // WHEN
+      const result = signer.signTransactionPq(signingData, {
+        skipOpenApp: true,
+      });
+
+      // THEN
+      expect(result).toBe(expectedResult);
+      const callArgs = executeDeviceAction.mock.calls[0]![0] as {
+        sessionId: DeviceSessionId;
+        deviceAction: SignTransactionPqDeviceAction;
+      };
+      expect(callArgs.deviceAction).toBeInstanceOf(
+        SignTransactionPqDeviceAction,
+      );
+      expect(callArgs.deviceAction.input.transaction).toBe(signingData);
       expect(callArgs.deviceAction.input.skipOpenApp).toBe(true);
     });
   });
