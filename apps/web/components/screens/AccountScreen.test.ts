@@ -16,6 +16,14 @@ describe("Account screen", () => {
     expect(wrapper.find("[data-testid='sim-badge']").exists()).toBe(true);
   });
 
+  it("does not claim device signing for the simulated Stax", () => {
+    const { wrapper } = mountScreen(AccountScreen);
+    const ledger = wrapper.get("[data-testid='profile-ledger']").text();
+    expect(ledger).not.toContain("signed on the device");
+    expect(ledger).toContain("signed by the simulated Stax");
+    expect(wrapper.get("[data-testid='profile-mac']").text()).not.toMatch(/device/i);
+  });
+
   it("runs the passkey-only recipe: blackhole regular key, master disabled", async () => {
     const { wrapper, ctx } = mountScreen(AccountScreen);
     await wrapper.get("[data-testid='passkey-only']").setValue(true);

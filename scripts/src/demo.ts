@@ -7,7 +7,8 @@
  *
  * XRPLD_BIN must be a build that carries the SigningSessions amendment: without it the web
  * app refuses the node and stays on the simulation, and says why. The genesis seed comes from
- * the environment and is never written anywhere.
+ * the environment, is never written anywhere, and is not passed to any child process (the
+ * faucet that signs with it runs in this process; `childEnv`).
  */
 import { WebSocketClient, classicSignerFromSeed } from "@carbs/sessions";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -15,6 +16,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { childEnv } from "./child-env.js";
 import { localConfig, portsOf } from "./config.js";
 import { createFaucetServer } from "./faucet.js";
 
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
     );
   }
   const genesis = classicSignerFromSeed(seed);
+  delete process.env["GENESIS_SEED"];
 
   const sourceConfig = readFileSync(join(ROOT, "infra", "standalone.cfg"), "utf8");
   const ports = portsOf(sourceConfig);
@@ -98,7 +101,7 @@ async function main(): Promise<void> {
   ): ChildProcess => {
     const child = spawn(command, commandArgs, {
       cwd: ROOT,
-      env: { ...process.env, ...env },
+      env: childEnv(process.env, env),
       stdio: ["ignore", "pipe", "pipe"],
     });
     const log = (stream: NodeJS.ReadableStream, out: NodeJS.WriteStream): void => {
