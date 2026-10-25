@@ -46,10 +46,11 @@ typedef struct {
 
 // What a SigningSessionSet asks for, read from the parsed fields
 typedef struct {
-    bool all_transactions;  // tfAllTransactions set
-    bool has_cap;
-    bool cap_is_xrp;
-    uint64_t cap;  // drops
+    bool all_transactions;  // tfAllTransactions set (mode A)
+    bool has_permissions;   // a Permissions array (mode P)
+    bool has_cap;           // a SessionCap (mode C)
+    bool cap_is_xrp;        // a positive XRP amount the node accepts
+    uint64_t cap;           // drops
     bool has_max_per_tx;
     bool max_per_tx_is_xrp;
     uint64_t max_per_tx;  // drops
@@ -58,16 +59,26 @@ typedef struct {
     bool has_witness;
 } session_request_t;
 
+// The node's own bounds (rippled Protocol.h, SigningSessionSet.cpp): a
+// session lasts 1 to 600 seconds, an XRP amount is at most 10^17 drops.
+#define SESSION_MAX_DURATION 600
+#define SESSION_MAX_XRP_DROPS 100000000000000000ULL
+
 typedef enum {
     SESSION_POLICY_OK = 0,
+    SESSION_POLICY_UNREAD,
+    SESSION_POLICY_MODE_INVALID,
     SESSION_POLICY_MODE_ALL_BLOCKED,
     SESSION_POLICY_MODE_PERMISSIONS_BLOCKED,
     SESSION_POLICY_CAP_NOT_XRP,
     SESSION_POLICY_CAP_ABOVE,
+    SESSION_POLICY_PER_TX_WITHOUT_CAP,
+    SESSION_POLICY_PER_TX_ABOVE_CAP,
     SESSION_POLICY_PER_TX_MISSING,
     SESSION_POLICY_PER_TX_NOT_XRP,
     SESSION_POLICY_PER_TX_ABOVE,
     SESSION_POLICY_DURATION_MISSING,
+    SESSION_POLICY_DURATION_INVALID,
     SESSION_POLICY_DURATION_ABOVE,
     SESSION_POLICY_WITNESS_MISSING,
 } session_policy_violation_t;

@@ -49,4 +49,9 @@ typedef struct {
 
 int parse_tx(parseContext_t *parse_context);
 
+// A Batch whose parsing stopped before its end (too many fields, a nested
+// array...): the inner transactions after that point are unknown, so one of
+// them may open a session.
+bool is_batch_unread(const parseContext_t *parse_context);
+
 #endif  // LEDGER_APP_XRP_XRPPARSE_H

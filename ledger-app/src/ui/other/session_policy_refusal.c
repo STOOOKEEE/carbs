@@ -9,12 +9,12 @@
 #include "nbgl_use_case.h"
 #include "ui.h"
 
+#ifdef SCREEN_SIZE_WALLET
 #define REFUSAL_REASON_SIZE 96
 
 // Kept while the refusal screen is shown
 static char G_refusal_reason[REFUSAL_REASON_SIZE];
 
-#ifdef SCREEN_SIZE_WALLET
 static void ui_session_policy_refusal_choice(bool back_to_home) {
     if (back_to_home) {
         display_idle_menu();
@@ -27,17 +27,18 @@ static void ui_session_policy_refusal_ack(void) { display_idle_menu(); }
 #endif
 
 void ui_session_policy_refusal(const session_policy_verdict_t *verdict) {
+#ifdef SCREEN_SIZE_WALLET
     // Without a reason that fits, the title alone still says why
     const char *reason = NULL;
     if (session_policy_format_refusal(verdict, G_refusal_reason, sizeof(G_refusal_reason))) {
         reason = G_refusal_reason;
     }
-
-#ifdef SCREEN_SIZE_WALLET
     nbgl_useCaseChoice(&ICON_APP_WARNING, "Blocked by your session policy", reason,
                        "Back to home", "Session policy settings",
                        ui_session_policy_refusal_choice);
 #else
+    // No room for the reason on a Nano screen
+    (void) verdict;
     nbgl_useCaseAction(&C_Alert_circle_14px, "Blocked by your\nsession policy", NULL,
                        ui_session_policy_refusal_ack);
 #endif

@@ -109,38 +109,42 @@ Non-signing fields (`TxnSignature`, `Signers`, `PasskeySignature`) are never par
 
 ```ts
 const agentId = (address: string): string =>
-  bytesToHex(decodeAccountID(address).subarray(0, 4)).toUpperCase().replace(/^(.{4})/, "$1-");
+  bytesToHex(decodeAccountID(address).subarray(0, 4))
+    .toUpperCase()
+    .replace(/^(.{4})/, "$1-");
 ```
 
 The line is the app's own (`XRP_ACCOUNT_AGENT_ID`, `ledger-app/src/xrp/signing_session.h`): a signed field claiming its id is refused, like the synthetic `Note`.
 
-**Never blind-signed.** A session transaction the app cannot clear-sign (an unknown field, too many fields, an unknown permission value or flag, or a `Batch` holding one that would go blind) is refused even when the blind-signing setting is on: the device shows `Session transactions are never blind-signed` and answers `0x6815`, on the classical path and on the ML-DSA path alike (`ledger-app/src/xrp/xrp_parse.c`, `parse_tx`; `ledger-app/src/apdu/messages/sign_transaction.c`; `review_signing_data`, `ledger-app/src/pq/pq_root.c`). A `Batch` is checked as far as its parsing went: an inner transaction after the point where parsing stopped is not known to the app.
+**Never blind-signed.** A session transaction the app cannot clear-sign (an unknown field, too many fields, an unknown permission value or flag, or a `Batch` holding one that would go blind) is refused even when the blind-signing setting is on: the device shows `Session transactions are never blind-signed` and answers `0x6815`, on the classical path and on the ML-DSA path alike (`ledger-app/src/xrp/xrp_parse.c`, `parse_tx`; `ledger-app/src/apdu/messages/sign_transaction.c`; `review_signing_data`, `ledger-app/src/pq/pq_root.c`). A `Batch` whose parsing stops before its end (the 60-field limit, an array nested in an inner transaction, an inner `Fee` other than 0) is refused the same way, whatever its inner transactions: one after the point where parsing stopped may open a session the app never read (`is_batch_unread`; vectors `32-batch/04-inner-fee-not-zero`, `05-memos-in-inner`, `06-session-after-field-limit`). A fully read `Batch` with no session that cannot be shown in full (`03-unsupported-inner-type`) still goes to blind signing. The session policy (section 7) is checked first: when it refuses, the answer is `0x6986`, not `0x6815`.
+
+**Malformed sessions.** A session transaction carrying `SessionKey`, `SessionWitness`, `SessionCap`, `SessionMaxPerTx` or `SessionDuration` twice (the node refuses it, `Duplicate field detected`) is refused before any screen with `0x68xx` (`INVALID_STATE`) on the classical path and `0x6A80` on the ML-DSA path (`has_duplicate_session_field`, `ledger-app/src/xrp/xrp_parse.c`; vectors `30-signing-session-set/16-duplicate-cap`, `34-session-agent-id/05-duplicate-session-key`).
 
 ## 7. Session policy
 
 The user's own limits on the signing sessions the device agrees to open, stored in the device NVM (`session_policy_t` in `internal_storage_t`, `ledger-app/src/policy/session_policy.h`, `ledger-app/src/globals.h`). It is **edited only from the device settings**; the host can read it, never write it. Fresh install: all zero, policy off, nothing changes.
 
-**Settings** (`ledger-app/src/ui/main/session_policy_menu.c`), after the `Blind signing` page:
+**Settings** (`ledger-app/src/ui/main/session_policy_menu.c`): the four switches follow `Blind signing` in one list (NBGL can open a settings page directly only when the first content spans more than one page, which the limits page and the refusal's `Session policy settings` button need):
 
-| Setting (switch)   | Sub-text                          | Meaning when on                   |
-| ------------------ | --------------------------------- | --------------------------------- |
-| `Session policy`   | `Check sessions before review`    | the policy is checked             |
+| Setting (switch)   | Sub-text                          | Meaning when on                      |
+| ------------------ | --------------------------------- | ------------------------------------ |
+| `Session policy`   | `Check sessions before review`    | the policy is checked                |
 | `All transactions` | `Allow sessions for any type`     | mode A (`tfAllTransactions`) allowed |
-| `Permissions`      | `Allow sessions with permissions` | mode P (`Permissions`) allowed    |
-| `Witness`          | `Require a session witness`       | `SessionWitness` must be present  |
+| `Permissions`      | `Allow sessions with permissions` | mode P (`Permissions`) allowed       |
+| `Witness`          | `Require a session witness`       | `SessionWitness` must be present     |
 
 Then three limits, each a bar whose tap moves to the next preset: `Max spend: …` (no limit, XRP 10, 50, 100, 500), `Max per payment: …` (no limit, XRP 1, 5, 10, 50), `Max duration: …` (no limit, 1, 3, 5, 10 min).
 
-**Check.** On the classical path (`0x04`) and the ML-DSA path (`0x11`), when the policy is on, every `SigningSessionSet` (the transaction itself, or each inner transaction of a `Batch`) is checked before any review (`review_transaction`, `ledger-app/src/transaction/transaction.c`; `review_signing_data`, `ledger-app/src/pq/pq_root.c`; both call `session_policy_check_transaction`). Refused: mode A when not allowed; mode P (no flag, no `SessionCap`) when not allowed; `SessionCap` not XRP or above `Max spend`; under a `SessionCap`, `SessionMaxPerTx` missing, not XRP or above `Max per payment` (when that limit is set); `SessionDuration` missing or above `Max duration`; no `SessionWitness` when required. A limit at "no limit" is not checked. The device shows `Blocked by your session policy` with the reason (for example `Max spend XRP 500 is above XRP 50`, prefixed `Transaction n: ` for an inner transaction of a `Batch`), buttons `Back to home` / `Session policy settings` (Nano: `Blocked by your session policy` only), and answers **`0x6986`** at once, on both paths.
+**Check.** On the classical path (`0x04`) and the ML-DSA path (`0x11`), when the policy is on, every `SigningSessionSet` (the transaction itself, or each inner transaction of a `Batch`) is checked before any review and before the `0x6815` refusal of section 6 (`review_transaction` and `refused_by_session_policy`, `ledger-app/src/transaction/transaction.c`; `ledger-app/src/apdu/messages/sign_transaction.c`; `review_signing_data`, `ledger-app/src/pq/pq_root.c`; all call `session_policy_check_transaction`). Refused first, whatever the limits, what the node refuses (`SigningSessionSet::preflight`): not exactly one mode among A (flag), P (a `Permissions` array) and C (`SessionCap`) (`Not exactly one session mode`); a `SessionCap` or `SessionMaxPerTx` that is not a positive XRP amount of at most 10^17 drops (zero, an issued currency or an MPT amount: `… is not a positive XRP amount`); `SessionMaxPerTx` without `SessionCap` or above it; `SessionDuration` missing, 0 or above 600 s; and a `SigningSessionSet` or `Batch` whose parsing stopped before its end (`Too long to check against your policy`). Then the user's limits: mode A when not allowed; mode P when not allowed; `SessionCap` above `Max spend`; under a `SessionCap`, `SessionMaxPerTx` missing or above `Max per payment` (when that limit is set); `SessionDuration` above `Max duration`; no `SessionWitness` when required. A limit at "no limit" is not checked. The device shows `Blocked by your session policy` with the reason (for example `Max spend XRP 500 is above XRP 50`, prefixed `Transaction n: ` for an inner transaction of a `Batch`), buttons `Back to home` / `Session policy settings` (Nano: `Blocked by your session policy` only), and answers **`0x6986`** at once, on both paths.
 
 **`INS 0x08`: get session policy.** `P1 = P2 = 0x00` (else `0x6B00`), no data. Answer, 22 bytes, `0x9000` (`session_policy_serialize`, `ledger-app/src/policy/session_policy.c`; `ledger-app/src/apdu/messages/get_session_policy.c`):
 
-| Offset | Size | Field                                                                                   |
-| ------ | ---- | --------------------------------------------------------------------------------------- |
-| 0      | 1    | format version, `0x01`                                                                   |
+| Offset | Size | Field                                                                                          |
+| ------ | ---- | ---------------------------------------------------------------------------------------------- |
+| 0      | 1    | format version, `0x01`                                                                         |
 | 1      | 1    | flags: `0x01` policy on, `0x02` mode A allowed, `0x04` mode P allowed, `0x08` witness required |
-| 2      | 8    | max `SessionCap`, drops, big-endian; `0` = no limit                                      |
-| 10     | 8    | max `SessionMaxPerTx`, drops, big-endian; `0` = no limit                                 |
-| 18     | 4    | max `SessionDuration`, seconds, big-endian; `0` = no limit                               |
+| 2      | 8    | max `SessionCap`, drops, big-endian; `0` = no limit                                            |
+| 10     | 8    | max `SessionMaxPerTx`, drops, big-endian; `0` = no limit                                       |
+| 18     | 4    | max `SessionDuration`, seconds, big-endian; `0` = no limit                                     |
 
 Fresh install: `01` followed by 21 zero bytes.

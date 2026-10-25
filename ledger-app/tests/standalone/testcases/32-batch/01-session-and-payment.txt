@@ -10,7 +10,8 @@ Agent ID; A1E8-094F
 Network ID; 24100
 Valid for; 10 minutes
 Max spend; XRP 20
-Note; Cannot change keys, signers or the account
+Allows; XRP payments only, fees included
+Note; Cannot change keys or signers
 Tx 2/2; Payment
 Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
 Network ID; 24100

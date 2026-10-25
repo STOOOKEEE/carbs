@@ -8,4 +8,5 @@ Fee; XRP 0.000012
 Max spend; XRP 40
 Max per payment; XRP 10
 Witness;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
-Note; Cannot change keys, signers or the account
+Allows; XRP payments only, fees included
+Note; Cannot change keys or signers

@@ -247,6 +247,11 @@ int handle_packet_content(uint8_t p1, uint8_t p2, uint8_t* work_buffer,
         // to be reset.
         int exception = parse_tx(&parse_context);
         if (exception == SESSION_BLIND_SIGN_REFUSED) {
+            // The session policy answers first (0x6986), as for a
+            // transaction the review can show (review_transaction()).
+            if (refused_by_session_policy()) {
+                return 0;
+            }
             // Never offered for blind signing, whatever the setting says.
             ui_error_session_blind_signing();
             return send_error(0x6800 | SESSION_BLIND_SIGN_REFUSED);

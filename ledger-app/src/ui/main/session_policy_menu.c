@@ -39,6 +39,7 @@ enum {
     POLICY_REQUIRE_WITNESS_IDX,
     POLICY_SWITCHES_NB,
 };
+_Static_assert(POLICY_SWITCHES_NB == SESSION_POLICY_SWITCHES_NB, "policy switches count");
 
 enum {
     POLICY_MAX_CAP_IDX = 0,
@@ -58,10 +59,11 @@ enum {
     POLICY_MAX_DURATION_TOKEN,
 };
 
-static nbgl_contentSwitch_t G_policy_switches[POLICY_SWITCHES_NB];
+// The policy's part of the settings' switches list (idle_menu_nbgl.c)
+static nbgl_contentSwitch_t *G_policy_switches;
 static char G_bar_buffers[POLICY_BARS_NB][BAR_TEXT_SIZE];
 static const char *G_bar_texts[POLICY_BARS_NB];
-static uint8_t G_bar_tokens[POLICY_BARS_NB] = {
+static const uint8_t G_bar_tokens[POLICY_BARS_NB] = {
     POLICY_MAX_CAP_TOKEN,
     POLICY_MAX_PER_TX_TOKEN,
     POLICY_MAX_DURATION_TOKEN,
@@ -84,26 +86,23 @@ static void toggle_switch(uint8_t idx, volatile uint8_t *stored) {
     nvm_write((void *) stored, &new_setting, sizeof(new_setting));
 }
 
-static void switches_callback(int token, uint8_t index, int page) {
-    (void) index;
-    (void) page;
+bool session_policy_switch_tapped(int token) {
     switch (token) {
         case POLICY_ENABLED_TOKEN:
             toggle_switch(POLICY_ENABLED_IDX, &N_storage.session_policy.enabled);
-            break;
+            return true;
         case POLICY_ALLOW_ALL_TOKEN:
             toggle_switch(POLICY_ALLOW_ALL_IDX, &N_storage.session_policy.allow_all_transactions);
-            break;
+            return true;
         case POLICY_ALLOW_PERMISSIONS_TOKEN:
             toggle_switch(POLICY_ALLOW_PERMISSIONS_IDX,
                           &N_storage.session_policy.allow_permissions);
-            break;
+            return true;
         case POLICY_REQUIRE_WITNESS_TOKEN:
             toggle_switch(POLICY_REQUIRE_WITNESS_IDX, &N_storage.session_policy.require_witness);
-            break;
+            return true;
         default:
-            PRINTF("Unreachable\n");
-            break;
+            return false;
     }
 }
 
@@ -174,9 +173,10 @@ static void format_duration_limit(uint32_t seconds, char *out) {
     }
 }
 
-void session_policy_menu_prepare(nbgl_content_t *contents) {
+void session_policy_menu_prepare(nbgl_contentSwitch_t *switches, nbgl_content_t *limits) {
     session_policy_t policy = N_storage.session_policy;
 
+    G_policy_switches = switches;
     set_switch(POLICY_ENABLED_IDX,
                "Session policy",
                "Check sessions before review",
@@ -205,18 +205,13 @@ void session_policy_menu_prepare(nbgl_content_t *contents) {
         G_bar_texts[i] = G_bar_buffers[i];
     }
 
-    contents[0].type = SWITCHES_LIST;
-    contents[0].content.switchesList.switches = G_policy_switches;
-    contents[0].content.switchesList.nbSwitches = POLICY_SWITCHES_NB;
-    contents[0].contentActionCallback = switches_callback;
-
-    contents[1].type = BARS_LIST;
-    contents[1].content.barsList.barTexts = G_bar_texts;
-    contents[1].content.barsList.tokens = G_bar_tokens;
-    contents[1].content.barsList.nbBars = POLICY_BARS_NB;
+    limits->type = BARS_LIST;
+    limits->content.barsList.barTexts = G_bar_texts;
+    limits->content.barsList.tokens = G_bar_tokens;
+    limits->content.barsList.nbBars = POLICY_BARS_NB;
 #ifdef HAVE_PIEZO_SOUND
-    contents[1].content.barsList.tuneId = TUNE_TAP_CASUAL;
+    limits->content.barsList.tuneId = TUNE_TAP_CASUAL;
 #endif
-    contents[1].contentActionCallback = bars_callback;
+    limits->contentActionCallback = bars_callback;
 }
 #endif

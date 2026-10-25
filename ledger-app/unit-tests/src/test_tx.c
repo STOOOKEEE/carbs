@@ -367,18 +367,22 @@ static const char* session_never_blind_testcases[] = {
     // A Batch that would go blind (TicketCreate inner) holding a session.
     "../../tests/standalone/testcases/34-session-agent-id/"
     "03-batch-session-refused.raw",
+    // Batches whose parsing stops early, so what is left may open a session:
+    // an inner Fee other than 0 (it would be hidden as a protocol constant)...
+    "../../tests/standalone/testcases/32-batch/04-inner-fee-not-zero.raw",
+    // ...an array nested in RawTransactions...
+    "../../tests/standalone/testcases/32-batch/05-memos-in-inner.raw",
+    // ...or outer Memos filling the field budget before a SigningSessionSet.
+    "../../tests/standalone/testcases/32-batch/"
+    "06-session-after-field-limit.raw",
     NULL,
 };
 
-// A Batch the app cannot show in full goes blind (FIANSO-SPEC 7.4), never a
-// partial clear-sign review.
+// A fully read Batch the app cannot show in full goes blind (FIANSO-SPEC
+// 7.4), never a partial clear-sign review.
 static const char* batch_blind_testcases[] = {
     // TicketCreate is not an inner type the review supports.
     "../../tests/standalone/testcases/32-batch/03-unsupported-inner-type.raw",
-    // An inner Fee other than 0 would be hidden as a protocol constant.
-    "../../tests/standalone/testcases/32-batch/04-inner-fee-not-zero.raw",
-    // Memos inside an inner transaction: an array nested in RawTransactions.
-    "../../tests/standalone/testcases/32-batch/05-memos-in-inner.raw",
     NULL,
 };
 
@@ -399,6 +403,12 @@ static const char* session_refused_testcases[] = {
     // A signed field claiming the id of the app's own "Agent ID" row.
     "../../tests/standalone/testcases/34-session-agent-id/"
     "04-spoofed-agent-id.raw",
+    // SessionCap carried twice (20 XRP, then 500 XRP).
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "16-duplicate-cap.raw",
+    // SessionKey carried twice: the Agent ID would follow only one.
+    "../../tests/standalone/testcases/34-session-agent-id/"
+    "05-duplicate-session-key.raw",
     NULL,
 };
 

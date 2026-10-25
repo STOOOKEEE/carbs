@@ -676,6 +676,8 @@ static void test_session_never_blind_signed(void** state) {
         "30-signing-session-set/06-unknown-permission.raw",
         /* A Batch that would go blind holding a session. */
         "34-session-agent-id/03-batch-session-refused.raw",
+        /* A Batch whose parsing stops before its session (field limit). */
+        "32-batch/06-session-after-field-limit.raw",
     };
     static const uint8_t settings[] = {BlindSignEnabled, BlindSignDisabled};
     for (size_t v = 0; v < sizeof(vectors) / sizeof(vectors[0]); v++) {
@@ -700,6 +702,24 @@ static void test_session_never_blind_signed(void** state) {
     }
 }
 
+/* The same Batch with the policy on: the policy answers first (0x6986),
+ * since it cannot read the session after the point where parsing stopped. */
+static void test_session_policy_refuses_unread_batch(void** state) {
+    (void)state;
+    enable_policy();
+    test_storage.allow_blind_sign = BlindSignEnabled;
+    message_t message;
+    load_signing_data("32-batch/06-session-after-field-limit.raw", &message);
+
+    assert_int_equal(send_signing_data(&message, 250),
+                     SW_SESSION_POLICY_REFUSED);
+    assert_int_equal(policy_refusal_screens, 1);
+    assert_int_equal(policy_verdict.violation, SESSION_POLICY_UNREAD);
+    assert_int_equal(session_blind_screens, 0);
+    assert_int_equal(review_screens + blind_review_screens, 0);
+    assert_int_equal(signatures, 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_public_key_chunks, setup),
@@ -722,6 +742,8 @@ int main(void) {
         cmocka_unit_test_setup(test_session_policy_refuses, setup),
         cmocka_unit_test_setup(test_session_policy_allows, setup),
         cmocka_unit_test_setup(test_session_never_blind_signed, setup),
+        cmocka_unit_test_setup(test_session_policy_refuses_unread_batch,
+                               setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

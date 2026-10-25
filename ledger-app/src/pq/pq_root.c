@@ -186,24 +186,25 @@ static int review_signing_data(void) {
     parse_context.data = PQ->message + sizeof(PQ_SIGNING_PREFIX);
     parse_context.length = PQ->message_length - sizeof(PQ_SIGNING_PREFIX);
     int result = parse_tx(&parse_context);
-    if (result == SESSION_BLIND_SIGN_REFUSED) {
-        /* Never offered for blind signing, whatever the setting says. */
-        PQ->message_length = 0;
-        ui_error_session_blind_signing();
-        return io_send_sw(SW_SESSION_BLIND_REFUSED);
-    }
-    if (result != 0 && result != BLIND_SIGN_REQUIRED) {
+    if (result != 0 && result != BLIND_SIGN_REQUIRED && result != SESSION_BLIND_SIGN_REFUSED) {
         PQ->message_length = 0;
         return io_send_sw(SW_WRONG_DATA);
     }
     /* As review_transaction() (transaction.c): the policy is checked before
-     * any review; the refusal screen answers 0x6986 and resets the context. */
+     * any review or refusal; the refusal screen answers 0x6986 and resets
+     * the context. */
     session_policy_t policy = N_storage.session_policy;
     session_policy_verdict_t verdict;
     if (!session_policy_check_transaction(&policy, &verdict)) {
         PQ->message_length = 0;
         ui_session_policy_refusal(&verdict);
         return 0;
+    }
+    if (result == SESSION_BLIND_SIGN_REFUSED) {
+        /* Never offered for blind signing, whatever the setting says. */
+        PQ->message_length = 0;
+        ui_error_session_blind_signing();
+        return io_send_sw(SW_SESSION_BLIND_REFUSED);
     }
     if (result == BLIND_SIGN_REQUIRED && N_storage.allow_blind_sign == BlindSignDisabled) {
         /* As review_transaction() (transaction.c): the error screen, whose

@@ -16,7 +16,7 @@ from .functional_test import _enable_blind_signing
 from .utils import DEFAULT_BIP32_PATH
 from .xrp import XRPClient
 
-TESTCASES = Path(__file__).parent / "testcases" / "34-session-agent-id"
+TESTCASES = Path(__file__).parent / "testcases"
 
 # parse_tx() result SESSION_BLIND_SIGN_REFUSED (21), answered as 0x6800 | code
 # (ledger-app/src/xrp/signing_session.h, sign_transaction.c).
@@ -29,14 +29,15 @@ REFUSAL_SCREEN_TEXT = ".*never"
 @pytest.mark.parametrize(
     "name",
     [
-        "02-unknown-field-refused",  # a field the app cannot name
-        "03-batch-session-refused",  # a Batch that would go blind, holding a session
+        "34-session-agent-id/02-unknown-field-refused",  # a field the app cannot name
+        "34-session-agent-id/03-batch-session-refused",  # a Batch that would go blind, holding a session
+        "32-batch/06-session-after-field-limit",  # parsing stops before the Batch's session
     ],
 )
 def test_session_never_blind_signed(backend: BackendInterface, device: Device, navigator: Navigator, name: str):
     """Refused with the blind-signing setting on (Nano has no setting: refused all the same)."""
     if not backend.device.is_nano:
-        _enable_blind_signing(device, navigator)
+        _enable_blind_signing(backend, device, navigator)
 
     xrp = XRPClient(backend, navigator)
     tx = (TESTCASES / f"{name}.raw").read_bytes()

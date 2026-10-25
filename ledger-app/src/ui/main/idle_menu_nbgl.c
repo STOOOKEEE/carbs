@@ -39,26 +39,27 @@ static const nbgl_contentInfoList_t infoList = {
     .infoContents = INFO_CONTENTS,
 };
 
+// One switches list: blind signing, then the session policy switches
 enum {
     BLIND_SIGNING_IDX = 0,
-    NB_SETTINGS_SWITCHES,
+    SESSION_POLICY_SWITCHES_IDX,
+    NB_SETTINGS_SWITCHES = SESSION_POLICY_SWITCHES_IDX + SESSION_POLICY_SWITCHES_NB,
 };
-static nbgl_layoutSwitch_t G_switches[NB_SETTINGS_SWITCHES];
+static nbgl_contentSwitch_t G_switches[NB_SETTINGS_SWITCHES];
 
 enum {
     BLIND_SIGNING_TOKEN = FIRST_USER_TOKEN,
 };
 
-static void settings_controls_callback(int token, uint8_t index, int page);
-
-// settings menu definition: blind signing, then the session policy pages
-#define SESSION_POLICY_CONTENT_IDX 1
-#define SETTING_CONTENTS_NB (SESSION_POLICY_CONTENT_IDX + SESSION_POLICY_CONTENTS_NB)
-static nbgl_content_t contents[SETTING_CONTENTS_NB] = {
-    {.type = SWITCHES_LIST,
-     .content.switchesList.nbSwitches = NB_SETTINGS_SWITCHES,
-     .content.switchesList.switches = G_switches,
-     .contentActionCallback = settings_controls_callback}};
+// settings menu definition: the switches, then the session policy limits.
+// Filled at runtime (set_switches_states): the app may not have an
+// initialized .data section.
+enum {
+    SWITCHES_CONTENT_IDX = 0,
+    SESSION_POLICY_LIMITS_CONTENT_IDX,
+    SETTING_CONTENTS_NB,
+};
+static nbgl_content_t contents[SETTING_CONTENTS_NB];
 
 static const nbgl_genericContents_t settingContents = {
     .callbackCallNeeded = false,
@@ -68,18 +69,14 @@ static const nbgl_genericContents_t settingContents = {
 static void settings_controls_callback(int token, uint8_t index, int page) {
     (void)index;
     (void)page;
-    uint8_t new_setting;
-    switch (token) {
-        case BLIND_SIGNING_TOKEN:
-            // Write in NVM the opposite of what the current toggle is
-            new_setting = (G_switches[BLIND_SIGNING_IDX].initState != ON_STATE);
-            G_switches[BLIND_SIGNING_IDX].initState = (nbgl_state_t)new_setting;
-            nvm_write((void*)&N_storage.allow_blind_sign, &new_setting,
-                      sizeof(new_setting));
-            break;
-        default:
-            PRINTF("Unreachable\n");
-            break;
+    if (token == BLIND_SIGNING_TOKEN) {
+        // Write in NVM the opposite of what the current toggle is
+        uint8_t new_setting = (G_switches[BLIND_SIGNING_IDX].initState != ON_STATE);
+        G_switches[BLIND_SIGNING_IDX].initState = (nbgl_state_t)new_setting;
+        nvm_write((void*)&N_storage.allow_blind_sign, &new_setting,
+                  sizeof(new_setting));
+    } else if (!session_policy_switch_tapped(token)) {
+        PRINTF("Unreachable\n");
     }
 }
 
@@ -95,7 +92,12 @@ void set_switches_states(void) {
     } else {
         G_switches[BLIND_SIGNING_IDX].initState = ON_STATE;
     }
-    session_policy_menu_prepare(&contents[SESSION_POLICY_CONTENT_IDX]);
+    contents[SWITCHES_CONTENT_IDX].type = SWITCHES_LIST;
+    contents[SWITCHES_CONTENT_IDX].content.switchesList.switches = G_switches;
+    contents[SWITCHES_CONTENT_IDX].content.switchesList.nbSwitches = NB_SETTINGS_SWITCHES;
+    contents[SWITCHES_CONTENT_IDX].contentActionCallback = settings_controls_callback;
+    session_policy_menu_prepare(&G_switches[SESSION_POLICY_SWITCHES_IDX],
+                                &contents[SESSION_POLICY_LIMITS_CONTENT_IDX]);
 }
 
 static void on_quit_clbk(void) { os_sched_exit(-1); }

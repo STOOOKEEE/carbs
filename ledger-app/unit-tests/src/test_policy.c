@@ -10,6 +10,7 @@
 
 #include "../src/policy/session_policy.h"
 #include "../src/xrp/xrp_parse.h"
+#include "../src/xrp/signing_session.h"
 
 parseContext_t parse_context;
 
@@ -64,7 +65,7 @@ static void test_policy_off(void** state) {
     session_request_t request = capped_request();
     assert_allowed(&policy, &request);
 
-    session_request_t all = {.all_transactions = true};
+    session_request_t all = {.all_transactions = true, .has_duration = true, .duration = 60};
     assert_allowed(&policy, &all);
 }
 
@@ -80,17 +81,129 @@ static void test_mode_all(void** state) {
 
 static void test_mode_permissions(void** state) {
     (void)state;
-    // Neither the flag nor a cap: mode P
     session_policy_t policy = enabled_policy();
-    session_request_t request = {.has_duration = true, .duration = 60};
+    session_request_t request = {.has_permissions = true, .has_duration = true, .duration = 60};
     assert_refused(&policy, &request, SESSION_POLICY_MODE_PERMISSIONS_BLOCKED, 0, 0);
 
     policy.allow_permissions = 1;
     assert_allowed(&policy, &request);
 
     // Allowing mode P does not allow mode A
-    request.all_transactions = true;
-    assert_refused(&policy, &request, SESSION_POLICY_MODE_ALL_BLOCKED, 0, 0);
+    session_request_t all = {.all_transactions = true, .has_duration = true, .duration = 60};
+    assert_refused(&policy, &all, SESSION_POLICY_MODE_ALL_BLOCKED, 0, 0);
+}
+
+// The node accepts exactly one mode (SigningSessionSet::preflight)
+static void test_mode_invalid(void** state) {
+    (void)state;
+    session_policy_t policy = enabled_policy();
+    policy.allow_all_transactions = 1;
+    policy.allow_permissions = 1;
+
+    session_request_t flag_and_cap = capped_request();
+    flag_and_cap.all_transactions = true;
+    assert_refused(&policy, &flag_and_cap, SESSION_POLICY_MODE_INVALID, 0, 0);
+
+    session_request_t permissions_and_cap = capped_request();
+    permissions_and_cap.has_permissions = true;
+    assert_refused(&policy, &permissions_and_cap, SESSION_POLICY_MODE_INVALID, 0, 0);
+
+    session_request_t permissions_and_flag = {
+        .all_transactions = true,
+        .has_permissions = true,
+        .has_duration = true,
+        .duration = 60,
+    };
+    assert_refused(&policy, &permissions_and_flag, SESSION_POLICY_MODE_INVALID, 0, 0);
+
+    session_request_t no_mode = {.has_duration = true, .duration = 60};
+    assert_refused(&policy, &no_mode, SESSION_POLICY_MODE_INVALID, 0, 0);
+}
+
+// What the node refuses is refused with the policy on, whatever its limits
+static void test_node_rules(void** state) {
+    (void)state;
+    session_policy_t policy = enabled_policy();
+
+    session_request_t per_tx_without_cap = {
+        .all_transactions = true,
+        .has_max_per_tx = true,
+        .max_per_tx_is_xrp = true,
+        .max_per_tx = XRP(1),
+        .has_duration = true,
+        .duration = 60,
+    };
+    policy.allow_all_transactions = 1;
+    assert_refused(&policy, &per_tx_without_cap, SESSION_POLICY_PER_TX_WITHOUT_CAP, 0, 0);
+
+    session_request_t request = capped_request();
+    request.has_max_per_tx = true;
+    request.max_per_tx_is_xrp = true;
+    request.max_per_tx = XRP(50);
+    assert_allowed(&policy, &request);
+    request.max_per_tx = XRP(50) + 1;
+    assert_refused(&policy, &request, SESSION_POLICY_PER_TX_ABOVE_CAP, XRP(50) + 1, XRP(50));
+
+    request = capped_request();
+    request.duration = 0;
+    assert_refused(&policy, &request, SESSION_POLICY_DURATION_INVALID, 0, SESSION_MAX_DURATION);
+    request.duration = SESSION_MAX_DURATION + 1;
+    assert_refused(&policy,
+                   &request,
+                   SESSION_POLICY_DURATION_INVALID,
+                   SESSION_MAX_DURATION + 1,
+                   SESSION_MAX_DURATION);
+    request.duration = SESSION_MAX_DURATION;
+    assert_allowed(&policy, &request);
+
+    request.has_duration = false;
+    assert_refused(&policy, &request, SESSION_POLICY_DURATION_MISSING, 0, 0);
+}
+
+// A SessionCap read from its 8 serialized bytes (session_request_read)
+static session_request_t request_with_cap(uint64_t raw) {
+    static uint8_t bytes[8];
+    for (size_t i = 0; i < sizeof(bytes); i++) {
+        bytes[i] = (uint8_t)(raw >> (8 * (sizeof(bytes) - 1 - i)));
+    }
+    parseResult_t result;
+    memset(&result, 0, sizeof(result));
+    result.num_fields = 1;
+    result.fields[0].data_type = STI_AMOUNT;
+    result.fields[0].id = XRP_UINT64_SESSION_CAP;
+    result.fields[0].data.ptr = bytes;
+    result.fields[0].length = sizeof(bytes);
+
+    session_request_t request;
+    session_request_read(&result, 0, &request);
+    assert_true(request.has_cap);
+    return request;
+}
+
+#define AMOUNT_POSITIVE 0x4000000000000000ULL
+#define AMOUNT_MPT      0x2000000000000000ULL
+
+static void test_amounts(void** state) {
+    (void)state;
+    session_request_t request = request_with_cap(AMOUNT_POSITIVE | XRP(20));
+    assert_true(request.cap_is_xrp);
+    assert_int_equal(request.cap, XRP(20));
+
+    request = request_with_cap(AMOUNT_POSITIVE | SESSION_MAX_XRP_DROPS);
+    assert_true(request.cap_is_xrp);
+
+    // Zero, above 10^17 drops, an MPT amount, a negative amount
+    assert_false(request_with_cap(AMOUNT_POSITIVE).cap_is_xrp);
+    assert_false(request_with_cap(AMOUNT_POSITIVE | (SESSION_MAX_XRP_DROPS + 1)).cap_is_xrp);
+    assert_false(request_with_cap(AMOUNT_POSITIVE | AMOUNT_MPT | XRP(20)).cap_is_xrp);
+    assert_false(request_with_cap(XRP(20)).cap_is_xrp);
+
+    // Refused with the policy on, even without a limit
+    session_policy_t policy = enabled_policy();
+    request = request_with_cap(AMOUNT_POSITIVE);
+    request.has_duration = true;
+    request.duration = 60;
+    assert_refused(&policy, &request, SESSION_POLICY_CAP_NOT_XRP, 0, 0);
 }
 
 static void test_cap(void** state) {
@@ -111,7 +224,7 @@ static void test_cap(void** state) {
 
     request.cap = XRP(10);
     request.cap_is_xrp = false;
-    assert_refused(&policy, &request, SESSION_POLICY_CAP_NOT_XRP, 0, XRP(50));
+    assert_refused(&policy, &request, SESSION_POLICY_CAP_NOT_XRP, 0, 0);
 }
 
 static void test_max_per_tx(void** state) {
@@ -134,7 +247,7 @@ static void test_max_per_tx(void** state) {
     assert_refused(&policy, &request, SESSION_POLICY_PER_TX_ABOVE, XRP(10) + 1, XRP(10));
 
     request.max_per_tx_is_xrp = false;
-    assert_refused(&policy, &request, SESSION_POLICY_PER_TX_NOT_XRP, 0, XRP(10));
+    assert_refused(&policy, &request, SESSION_POLICY_PER_TX_NOT_XRP, 0, 0);
 
     // Mode A has no per-payment bound: not required there
     session_request_t all = {.all_transactions = true, .has_duration = true, .duration = 60};
@@ -155,7 +268,7 @@ static void test_duration(void** state) {
     assert_refused(&policy, &request, SESSION_POLICY_DURATION_ABOVE, 301, 300);
 
     request.has_duration = false;
-    assert_refused(&policy, &request, SESSION_POLICY_DURATION_MISSING, 0, 300);
+    assert_refused(&policy, &request, SESSION_POLICY_DURATION_MISSING, 0, 0);
 }
 
 static void test_witness(void** state) {
@@ -201,6 +314,35 @@ static void test_format_refusal(void** state) {
         .limit = XRP(10),
     };
     assert_reason(&per_tx, "No max per payment (limit XRP 10)");
+
+    session_policy_verdict_t above_cap = {
+        .violation = SESSION_POLICY_PER_TX_ABOVE_CAP,
+        .value = XRP(30),
+        .limit = XRP(20),
+    };
+    assert_reason(&above_cap, "Max per payment XRP 30 is above max spend XRP 20");
+
+    session_policy_verdict_t invalid = {
+        .violation = SESSION_POLICY_DURATION_INVALID,
+        .value = 601,
+        .limit = SESSION_MAX_DURATION,
+    };
+    assert_reason(&invalid, "Duration 601 s is not 1 to 600 s");
+
+    session_policy_verdict_t unread = {.violation = SESSION_POLICY_UNREAD};
+    assert_reason(&unread, "Too long to check against your policy");
+
+    session_policy_verdict_t modes = {.violation = SESSION_POLICY_MODE_INVALID, .group = 3};
+    assert_reason(&modes, "Transaction 3: Not exactly one session mode");
+
+    // The largest amount the node accepts still fits
+    session_policy_verdict_t largest = {
+        .violation = SESSION_POLICY_CAP_ABOVE,
+        .value = SESSION_MAX_XRP_DROPS,
+        .limit = XRP(50),
+        .group = 8,
+    };
+    assert_reason(&largest, "Transaction 8: Max spend XRP 100000000000 is above XRP 50");
 
     // Too small a buffer is reported, not truncated
     char small[8];
@@ -253,11 +395,13 @@ static uint8_t* load_file(const char* filename, size_t* size) {
     return data;
 }
 
-// Parses a vector into parse_context and checks it against policy. The
-// parsed fields point into the file data, freed once the check is done.
-static bool check_vector(const char* filename,
-                         const session_policy_t* policy,
-                         session_policy_verdict_t* verdict) {
+// Parses a vector into parse_context (parse_tx() must give expected_parse)
+// and checks it against policy. The parsed fields point into the file data,
+// freed once the check is done.
+static bool check_parsed_vector(const char* filename,
+                                int expected_parse,
+                                const session_policy_t* policy,
+                                session_policy_verdict_t* verdict) {
     printf("[*] %s\n", filename);
     size_t size;
     uint8_t* data = load_file(filename, &size);
@@ -265,11 +409,17 @@ static bool check_vector(const char* filename,
     memset(&parse_context, 0, sizeof(parse_context));
     parse_context.data = data;
     parse_context.length = size;
-    assert_int_equal(parse_tx(&parse_context), 0);
+    assert_int_equal(parse_tx(&parse_context), expected_parse);
 
     bool allowed = session_policy_check_transaction(policy, verdict);
     free(data);
     return allowed;
+}
+
+static bool check_vector(const char* filename,
+                         const session_policy_t* policy,
+                         session_policy_verdict_t* verdict) {
+    return check_parsed_vector(filename, 0, policy, verdict);
 }
 
 static void test_vectors(void** state) {
@@ -338,6 +488,17 @@ static void test_vector_modes(void** state) {
     assert_true(check_vector(TESTCASES "31-signing-session-delete/01-own-close.raw",
                              &policy,
                              &verdict));
+
+    // Two modes at once: the node refuses it, so does the policy
+    policy.allow_all_transactions = 1;
+    policy.allow_permissions = 1;
+    policy.max_cap = SESSION_POLICY_NO_LIMIT;
+    assert_false(
+        check_vector(TESTCASES "30-signing-session-set/14-flag-and-cap.raw", &policy, &verdict));
+    assert_int_equal(verdict.violation, SESSION_POLICY_MODE_INVALID);
+    assert_false(check_vector(
+        TESTCASES "30-signing-session-set/15-permissions-and-cap.raw", &policy, &verdict));
+    assert_int_equal(verdict.violation, SESSION_POLICY_MODE_INVALID);
 }
 
 static void test_vector_batch(void** state) {
@@ -364,11 +525,38 @@ static void test_vector_batch(void** state) {
     assert_int_equal(verdict.value, 600);
 }
 
+// A Batch whose parsing stops at the field limit, before its inner
+// SigningSessionSet (mode A): the policy cannot read it, so refuses it.
+static void test_vector_batch_unread(void** state) {
+    (void)state;
+    session_policy_verdict_t verdict;
+    session_policy_t policy = enabled_policy();
+    policy.allow_all_transactions = 1;
+    const char* batch = TESTCASES "32-batch/06-session-after-field-limit.raw";
+
+    assert_false(check_parsed_vector(batch, SESSION_BLIND_SIGN_REFUSED, &policy, &verdict));
+    assert_int_equal(verdict.violation, SESSION_POLICY_UNREAD);
+    assert_int_equal(verdict.group, 0);
+    // Parsing stopped inside RawTransactions, before the session's type
+    assert_true(is_batch_unread(&parse_context));
+    for (uint8_t i = 0; i < parse_context.batch.inner_count; i++) {
+        assert_int_not_equal(parse_context.batch.inner[i].transaction_type,
+                             TRANSACTION_SIGNING_SESSION_SET);
+    }
+
+    // Policy off: nothing to check (parse_tx() still refuses blind signing)
+    session_policy_t off = {0};
+    assert_true(check_parsed_vector(batch, SESSION_BLIND_SIGN_REFUSED, &off, &verdict));
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_policy_off),
         cmocka_unit_test(test_mode_all),
         cmocka_unit_test(test_mode_permissions),
+        cmocka_unit_test(test_mode_invalid),
+        cmocka_unit_test(test_node_rules),
+        cmocka_unit_test(test_amounts),
         cmocka_unit_test(test_cap),
         cmocka_unit_test(test_max_per_tx),
         cmocka_unit_test(test_duration),
@@ -378,6 +566,7 @@ int main() {
         cmocka_unit_test(test_vectors),
         cmocka_unit_test(test_vector_modes),
         cmocka_unit_test(test_vector_batch),
+        cmocka_unit_test(test_vector_batch_unread),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

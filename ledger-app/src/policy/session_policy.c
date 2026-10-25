@@ -14,14 +14,16 @@
 #include "readers.h"
 #include "os.h"
 #include "sign_transaction.h"
+#include "session_permissions.h"
 #include "signing_session.h"
 #include "xrp_helpers.h"
 
 // Native XRP amount: bit 63 clear (not an issued currency), bit 62 set
-// (positive), the value in drops below.
+// (positive), bit 61 clear (not an MPT amount), the value in drops below.
 #define AMOUNT_NOT_XRP_BIT  0x8000000000000000ULL
 #define AMOUNT_POSITIVE_BIT 0x4000000000000000ULL
-#define AMOUNT_DROPS_MASK   0x3FFFFFFFFFFFFFFFULL
+#define AMOUNT_MPT_BIT      0x2000000000000000ULL
+#define AMOUNT_DROPS_MASK   0x1FFFFFFFFFFFFFFFULL
 
 // "XRP <drops as XRP>" from xrp_print_amount: up to 24 characters, and it
 // wants one byte more than the NUL
@@ -41,63 +43,78 @@ static bool refuse(session_policy_verdict_t *verdict,
     return false;
 }
 
-bool session_policy_check(const session_policy_t *policy,
-                          const session_request_t *request,
-                          session_policy_verdict_t *verdict) {
-    verdict->violation = SESSION_POLICY_OK;
-    if (!policy->enabled) {
-        return true;
+// What the node itself refuses (SigningSessionSet::preflight) is never
+// counted as fitting the policy: the review would show it as acceptable.
+static bool check_node_rules(const session_request_t *request, session_policy_verdict_t *verdict) {
+    // Exactly one mode: A (the flag), P (Permissions) or C (SessionCap)
+    int modes = (int) request->all_transactions + (int) request->has_permissions +
+                (int) request->has_cap;
+    if (modes != 1) {
+        return refuse(verdict, SESSION_POLICY_MODE_INVALID, 0, 0);
     }
-
-    // The ledger accepts exactly one mode: A (the flag), C (SessionCap) or P
-    // (Permissions). Neither the flag nor a cap means mode P (or a
-    // transaction the ledger rejects), so it needs mode P to be allowed.
-    if (request->all_transactions) {
-        if (!policy->allow_all_transactions) {
-            return refuse(verdict, SESSION_POLICY_MODE_ALL_BLOCKED, 0, 0);
+    if (request->has_cap && !request->cap_is_xrp) {
+        return refuse(verdict, SESSION_POLICY_CAP_NOT_XRP, 0, 0);
+    }
+    // A per-payment bound only exists under a cap, within it
+    if (request->has_max_per_tx) {
+        if (!request->has_cap) {
+            return refuse(verdict, SESSION_POLICY_PER_TX_WITHOUT_CAP, 0, 0);
         }
-    } else if (!request->has_cap && !policy->allow_permissions) {
+        if (!request->max_per_tx_is_xrp) {
+            return refuse(verdict, SESSION_POLICY_PER_TX_NOT_XRP, 0, 0);
+        }
+        if (request->max_per_tx > request->cap) {
+            return refuse(verdict,
+                          SESSION_POLICY_PER_TX_ABOVE_CAP,
+                          request->max_per_tx,
+                          request->cap);
+        }
+    }
+    if (!request->has_duration) {
+        return refuse(verdict, SESSION_POLICY_DURATION_MISSING, 0, 0);
+    }
+    if (request->duration == 0 || request->duration > SESSION_MAX_DURATION) {
+        return refuse(verdict,
+                      SESSION_POLICY_DURATION_INVALID,
+                      request->duration,
+                      SESSION_MAX_DURATION);
+    }
+    return true;
+}
+
+// The user's own limits
+static bool check_user_limits(const session_policy_t *policy,
+                              const session_request_t *request,
+                              session_policy_verdict_t *verdict) {
+    if (request->all_transactions && !policy->allow_all_transactions) {
+        return refuse(verdict, SESSION_POLICY_MODE_ALL_BLOCKED, 0, 0);
+    }
+    if (request->has_permissions && !policy->allow_permissions) {
         return refuse(verdict, SESSION_POLICY_MODE_PERMISSIONS_BLOCKED, 0, 0);
     }
 
-    if (request->has_cap && is_limited(policy->max_cap)) {
-        if (!request->cap_is_xrp) {
-            return refuse(verdict, SESSION_POLICY_CAP_NOT_XRP, 0, policy->max_cap);
-        }
-        if (request->cap > policy->max_cap) {
-            return refuse(verdict, SESSION_POLICY_CAP_ABOVE, request->cap, policy->max_cap);
-        }
+    if (request->has_cap && is_limited(policy->max_cap) && request->cap > policy->max_cap) {
+        return refuse(verdict, SESSION_POLICY_CAP_ABOVE, request->cap, policy->max_cap);
     }
 
     if (is_limited(policy->max_per_tx)) {
-        // A per-payment bound only exists under a cap (mode C): required
-        // there, checked wherever it appears.
+        // Required under a cap (mode C), the only mode that has one
         if (request->has_cap && !request->has_max_per_tx) {
             return refuse(verdict, SESSION_POLICY_PER_TX_MISSING, 0, policy->max_per_tx);
         }
-        if (request->has_max_per_tx) {
-            if (!request->max_per_tx_is_xrp) {
-                return refuse(verdict, SESSION_POLICY_PER_TX_NOT_XRP, 0, policy->max_per_tx);
-            }
-            if (request->max_per_tx > policy->max_per_tx) {
-                return refuse(verdict,
-                              SESSION_POLICY_PER_TX_ABOVE,
-                              request->max_per_tx,
-                              policy->max_per_tx);
-            }
+        if (request->has_max_per_tx && request->max_per_tx > policy->max_per_tx) {
+            return refuse(verdict,
+                          SESSION_POLICY_PER_TX_ABOVE,
+                          request->max_per_tx,
+                          policy->max_per_tx);
         }
     }
 
-    if (is_limited(policy->max_duration)) {
-        if (!request->has_duration) {
-            return refuse(verdict, SESSION_POLICY_DURATION_MISSING, 0, policy->max_duration);
-        }
-        if (request->duration > policy->max_duration) {
-            return refuse(verdict,
-                          SESSION_POLICY_DURATION_ABOVE,
-                          request->duration,
-                          policy->max_duration);
-        }
+    if (is_limited(policy->max_duration) && request->duration > policy->max_duration) {
+        return refuse(verdict,
+                      SESSION_POLICY_DURATION_ABOVE,
+                      request->duration,
+                      policy->max_duration);
     }
 
     if (policy->require_witness && !request->has_witness) {
@@ -107,18 +124,30 @@ bool session_policy_check(const session_policy_t *policy,
     return true;
 }
 
-// Reads a native XRP amount. Returns false for an issued currency, an MPT
-// amount or a non-positive value.
+bool session_policy_check(const session_policy_t *policy,
+                          const session_request_t *request,
+                          session_policy_verdict_t *verdict) {
+    verdict->violation = SESSION_POLICY_OK;
+    if (!policy->enabled) {
+        return true;
+    }
+    return check_node_rules(request, verdict) && check_user_limits(policy, request, verdict);
+}
+
+// Reads a native XRP amount the node accepts in a session: positive, at
+// most SESSION_MAX_XRP_DROPS. Returns false for anything else (an issued
+// currency, an MPT amount, zero).
 static bool read_xrp_drops(const field_t *field, uint64_t *drops) {
     if (field->length != XRP_AMOUNT_LEN) {
         return false;
     }
     uint64_t raw = read_unsigned64(field->data.ptr);
-    if ((raw & AMOUNT_NOT_XRP_BIT) != 0 || (raw & AMOUNT_POSITIVE_BIT) == 0) {
+    if ((raw & AMOUNT_NOT_XRP_BIT) != 0 || (raw & AMOUNT_POSITIVE_BIT) == 0 ||
+        (raw & AMOUNT_MPT_BIT) != 0) {
         return false;
     }
     *drops = raw & AMOUNT_DROPS_MASK;
-    return true;
+    return *drops != 0 && *drops <= SESSION_MAX_XRP_DROPS;
 }
 
 // Group 0 holds the top-level fields of the transaction; a nested field
@@ -140,6 +169,13 @@ void session_request_read(const parseResult_t *result, uint8_t group, session_re
 
     for (uint8_t i = 0; i < result->num_fields; i++) {
         const field_t *field = &result->fields[i];
+        // A PermissionValue sits inside Permissions, below the top level; a
+        // nested array sends a Batch to blind signing, so only the
+        // transaction itself can be in mode P.
+        if (group == BATCH_OUTER_GROUP && is_permission_value(field) &&
+            field->array_info.type == XRP_STARRAY_PERMISSIONS) {
+            request->has_permissions = true;
+        }
         if (!is_in_group(field, group)) {
             continue;
         }
@@ -191,6 +227,14 @@ bool session_policy_check_transaction(const session_policy_t *policy,
     verdict->violation = SESSION_POLICY_OK;
     verdict->group = BATCH_OUTER_GROUP;
 
+    bool may_open_session = parse_context.transaction_type == TRANSACTION_SIGNING_SESSION_SET ||
+                            parse_context.transaction_type == TRANSACTION_BATCH;
+    // Parsing stopped before the end (too many fields, a nested array): a
+    // session the policy cannot read may be in what is left
+    if (policy->enabled && may_open_session && parse_context.offset != parse_context.length) {
+        return refuse(verdict, SESSION_POLICY_UNREAD, 0, 0);
+    }
+
     if (parse_context.transaction_type == TRANSACTION_SIGNING_SESSION_SET) {
         return check_group(policy, BATCH_OUTER_GROUP, verdict);
     }
@@ -212,7 +256,9 @@ static bool format_xrp(uint64_t drops, char *out) {
     return xrp_print_amount(drops, out, XRP_TEXT_SIZE) == 0;
 }
 
+// "<name> XRP 500 <relation> XRP 50"
 static bool format_amount_above(const char *name,
+                                const char *relation,
                                 const session_policy_verdict_t *verdict,
                                 char *out,
                                 size_t out_len) {
@@ -221,7 +267,7 @@ static bool format_amount_above(const char *name,
     if (!format_xrp(verdict->value, value) || !format_xrp(verdict->limit, limit)) {
         return false;
     }
-    int written = snprintf(out, out_len, "%s %s is above %s", name, value, limit);
+    int written = snprintf(out, out_len, "%s %s %s %s", name, value, relation, limit);
     return written > 0 && (size_t) written < out_len;
 }
 
@@ -230,6 +276,12 @@ static bool format_reason(const session_policy_verdict_t *verdict, char *out, si
     int written;
 
     switch (verdict->violation) {
+        case SESSION_POLICY_UNREAD:
+            written = snprintf(out, out_len, "Too long to check against your policy");
+            break;
+        case SESSION_POLICY_MODE_INVALID:
+            written = snprintf(out, out_len, "Not exactly one session mode");
+            break;
         case SESSION_POLICY_MODE_ALL_BLOCKED:
             written = snprintf(out, out_len, "Sessions for all transactions are not allowed");
             break;
@@ -237,10 +289,19 @@ static bool format_reason(const session_policy_verdict_t *verdict, char *out, si
             written = snprintf(out, out_len, "Sessions with permissions are not allowed");
             break;
         case SESSION_POLICY_CAP_NOT_XRP:
-            written = snprintf(out, out_len, "Max spend is not an XRP amount");
+            written = snprintf(out, out_len, "Max spend is not a positive XRP amount");
             break;
         case SESSION_POLICY_CAP_ABOVE:
-            return format_amount_above("Max spend", verdict, out, out_len);
+            return format_amount_above("Max spend", "is above", verdict, out, out_len);
+        case SESSION_POLICY_PER_TX_WITHOUT_CAP:
+            written = snprintf(out, out_len, "Max per payment without a max spend");
+            break;
+        case SESSION_POLICY_PER_TX_ABOVE_CAP:
+            return format_amount_above("Max per payment",
+                                       "is above max spend",
+                                       verdict,
+                                       out,
+                                       out_len);
         case SESSION_POLICY_PER_TX_MISSING:
             if (!format_xrp(verdict->limit, limit)) {
                 return false;
@@ -248,12 +309,19 @@ static bool format_reason(const session_policy_verdict_t *verdict, char *out, si
             written = snprintf(out, out_len, "No max per payment (limit %s)", limit);
             break;
         case SESSION_POLICY_PER_TX_NOT_XRP:
-            written = snprintf(out, out_len, "Max per payment is not an XRP amount");
+            written = snprintf(out, out_len, "Max per payment is not a positive XRP amount");
             break;
         case SESSION_POLICY_PER_TX_ABOVE:
-            return format_amount_above("Max per payment", verdict, out, out_len);
+            return format_amount_above("Max per payment", "is above", verdict, out, out_len);
         case SESSION_POLICY_DURATION_MISSING:
             written = snprintf(out, out_len, "No session duration");
+            break;
+        case SESSION_POLICY_DURATION_INVALID:
+            written = snprintf(out,
+                               out_len,
+                               "Duration %u s is not 1 to %u s",
+                               (unsigned int) verdict->value,
+                               (unsigned int) verdict->limit);
             break;
         case SESSION_POLICY_DURATION_ABOVE:
             written = snprintf(out,

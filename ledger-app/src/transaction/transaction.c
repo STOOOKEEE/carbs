@@ -188,6 +188,16 @@ bool check_swap_conditions_and_sign(parseResult_t* transaction) {
     return true;
 }
 
+bool refused_by_session_policy(void) {
+    session_policy_t policy = N_storage.session_policy;
+    session_policy_verdict_t verdict;
+    if (session_policy_check_transaction(&policy, &verdict)) {
+        return false;
+    }
+    ui_session_policy_refusal(&verdict);
+    return true;
+}
+
 void review_transaction(parseResult_t* transaction, action_t on_approve,
                         action_t on_reject, bool blind_sign) {
     approval_action = on_approve;
@@ -201,21 +211,16 @@ void review_transaction(parseResult_t* transaction, action_t on_approve,
             rejection_action();
             finalize_exchange_sign_transaction(false);
         }
-    } else {
+    } else if (refused_by_session_policy()) {
         // carbs: the session policy is checked before any review is shown
-        session_policy_t policy = N_storage.session_policy;
-        session_policy_verdict_t verdict;
-        if (!session_policy_check_transaction(&policy, &verdict)) {
-            ui_session_policy_refusal(&verdict);
-        } else if (blind_sign) {
-            if (N_storage.allow_blind_sign == BlindSignDisabled) {
-                ui_error_blind_signing();
-            } else {
-                display_blind_signed_review(transaction,
-                                            on_approval_menu_result);
-            }
+        return;
+    } else if (blind_sign) {
+        if (N_storage.allow_blind_sign == BlindSignDisabled) {
+            ui_error_blind_signing();
         } else {
-            display_review_menu(transaction, on_approval_menu_result);
+            display_blind_signed_review(transaction, on_approval_menu_result);
         }
+    } else {
+        display_review_menu(transaction, on_approval_menu_result);
     }
 }

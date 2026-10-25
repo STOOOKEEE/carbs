@@ -851,27 +851,61 @@ static err_t append_review_row(parseContext_t* context, uint8_t group,
     return err;
 }
 
-// The SessionKey of one transaction of the review: the top level, or one
-// inner transaction of a Batch. NULL when it has none.
-static field_t* find_session_key(parseContext_t* context, uint8_t group) {
+// Whether a field belongs to one transaction of the review: the top level,
+// or one inner transaction of a Batch.
+static bool is_in_review_group(parseContext_t* context, const field_t* field,
+                               uint8_t group) {
+    if (group == BATCH_OUTER_GROUP) {
+        return field->array_info.type == ARRAY_NONE && field->object_depth == 0;
+    }
+    return batch_inner_tx(context, field) == &context->batch.inner[group - 1];
+}
+
+// A field of one transaction of the review. NULL when it has none.
+static field_t* find_group_field(parseContext_t* context,
+                                 field_type_t data_type, uint8_t id,
+                                 uint8_t group) {
     for (uint8_t i = 0; i < context->result.num_fields; ++i) {
         field_t* field = &context->result.fields[i];
-        if (field->data_type != STI_ACCOUNT ||
-            field->id != XRP_ACCOUNT_SESSION_KEY) {
-            continue;
-        }
-        bool in_group =
-            group == BATCH_OUTER_GROUP
-                ? field->array_info.type == ARRAY_NONE &&
-                      field->object_depth == 0
-                : batch_inner_tx(context, field) ==
-                      &context->batch.inner[group - 1];
-        if (in_group) {
+        if (field->data_type == data_type && field->id == id &&
+            is_in_review_group(context, field, group)) {
             return field;
         }
     }
 
     return NULL;
+}
+
+// The fields a session review, its policy check and its Agent ID read.
+static const struct {
+    field_type_t data_type;
+    uint8_t id;
+} SESSION_FIELDS[] = {
+    {STI_ACCOUNT, XRP_ACCOUNT_SESSION_KEY},
+    {STI_ACCOUNT, XRP_ACCOUNT_SESSION_WITNESS},
+    {STI_AMOUNT, XRP_UINT64_SESSION_CAP},
+    {STI_AMOUNT, XRP_UINT64_SESSION_MAX_PER_TX},
+    {STI_UINT32, XRP_UINT32_SESSION_DURATION},
+};
+#define SESSION_FIELDS_NB (sizeof(SESSION_FIELDS) / sizeof(SESSION_FIELDS[0]))
+
+// The node refuses a field carried twice (STObject.cpp); the review would
+// show both rows while the policy and the Agent ID read only one of them.
+static bool has_duplicate_session_field(parseContext_t* context,
+                                        uint8_t group) {
+    for (size_t f = 0; f < SESSION_FIELDS_NB; ++f) {
+        uint8_t count = 0;
+        for (uint8_t i = 0; i < context->result.num_fields; ++i) {
+            field_t* field = &context->result.fields[i];
+            if (field->data_type == SESSION_FIELDS[f].data_type &&
+                field->id == SESSION_FIELDS[f].id &&
+                is_in_review_group(context, field, group) && ++count > 1) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // Rows the app adds to the review of one transaction.
@@ -892,10 +926,10 @@ static err_t append_review_rows(parseContext_t* context,
 
     // A capped session (mode C) says what it may sign: a direct XRP payment,
     // fees included in the cap. Its own row, before the Note.
-    if (context->transaction_type == TRANSACTION_SIGNING_SESSION_SET &&
-        has_field(context, STI_AMOUNT, XRP_UINT64_SESSION_CAP, true)) {
-        field_t* field;
-        CHECK(append_new_field(context, &field));
+    if (transaction_type == TRANSACTION_SIGNING_SESSION_SET &&
+        find_group_field(context, STI_AMOUNT, XRP_UINT64_SESSION_CAP, group) !=
+            NULL) {
+        CHECK(append_review_row(context, group, &field));
         field->data_type = STI_VL;
         field->id = XRP_VL_SESSION_SCOPE;
         field->data.ptr = (uint8_t*)SESSION_SCOPE_CAP_TEXT;
@@ -905,7 +939,8 @@ static err_t append_review_rows(parseContext_t* context,
     // The session key's short identifier, which the agent shows too
     // (signing_session.h); sort_fields() puts it right after the key.
     if (is_session_transaction(transaction_type)) {
-        field_t* session_key = find_session_key(context, group);
+        field_t* session_key = find_group_field(
+            context, STI_ACCOUNT, XRP_ACCOUNT_SESSION_KEY, group);
         if (session_key != NULL) {
             xrp_account_t* key = session_key->data.account;
             CHECK(append_review_row(context, group, &field));
@@ -946,6 +981,12 @@ static bool batch_inner_has_regular_key(parseContext_t* context,
 err_t post_process_transaction(parseContext_t* context) {
     err_t err;
 
+    if (is_session_transaction(context->transaction_type) &&
+        has_duplicate_session_field(context, BATCH_OUTER_GROUP)) {
+        err.err = INVALID_STATE;
+        return err;
+    }
+
     CHECK(append_review_rows(
         context, context->transaction_type,
         has_field(context, STI_ACCOUNT, XRP_ACCOUNT_REGULAR_KEY, false),
@@ -956,6 +997,11 @@ err_t post_process_transaction(parseContext_t* context) {
     if (context->transaction_type == TRANSACTION_BATCH) {
         for (uint8_t group = 1; group <= context->batch.inner_count; ++group) {
             batchInnerTx_t* inner = &context->batch.inner[group - 1];
+            if (is_session_transaction(inner->transaction_type) &&
+                has_duplicate_session_field(context, group)) {
+                err.err = INVALID_STATE;
+                return err;
+            }
             CHECK(append_review_rows(context, inner->transaction_type,
                                      batch_inner_has_regular_key(context, group),
                                      group));
@@ -1131,13 +1177,19 @@ static void keep_outer_batch_fields(parseContext_t* context) {
     result->num_fields = kept;
 }
 
+bool is_batch_unread(const parseContext_t* context) {
+    return context->transaction_type == TRANSACTION_BATCH &&
+           context->offset != context->length;
+}
+
 // A session transaction is clear-signed or refused, never blind-signed,
 // whatever the setting says: the session key it creates or closes is the
-// whole point of the review. That holds for one inside a Batch too (as far
-// as parsing went: an inner transaction after the point where it stopped is
-// not known).
+// whole point of the review. That holds for one inside a Batch too, and for
+// a Batch whose parsing stopped early, since an inner transaction after that
+// point may be one.
 static bool involves_session(parseContext_t* context) {
-    if (is_session_transaction(context->transaction_type)) {
+    if (is_session_transaction(context->transaction_type) ||
+        is_batch_unread(context)) {
         return true;
     }
     if (context->transaction_type != TRANSACTION_BATCH) {
