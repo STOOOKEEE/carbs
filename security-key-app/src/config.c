@@ -1,0 +1,207 @@
+/*
+*******************************************************************************
+*   Ledger App Security Key
+*   (c) 2022 Ledger
+*
+*  Licensed under the Apache License, Version 2.0 (the "License");
+*  you may not use this file except in compliance with the License.
+*  You may obtain a copy of the License at
+*
+*      http://www.apache.org/licenses/LICENSE-2.0
+*
+*   Unless required by applicable law or agreed to in writing, software
+*   distributed under the License is distributed on an "AS IS" BASIS,
+*   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*  See the License for the specific language governing permissions and
+*   limitations under the License.
+********************************************************************************/
+
+#include "os.h"
+#include "cx.h"
+
+#include "config.h"
+#include "globals.h"
+#include "ctap2.h"
+#include "rk_storage.h"
+#include "crypto.h"
+
+#define CTAP2_PIN_RETRIES 8
+
+config_t const N_u2f_real;
+
+static int derive_and_store_keys(uint32_t resetGeneration) {
+    cx_err_t error;
+    int status = -1;
+    uint8_t seed[64];
+    uint8_t key[64];
+    uint8_t derivateKey[CX_SHA256_SIZE];
+    uint32_t keyPath[3];
+    uint8_t version;
+
+    keyPath[1] = 0x80000000;
+    keyPath[2] = resetGeneration;
+
+    // privateKeySeed
+    keyPath[0] = PRIVATE_KEY_SEED_PATH;
+    error = os_derive_bip32_no_throw(CX_CURVE_SECP256R1, keyPath, 3, seed, seed + 32);
+    if (error != CX_OK) {
+        goto exit;
+    }
+
+    // wrappingKey
+    keyPath[0] = WRAPPING_KEY_PATH;
+    error = os_derive_bip32_no_throw(CX_CURVE_SECP256R1, keyPath, 3, key, key + 32);
+    if (error != CX_OK) {
+        goto exit;
+    }
+
+    // Every key is checked: a matching seed does not prove the wrapping keys are in place, as an
+    // older write order or a cut write may have left them zero. Only a differing key is written.
+    // wrappingKeyU2F: aes_key = SHA256(VERSION || wrappingKeys)
+    version = CREDENTIAL_VERSION_U2F;
+    crypto_compute_sha256(&version, sizeof(version), key, sizeof(key), derivateKey);
+    if (memcmp(derivateKey, (uint8_t *) N_u2f.wrappingKeyU2F, sizeof(N_u2f.wrappingKeyU2F)) != 0) {
+        nvm_write((void *) N_u2f.wrappingKeyU2F,
+                  (void *) derivateKey,
+                  sizeof(N_u2f.wrappingKeyU2F));
+    }
+
+    // wrappingKeyCTAP2: aes_key = SHA256(VERSION || wrappingKeys)
+    version = CREDENTIAL_VERSION_CTAP2;
+    crypto_compute_sha256(&version, sizeof(version), key, sizeof(key), derivateKey);
+    if (memcmp(derivateKey, (uint8_t *) N_u2f.wrappingKeyCTAP2, sizeof(N_u2f.wrappingKeyCTAP2)) !=
+        0) {
+        nvm_write((void *) N_u2f.wrappingKeyCTAP2,
+                  (void *) derivateKey,
+                  sizeof(N_u2f.wrappingKeyCTAP2));
+    }
+
+    // privateKeySeed last, once the wrapping keys are in place.
+    if (memcmp(seed, (uint8_t *) N_u2f.privateKeySeed, sizeof(N_u2f.privateKeySeed)) != 0) {
+        nvm_write((void *) N_u2f.privateKeySeed, (void *) seed, sizeof(N_u2f.privateKeySeed));
+    }
+
+    status = 0;
+exit:
+    explicit_bzero(seed, sizeof(seed));
+    explicit_bzero(key, sizeof(key));
+    explicit_bzero(derivateKey, sizeof(derivateKey));
+    return status;
+}
+
+int config_init(void) {
+    int ret = 0;
+    uint32_t tmp32;
+    uint8_t tmp8;
+    if (N_u2f.initialized != 1) {
+#ifdef HAVE_COUNTER_MARKER
+        tmp32 = COUNTER_MARKER;
+#else
+        tmp32 = 1;
+#endif /* HAVE_COUNTER_MARKER */
+        nvm_write((void *) &N_u2f.authentificationCounter,
+                  (void *) &tmp32,
+                  sizeof(N_u2f.authentificationCounter));
+
+        tmp32 = 0;
+        nvm_write((void *) &N_u2f.resetGeneration, (void *) &tmp32, sizeof(N_u2f.resetGeneration));
+
+        // Initialize keys derived from seed; without them the app must not start.
+        ret = derive_and_store_keys(N_u2f.resetGeneration);
+        if (ret != 0) {
+            return ret;
+        }
+
+        tmp8 = 0;
+        nvm_write((void *) &N_u2f.pinSet, (void *) &tmp8, sizeof(N_u2f.pinSet));
+
+#ifdef ENABLE_RK_CONFIG
+        // Initialize rk_enable value: Disabled by default
+        tmp8 = 0;
+        nvm_write((void *) &N_u2f.rk_enabled, (void *) &tmp8, sizeof(N_u2f.rk_enabled));
+#endif
+
+        tmp8 = 1;
+        nvm_write((void *) &N_u2f.initialized, (void *) &tmp8, sizeof(N_u2f.initialized));
+    } else {
+        // Check that the seed did not change - if it did, overwrite the keys
+        ret = derive_and_store_keys(N_u2f.resetGeneration);
+    }
+    return ret;
+}
+
+uint8_t config_increase_and_get_authentification_counter(uint8_t *buffer) {
+    uint32_t counter = N_u2f.authentificationCounter;
+    // Increase the counter by a random value according to WebAuthN privacy requirements
+    // Draw a number between 1 and 5 (included), in a uniform way.
+    counter += cx_rng_u32_range_func(1, 6, cx_rng_u32);
+    nvm_write((void *) &N_u2f.authentificationCounter,
+              &counter,
+              sizeof(N_u2f.authentificationCounter));
+    buffer[0] = ((counter >> 24) & 0xff);
+    buffer[1] = ((counter >> 16) & 0xff);
+    buffer[2] = ((counter >> 8) & 0xff);
+    buffer[3] = (counter & 0xff);
+    return 4;
+}
+
+void config_process_ctap2_reset(void) {
+#ifndef HAVE_NO_RESET_GENERATION_INCREMENT
+    uint32_t resetGeneration = N_u2f.resetGeneration + 1;
+
+    nvm_write((void *) &N_u2f.resetGeneration,
+              (void *) &resetGeneration,
+              sizeof(N_u2f.resetGeneration));
+
+    // Update keys derived from seed
+    derive_and_store_keys(N_u2f.resetGeneration);
+#endif
+
+    // Clear the validity flag first so any power loss during the subsequent
+    // writes leaves the device in a safe "no PIN configured" state.
+    uint8_t pinSet = 0;
+    nvm_write((void *) &N_u2f.pinSet, (void *) &pinSet, sizeof(N_u2f.pinSet));
+
+    // Zeroise the persisted PIN verifier and reset the retry counter so a
+    // later NVM disclosure cannot be used to brute-force the previous PIN.
+    uint8_t zero_pin[sizeof(N_u2f.pin)] = {0};
+    nvm_write((void *) &N_u2f.pin, (void *) zero_pin, sizeof(N_u2f.pin));
+    uint8_t retries = CTAP2_PIN_RETRIES;
+    nvm_write((void *) &N_u2f.pinRetries, (void *) &retries, sizeof(N_u2f.pinRetries));
+
+    ctap2_client_pin_reset_ctx();
+    rk_storage_erase_all();
+}
+
+void config_set_ctap2_pin(uint8_t *pin) {
+    uint8_t tmp;
+    nvm_write((void *) &N_u2f.pin, (void *) pin, sizeof(N_u2f.pin));
+    tmp = CTAP2_PIN_RETRIES;
+    nvm_write((void *) &N_u2f.pinRetries, (void *) &tmp, sizeof(N_u2f.pinRetries));
+    tmp = 1;
+    nvm_write((void *) &N_u2f.pinSet, (void *) &tmp, sizeof(N_u2f.pinSet));
+}
+
+void config_decrease_ctap2_pin_retry_counter(void) {
+    uint8_t tmp = N_u2f.pinRetries;
+    if (tmp != 0) {
+        tmp--;
+    }
+    nvm_write((void *) &N_u2f.pinRetries, (void *) &tmp, sizeof(N_u2f.pinRetries));
+}
+
+void config_reset_ctap2_pin_retry_counter(void) {
+    uint8_t tmp = CTAP2_PIN_RETRIES;
+    nvm_write((void *) &N_u2f.pinRetries, (void *) &tmp, sizeof(N_u2f.pinRetries));
+}
+
+#ifdef ENABLE_RK_CONFIG
+void config_set_rk_enabled(bool enabled) {
+    uint8_t tmp8 = enabled ? 1 : 0;
+    nvm_write((void *) &N_u2f.rk_enabled, (void *) &tmp8, sizeof(N_u2f.rk_enabled));
+}
+
+bool config_get_rk_enabled(void) {
+    return N_u2f.rk_enabled == 1;
+}
+#endif

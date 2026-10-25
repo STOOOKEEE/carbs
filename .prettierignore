@@ -1,6 +1,7 @@
 # Upstream imports are never reformatted (see UPSTREAM.md)
 rippled/
 ledger-app/
+security-key-app/
 xrpl-devex-hook/
 pnpm-lock.yaml
 FIANSO-SPEC.md
