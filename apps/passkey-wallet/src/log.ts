@@ -2,6 +2,7 @@
 
 import { describeLedgerError } from "@carbs/ledger";
 
+import type { InnerResult } from "./batch-results.ts";
 import { EXPLORER_BASE } from "./config.ts";
 import type { SubmittedTx } from "./ledger.ts";
 
@@ -30,6 +31,21 @@ export function log(message: string, tx?: SubmittedTx): void {
     );
   }
   journal().prepend(item);
+}
+
+/** One line per inner transaction of a Batch: its own result, or that the node discarded it. */
+export function logInnerResults(inner: readonly InnerResult[]): void {
+  for (const [index, tx] of inner.entries()) {
+    const label = `  ↳ interne ${index + 1}/${inner.length} : ${tx.transactionType} (séquence ${tx.sequence})`;
+    if (tx.applied === undefined) {
+      const item = document.createElement("li");
+      item.className = "error";
+      item.textContent = `${label} : non appliquée, écartée par le nœud`;
+      journal().prepend(item);
+    } else {
+      log(`${label} :`, tx.applied);
+    }
+  }
 }
 
 export function logError(error: unknown): void {

@@ -1,12 +1,16 @@
 // End-to-end test of signing sessions on the carbs node (mode C, cap per transaction, witness,
-// mode A, mode P).
+// mode A, mode P, Batch).
 // Every line prints the node's own result; the script stops with an error at the first surprise.
 //   GENESIS_SEED=… XRPLD_WS=ws://127.0.0.1:6006 node scripts/session-demo.ts
 
 import { generateSeed } from "ripple-keypairs";
 
+import { batchInnerResults } from "../src/batch-results.ts";
+import { TF_ALL_OR_NOTHING, TF_INDEPENDENT, batchGroups, batchTx } from "../src/batch.ts";
 import {
+  type SubmittedTx,
   type TxJson,
+  accountInfo,
   addressOfSeed,
   autofill,
   loadDefinitions,
@@ -26,6 +30,9 @@ const genesisSeed: string = GENESIS_SEED_ENV;
 const ASF_DEFAULT_RIPPLE = 8;
 /** PermissionValue of Payment (transaction type 0, plus one). */
 const PAYMENT_PERMISSION = 1;
+/** AccountSet flag asfDisableMaster: needs the master key's own signature, which an inner transaction lacks. */
+const ASF_DISABLE_MASTER = 4;
+const BATCH_INNER_NOT_APPLIED = "not applied";
 
 const node = await NodeClient.connect(NODE_WS);
 const defs = await loadDefinitions(node);
@@ -48,20 +55,41 @@ async function submit(
   seed: string,
   expected: string | Expectation,
   witnessSeed?: string,
-): Promise<void> {
+): Promise<SubmittedTx> {
   const filled = await autofill(node, defs, tx);
   const signed = signWithSeed(defs, filled, seed);
-  const { hash, result } = await submitAndWait(
+  const submitted = await submitAndWait(
     node,
     defs,
     witnessSeed ? witnessSign(defs, signed, witnessSeed) : signed,
   );
+  const { hash, result } = submitted;
   const accepted = typeof expected === "string" ? result === expected : expected.accepts(result);
   const verdict = accepted ? "OK " : "!! ";
   console.log(`${verdict} ${label.padEnd(58)} ${result.padEnd(26)} ${hash.slice(0, 16)}…`);
   if (!accepted) {
     const wanted = typeof expected === "string" ? expected : expected.label;
     throw new Error(`${label}: expected ${wanted}, got ${result}`);
+  }
+  return submitted;
+}
+
+/**
+ * Prints and checks each inner transaction of a validated Batch: the outer tesSUCCESS says nothing
+ * about them. "not applied": no inner transaction may have succeeded.
+ */
+async function expectInner(
+  outer: SubmittedTx,
+  expected: "tesSUCCESS" | typeof BATCH_INNER_NOT_APPLIED,
+): Promise<void> {
+  for (const tx of await batchInnerResults(node, outer.hash)) {
+    const result = tx.applied?.result ?? BATCH_INNER_NOT_APPLIED;
+    const accepted =
+      expected === BATCH_INNER_NOT_APPLIED ? result !== "tesSUCCESS" : result === expected;
+    const label = `  inner ${tx.transactionType} (sequence ${tx.sequence})`;
+    const hash = tx.applied === undefined ? "" : `${tx.applied.hash.slice(0, 16)}…`;
+    console.log(`${accepted ? "OK " : "!! "} ${label.padEnd(58)} ${result.padEnd(26)} ${hash}`);
+    if (!accepted) throw new Error(`${label}: expected ${expected}, got ${result}`);
   }
 }
 
@@ -91,17 +119,30 @@ async function newFundedAccount(xrp: number): Promise<{ seed: string; address: s
   return { seed, address };
 }
 
-async function spent(owner: string, sessionKey: string): Promise<string> {
+async function sessionObjects(owner: string): Promise<unknown[]> {
   const objects = await node.request("account_objects", {
     account: owner,
     type: "signing_session",
+    ledger_index: "current",
   });
   const list = read(objects, ["account_objects"]);
-  const entry = Array.isArray(list)
-    ? list.find((object) => read(object, ["SessionKey"]) === sessionKey)
-    : undefined;
+  if (!Array.isArray(list)) throw new Error("unexpected node answer: account_objects");
+  return list;
+}
+
+async function spent(owner: string, sessionKey: string): Promise<string> {
+  const entry = (await sessionObjects(owner)).find(
+    (object) => read(object, ["SessionKey"]) === sessionKey,
+  );
   const value = read(entry, ["SessionSpent"]);
   return typeof value === "string" ? `${Number(value) / 1_000_000} XRP` : "none";
+}
+
+async function sessionKeysOf(owner: string): Promise<string[]> {
+  return (await sessionObjects(owner)).flatMap((object) => {
+    const key = read(object, ["SessionKey"]);
+    return typeof key === "string" ? [key] : [];
+  });
 }
 
 try {
@@ -266,6 +307,88 @@ try {
     session4.seed,
     "tefSESSION_TX_NOT_ALLOWED",
   );
+
+  console.log("\n— Session 5: Batch, one owner signature for several transactions");
+  const session5 = newSessionKey();
+  const openAndPay = await submit(
+    "open a session and pay 5 XRP in one Batch (all or nothing)",
+    batchTx(
+      owner.address,
+      [
+        openSessionTx(owner.address, session5.address, {
+          mode: "cap",
+          durationSeconds: 120,
+          capXrp: 50,
+        }),
+        paymentTx(owner.address, bob.address, 5),
+      ],
+      TF_ALL_OR_NOTHING,
+    ),
+    owner.seed,
+    "tesSUCCESS",
+  );
+  await expectInner(openAndPay, "tesSUCCESS");
+  await submit(
+    "pay 5 XRP, signed by the session the Batch opened",
+    paymentTx(owner.address, bob.address, 5),
+    session5.seed,
+    "tesSUCCESS",
+  );
+  await submit(
+    "the session key signs a Batch of the account",
+    batchTx(
+      owner.address,
+      [paymentTx(owner.address, bob.address, 1), paymentTx(owner.address, bob.address, 1)],
+      TF_ALL_OR_NOTHING,
+    ),
+    session5.seed,
+    "tefSESSION_TX_NOT_ALLOWED",
+  );
+
+  const openKeys = await sessionKeysOf(owner.address);
+  console.log(`    sessions still on the ledger: ${openKeys.length}`);
+  for (const group of batchGroups(openKeys)) {
+    const deletes = group.map((key) => closeSessionTx(owner.address, key));
+    const [single] = deletes;
+    if (deletes.length === 1 && single !== undefined) {
+      await submit("revoke the last session (owner)", single, owner.seed, "tesSUCCESS");
+    } else {
+      const revoke = await submit(
+        `revoke ${deletes.length} sessions in one Batch (independent)`,
+        batchTx(owner.address, deletes, TF_INDEPENDENT),
+        owner.seed,
+        "tesSUCCESS",
+      );
+      await expectInner(revoke, "tesSUCCESS");
+    }
+  }
+  const left = await sessionKeysOf(owner.address);
+  if (left.length !== 0) throw new Error(`${left.length} session(s) left after the revocation`);
+  console.log("    sessions left on the ledger: 0");
+
+  const migrationKey = newSessionKey();
+  const migration = await submit(
+    "key migration in one Batch: SetRegularKey + disable master",
+    batchTx(
+      owner.address,
+      [
+        {
+          TransactionType: "SetRegularKey",
+          Account: owner.address,
+          RegularKey: migrationKey.address,
+        },
+        { TransactionType: "AccountSet", Account: owner.address, SetFlag: ASF_DISABLE_MASTER },
+      ],
+      TF_ALL_OR_NOTHING,
+    ),
+    owner.seed,
+    "tesSUCCESS",
+  );
+  await expectInner(migration, BATCH_INNER_NOT_APPLIED);
+  const regularKey = read(await accountInfo(node, owner.address), ["account_data", "RegularKey"]);
+  if (regularKey !== undefined)
+    throw new Error(`the migration Batch applied: RegularKey is ${String(regularKey)}`);
+  console.log("    RegularKey absent: the outer tesSUCCESS applied nothing");
 
   console.log("\nAll session checks behaved as expected.");
 } finally {
