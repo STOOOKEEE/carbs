@@ -195,6 +195,8 @@ const char* resolve_field_name(field_t* field) {
                 return "LP Token Balance";
             case XRP_UINT64_SESSION_CAP:
                 return "Max spend";
+            case XRP_UINT64_SESSION_MAX_PER_TX:
+                return "Max per payment";
         }
     }
 
@@ -258,6 +260,8 @@ const char* resolve_field_name(field_t* field) {
                 return "NFToken Minter";
             case XRP_ACCOUNT_SESSION_KEY:
                 return "Session key";
+            case XRP_ACCOUNT_SESSION_WITNESS:
+                return "Witness";
         }
     }
 
