@@ -200,6 +200,54 @@ public:
     }
 
     /**
+     * @brief Get sfSessionMaxTxCount (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_UINT32::type::value_type>
+    getSessionMaxTxCount() const
+    {
+        if (hasSessionMaxTxCount())
+            return this->sle_->at(sfSessionMaxTxCount);
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfSessionMaxTxCount is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasSessionMaxTxCount() const
+    {
+        return this->sle_->isFieldPresent(sfSessionMaxTxCount);
+    }
+
+    /**
+     * @brief Get sfSessionTxCount (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_UINT32::type::value_type>
+    getSessionTxCount() const
+    {
+        if (hasSessionTxCount())
+            return this->sle_->at(sfSessionTxCount);
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfSessionTxCount is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasSessionTxCount() const
+    {
+        return this->sle_->isFieldPresent(sfSessionTxCount);
+    }
+
+    /**
      * @brief Get sfOwnerNode (SoeRequired)
      * @return The field value.
      */
@@ -366,6 +414,28 @@ public:
     setSessionWitness(std::decay_t<typename SF_ACCOUNT::type::value_type> const& value)
     {
         object_[sfSessionWitness] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfSessionMaxTxCount (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    SigningSessionBuilder&
+    setSessionMaxTxCount(std::decay_t<typename SF_UINT32::type::value_type> const& value)
+    {
+        object_[sfSessionMaxTxCount] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfSessionTxCount (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    SigningSessionBuilder&
+    setSessionTxCount(std::decay_t<typename SF_UINT32::type::value_type> const& value)
+    {
+        object_[sfSessionTxCount] = value;
         return *this;
     }
 

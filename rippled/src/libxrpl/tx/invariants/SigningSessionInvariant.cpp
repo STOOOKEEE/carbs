@@ -31,6 +31,12 @@ spentOf(SLE::const_pointer const& session)
         : XRPAmount{0};
 }
 
+std::uint32_t
+txCountOf(SLE const& session)
+{
+    return session.isFieldPresent(sfSessionTxCount) ? session.getFieldU32(sfSessionTxCount) : 0;
+}
+
 // Whether an entry of the account's authority belongs to `account`.
 bool
 isAuthorityOf(SLE const& sle, AccountID const& account)
@@ -61,6 +67,7 @@ sameImmutableFields(SLE const& before, SLE const& after)
         before[sfExpiration] == after[sfExpiration] &&
         before[~sfSessionCap] == after[~sfSessionCap] &&
         before[~sfSessionMaxPerTx] == after[~sfSessionMaxPerTx] &&
+        before[~sfSessionMaxTxCount] == after[~sfSessionMaxTxCount] &&
         before[~sfSessionWitness] == after[~sfSessionWitness] &&
         before.isFlag(lsfAllTransactions) == after.isFlag(lsfAllTransactions) &&
         permissionsOf(before) == permissionsOf(after);
@@ -163,6 +170,12 @@ ValidSigningSession::finalize(
                 spentOf(after) != XRPAmount{0})
                 fail("a signing session does not have exactly one mode");
 
+            auto const maxTxCount = (*after)[~sfSessionMaxTxCount];
+            if (maxTxCount.has_value() != after->isFieldPresent(sfSessionTxCount) ||
+                txCountOf(*after) != 0 ||
+                (maxTxCount && (*maxTxCount == 0 || *maxTxCount > kMaxSessionTxCount)))
+                fail("a signing session's transaction count does not start at zero");
+
             auto const expiration = (*after)[sfExpiration];
             if (expiration <= now || expiration - now > kMaxSessionDuration)
                 fail("a signing session expires beyond its maximum duration");
@@ -191,6 +204,21 @@ ValidSigningSession::finalize(
                 fail("a signing session spent more than its SessionCap");
             if (spentAfter != spentBefore && !(sessionSigned && !ownClose && key == candidate->key))
                 fail("a signing session's SessionSpent changed outside a transaction it signed");
+
+            // SessionTxCount: present with SessionMaxTxCount only, one more
+            // for each transaction the session signs (the own close exempt),
+            // never above SessionMaxTxCount.
+            auto const countBefore = txCountOf(*before);
+            auto const countAfter = txCountOf(*after);
+            bool const counts = sessionSigned && !ownClose && key == candidate->key &&
+                after->isFieldPresent(sfSessionMaxTxCount);
+            if (before->isFieldPresent(sfSessionTxCount) != after->isFieldPresent(sfSessionTxCount))
+                fail("a signing session's SessionTxCount appeared or disappeared");
+            if (countAfter != countBefore + (counts ? 1 : 0))
+                fail("a signing session's SessionTxCount did not count exactly its transaction");
+            if (auto const maxTxCount = (*after)[~sfSessionMaxTxCount];
+                maxTxCount && countAfter > *maxTxCount)
+                fail("a signing session's SessionTxCount exceeds its SessionMaxTxCount");
         }
     }
 
@@ -215,6 +243,11 @@ ValidSigningSession::finalize(
 
     if (!sessionSigned)
         return ok;
+
+    // Rule 3: a transaction that keeps a counting session moves its count.
+    if (!ownClose && sessionAfter && sessionAfter->isFieldPresent(sfSessionMaxTxCount) &&
+        !sessions_.contains(candidate->key))
+        fail("a session-signed transaction did not count in its SessionTxCount");
 
     auto const accountIt = accounts_.find(account);
     bool const accountChanged =

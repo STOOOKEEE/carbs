@@ -170,6 +170,32 @@ public:
     {
         return this->tx_->isFieldPresent(sfSessionWitness);
     }
+
+    /**
+     * @brief Get sfSessionMaxTxCount (SoeOptional)
+     * @return The field value, or std::nullopt if not present.
+     */
+    [[nodiscard]]
+    protocol_autogen::Optional<SF_UINT32::type::value_type>
+    getSessionMaxTxCount() const
+    {
+        if (hasSessionMaxTxCount())
+        {
+            return this->tx_->at(sfSessionMaxTxCount);
+        }
+        return std::nullopt;
+    }
+
+    /**
+     * @brief Check if sfSessionMaxTxCount is present.
+     * @return True if the field is present, false otherwise.
+     */
+    [[nodiscard]]
+    bool
+    hasSessionMaxTxCount() const
+    {
+        return this->tx_->isFieldPresent(sfSessionMaxTxCount);
+    }
 };
 
 /**
@@ -281,6 +307,17 @@ public:
     setSessionWitness(std::decay_t<typename SF_ACCOUNT::type::value_type> const& value)
     {
         object_[sfSessionWitness] = value;
+        return *this;
+    }
+
+    /**
+     * @brief Set sfSessionMaxTxCount (SoeOptional)
+     * @return Reference to this builder for method chaining.
+     */
+    SigningSessionSetBuilder&
+    setSessionMaxTxCount(std::decay_t<typename SF_UINT32::type::value_type> const& value)
+    {
+        object_[sfSessionMaxTxCount] = value;
         return *this;
     }
 

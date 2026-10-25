@@ -93,6 +93,23 @@ public:
 };
 
 /**
+ * Any mode: the most transactions the session may sign (SessionMaxTxCount).
+ */
+class MaxTxCount
+{
+private:
+    std::uint32_t maxTxCount_;
+
+public:
+    explicit MaxTxCount(std::uint32_t maxTxCount) : maxTxCount_(maxTxCount)
+    {
+    }
+
+    void
+    operator()(Env&, JTx& jt) const;
+};
+
+/**
  * Any mode: the account that co-signs every session transaction
  * (SessionWitness). Its co-signature is Sig(sfWitnessSignature, witness).
  */
