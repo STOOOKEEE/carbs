@@ -22,14 +22,21 @@ export function explorerLink(path: string, text: string): HTMLAnchorElement {
 }
 
 export function log(message: string, tx?: SubmittedTx): void {
+  if (tx !== undefined) {
+    logOutcome(message, tx, tx.result === "tesSUCCESS");
+    return;
+  }
   const item = document.createElement("li");
   item.textContent = message;
-  if (tx !== undefined) {
-    item.className = tx.result === "tesSUCCESS" ? "ok" : "error";
-    item.append(
-      explorerLink(`transactions/${tx.hash}`, ` ${tx.result} · ${tx.hash.slice(0, 12)}…`),
-    );
-  }
+  journal().prepend(item);
+}
+
+/** A transaction line, green when its result is the one the demo expects (even a refusal). */
+export function logOutcome(message: string, tx: SubmittedTx, expected: boolean): void {
+  const item = document.createElement("li");
+  item.textContent = message;
+  item.className = expected ? "ok" : "error";
+  item.append(explorerLink(`transactions/${tx.hash}`, ` ${tx.result} · ${tx.hash.slice(0, 12)}…`));
   journal().prepend(item);
 }
 

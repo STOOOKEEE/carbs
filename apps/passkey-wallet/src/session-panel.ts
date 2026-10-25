@@ -478,8 +478,8 @@ export function setupSessionPanel(
     }),
   );
 
-  ui.payForm.addEventListener("submit", (event) => {
-    event.preventDefault();
+  ui.payForm.addEventListener(
+    "submit",
     withSession(async (connection, session) => {
       const amount = positiveNumber(ui.payAmount, "the amount");
       const tx = paymentTx(session.owner, destination(), amount);
@@ -487,8 +487,8 @@ export function setupSessionPanel(
         `Paiement de ${amount} XRP par la clé de session (aucune validation demandée)…`,
         await submitWithSessionKey(connection, session, tx),
       );
-    })();
-  });
+    }),
+  );
 
   ui.attackRegularKey.addEventListener(
     "click",
