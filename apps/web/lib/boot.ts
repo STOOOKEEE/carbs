@@ -27,7 +27,8 @@ export interface BackendStatus {
 export interface BootOptions {
   requested: NodeChoice;
   passkeys: PasskeySource;
-  clientFactory?: (url: string) => NodeClient;
+  /** The node's client; closed when the node is refused. */
+  clientFactory?: (url: string) => NodeClient & { close?: () => void };
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   /** How long to wait for the node before staying on the simulation. */
@@ -56,8 +57,8 @@ export async function chooseBackend(
     status.error = check.reason ?? "The node URL cannot be used from this page";
     return { ctx, status };
   }
+  const client = (options.clientFactory ?? ((url) => new WebSocketClient(url)))(status.target);
   try {
-    const client = (options.clientFactory ?? ((url) => new WebSocketClient(url)))(status.target);
     const backend = await withTimeout(
       createLiveBackend({
         client,
@@ -76,6 +77,8 @@ export async function chooseBackend(
     ctx.network.state.node = requested;
     return { ctx: { ...ctx, backend, demo: createDemo(backend) }, status };
   } catch (error) {
+    // The page stays on the simulation: hang up, even on a socket still connecting.
+    client.close?.();
     status.error = error instanceof Error ? error.message : String(error);
     return { ctx, status };
   }

@@ -116,7 +116,12 @@ export class JsonRpcClient implements NodeClient {
 
 /** JSON-RPC over a WebSocket (the browser's or Node's global `WebSocket`). */
 export class WebSocketClient implements NodeClient {
+  /** The socket, kept from the moment it is created, so that `close()` reaches a connecting one. */
   #socket: WebSocket | undefined;
+  /** The connection under way, shared by the requests that wait for it. */
+  #opening: Promise<WebSocket> | undefined;
+  /** Fails the connection under way (called by `close()`). */
+  #abortOpening: ((error: Error) => void) | undefined;
   #nextId = 1;
   readonly #pending = new Map<
     number,
@@ -125,19 +130,47 @@ export class WebSocketClient implements NodeClient {
 
   constructor(readonly url: string) {}
 
-  async #open(): Promise<WebSocket> {
-    if (this.#socket && this.#socket.readyState === WebSocket.OPEN) return this.#socket;
+  #open(): Promise<WebSocket> {
+    if (this.#socket && this.#socket.readyState === WebSocket.OPEN)
+      return Promise.resolve(this.#socket);
+    if (this.#opening) return this.#opening;
     const socket = new WebSocket(this.url);
-    await new Promise<void>((resolve, reject) => {
-      socket.addEventListener("open", () => resolve(), { once: true });
+    this.#socket = socket;
+    const opening = new Promise<WebSocket>((resolve, reject) => {
+      this.#abortOpening = reject;
+      socket.addEventListener(
+        "open",
+        () => {
+          // `close()` was called while connecting: never keep a socket nobody holds.
+          if (this.#socket !== socket) {
+            socket.close();
+            reject(new NodeClientError("socket closed"));
+          } else resolve(socket);
+        },
+        { once: true },
+      );
       socket.addEventListener(
         "error",
         () => reject(new NodeClientError(`cannot connect to ${this.url}`)),
-        {
-          once: true,
-        },
+        { once: true },
       );
+      socket.addEventListener(
+        "close",
+        () => reject(new NodeClientError(`cannot connect to ${this.url}`)),
+        { once: true },
+      );
+    }).finally(() => {
+      if (this.#opening === opening) {
+        this.#opening = undefined;
+        this.#abortOpening = undefined;
+      }
     });
+    this.#opening = opening;
+    this.#listen(socket);
+    return opening;
+  }
+
+  #listen(socket: WebSocket): void {
     socket.addEventListener("message", (event) => {
       const message: unknown = JSON.parse(String(event.data));
       if (!isObject(message) || typeof message["id"] !== "number") return;
@@ -151,8 +184,6 @@ export class WebSocketClient implements NodeClient {
         pending.reject(new NodeClientError("socket closed"));
       this.#pending.clear();
     });
-    this.#socket = socket;
-    return socket;
   }
 
   async request(method: string, params: JsonObject): Promise<unknown> {
@@ -175,9 +206,15 @@ export class WebSocketClient implements NodeClient {
     return unwrapResult(method, answer);
   }
 
+  /** Close the socket, open or still connecting; a later request opens a new one. */
   close(): void {
-    this.#socket?.close();
+    const socket = this.#socket;
+    const abort = this.#abortOpening;
     this.#socket = undefined;
+    this.#opening = undefined;
+    this.#abortOpening = undefined;
+    abort?.(new NodeClientError("socket closed"));
+    socket?.close();
   }
 }
 

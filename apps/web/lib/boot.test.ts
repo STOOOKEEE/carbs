@@ -107,7 +107,37 @@ describe("choosing the node", () => {
     expect(status.error).toContain("did not answer within");
   });
 
-  it("tries ws://localhost from an https page: browsers trust the loopback", async () => {
+  it("hangs up on a node it refuses, and keeps the client of a node it uses", async () => {
+    let closed = 0;
+    const close = () => {
+      closed += 1;
+    };
+    const refused = new FakeAlphaNet({ sessions: false });
+    await boot({
+      ...common,
+      requested: "local",
+      clientFactory: () => ({ request: (m, p) => refused.request(m, p), close }),
+    }).run();
+    expect(closed).toBe(1);
+    await boot({
+      ...common,
+      requested: "team",
+      timeoutMs: 20,
+      clientFactory: () => ({ request: () => new Promise<never>(() => undefined), close }),
+    }).run();
+    expect(closed).toBe(2);
+    const live = new FakeAlphaNet({ sessions: true });
+    const { status } = await boot({
+      ...common,
+      requested: "local",
+      fetcher: live.faucet,
+      clientFactory: () => ({ request: (m, p) => live.request(m, p), close }),
+    }).run();
+    expect(status.active).toBe("local");
+    expect(closed).toBe(2);
+  });
+
+  it("tries ws://localhost from an https page: Chrome and Firefox trust the loopback", async () => {
     const fake = new FakeAlphaNet({ sessions: true });
     const { run } = boot(
       { ...common, requested: "local", clientFactory: () => fake, fetcher: fake.faucet },
