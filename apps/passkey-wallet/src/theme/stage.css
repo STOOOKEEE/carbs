@@ -1,0 +1,55 @@
+/*
+ * The look of the wallet stage pages (demo.html and the use-case pages): the XRPL
+ * Commons art direction of the web app. Every colour, font and radius comes from the
+ * one token file, apps/web/assets/tokens.css (the fonts it loads come from
+ * apps/web/public, the publicDir of vite.config.ts); nothing is redefined here.
+ *
+ * Commons look (cream, navy, violet) by default; `data-theme="ledger"` on an element
+ * turns it into Ledger mode (dark violet). The pages set it on the columns where the
+ * Ledger Stax is involved and on the footer's Device layer.
+ */
+
+@import "../../../web/assets/tokens.css";
+
+:root {
+  color-scheme: light;
+  font-family: var(--font-sans);
+}
+
+/*
+ * The brand blue is too light for text on cream at projector distance; text in blue
+ * (validated shots, own offers) is the blue pulled towards the ink. Declared again on
+ * every Ledger-mode element so it follows that element's ink, not the page's.
+ */
+:root,
+[data-theme="ledger"] {
+  --color-highlight-text: color-mix(in srgb, var(--color-highlight) 70%, var(--color-ink));
+}
+
+[data-theme="ledger"] {
+  color-scheme: dark;
+  color: var(--color-ink);
+}
+
+/* A Ledger-mode panel paints its own night background with the silk glow of the web app. */
+.column[data-theme="ledger"] {
+  border-color: var(--color-line-strong);
+  background:
+    radial-gradient(
+      120% 70% at 100% 0%,
+      color-mix(in srgb, var(--color-highlight) 34%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      90% 60% at 0% 100%,
+      color-mix(in srgb, var(--ledger-violet) 18%, transparent),
+      transparent 70%
+    ),
+    var(--color-surface);
+}
+
+h1,
+h2,
+.layer-name {
+  font-family: var(--font-display);
+}

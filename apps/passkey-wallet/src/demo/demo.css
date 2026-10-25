@@ -1,25 +1,13 @@
-/* The stage demo: dark, large type, high contrast, one screen at 1440x900 without scrolling. */
+/*
+ * The stage demo: XRPL Commons look (src/theme/stage.css), large type, high contrast, one
+ * screen at 1440x900 without scrolling. Semantic colours: paid green (--color-ok), ledger
+ * refusal red (--color-danger), device refusal violet (--color-accent), waiting amber
+ * (--color-warn). The Stax column is in Ledger mode (data-theme="ledger" in the page).
+ */
+
+@import "../theme/stage.css";
 
 :root {
-  color-scheme: dark;
-  --bg: #07090d;
-  --panel: #11151d;
-  --line: #262d3a;
-  --text: #f4f6fa;
-  --muted: #a3acbb;
-  --paid: #3ddc84;
-  --ledger: #ff5a5f;
-  --device: #b98cff;
-  --waiting: #ffb020;
-  --injection: #ff8a3d;
-  --expiry: #6cb6ff;
-  --accent: #5b8cff;
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
   font-size: 22px;
   line-height: 1.3;
 }
@@ -33,8 +21,8 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 body {
@@ -66,24 +54,24 @@ p {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 600;
 }
 
 .demo-header .dot {
-  color: var(--muted);
+  color: var(--color-ink-muted);
   padding: 0 6px;
 }
 
 .demo-header .accent {
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 600;
-  color: var(--device);
+  color: var(--color-accent);
 }
 
 /* The subtitle claims the ML-DSA-44 root only once the Stax account is migrated. */
 .demo-header .accent.root-muted {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .status {
@@ -92,12 +80,12 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 16px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
   white-space: nowrap;
 }
 
 .status.problem {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 /* Columns */
@@ -117,18 +105,19 @@ p {
   min-width: 0;
   overflow: hidden;
   padding: 18px 20px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--panel);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
 }
 
 .column h2,
 .label {
+  font-family: var(--font-sans);
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-ink-muted);
 }
 
 /* Timeline */
@@ -152,10 +141,10 @@ p {
   align-items: start;
   flex: none;
   padding: 8px 12px;
-  border-left: 6px solid var(--muted);
-  border-radius: 10px;
-  background: #0c1017;
-  animation: arrive 0.4s ease-out;
+  border-left: 6px solid var(--color-ink-muted);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  animation: arrive var(--motion-slow) var(--ease-out);
 }
 
 .event-icon {
@@ -167,8 +156,8 @@ p {
   border-radius: 50%;
   font-size: 18px;
   font-weight: 800;
-  color: var(--bg);
-  background: var(--muted);
+  color: var(--color-accent-ink);
+  background: var(--color-ink-muted);
 }
 
 .event-body {
@@ -198,7 +187,7 @@ p {
   line-clamp: 2;
   overflow: hidden;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -213,15 +202,15 @@ p {
   grid-area: time;
   justify-self: end;
   font-size: 16px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .event-quiet {
-  border-left-color: var(--line);
+  border-left-color: var(--color-line);
 }
 
 .event-quiet .event-text {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .event-type-thought .event-text {
@@ -229,65 +218,68 @@ p {
 }
 
 .event-paid {
-  border-left-color: var(--paid);
+  border-left-color: var(--color-ok);
 }
 .event-paid .event-icon {
-  background: var(--paid);
+  background: var(--color-ok);
 }
 .event-paid .event-detail,
 .event-paid .event-amount {
-  color: var(--paid);
+  color: var(--color-ok);
 }
 
 .event-ledger {
-  border-left-color: var(--ledger);
-  background: #1c0d10;
+  border-left-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface-raised));
 }
 .event-ledger .event-icon {
-  background: var(--ledger);
+  background: var(--color-danger);
 }
 .event-ledger .event-detail,
 .event-ledger .event-amount {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .event-device {
-  border-left-color: var(--device);
-  background: #170f24;
+  border-left-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-raised));
 }
 .event-device .event-icon {
-  background: var(--device);
+  background: var(--color-accent);
 }
 .event-device .event-detail,
 .event-device .event-amount {
-  color: var(--device);
+  color: var(--color-accent);
 }
 
 .event-waiting {
-  border-left-color: var(--waiting);
+  border-left-color: var(--color-warn);
 }
 .event-waiting .event-icon {
-  background: var(--waiting);
+  background: var(--color-warn);
 }
 .event-waiting .event-amount {
-  color: var(--waiting);
+  color: var(--color-warn);
 }
 
+/* A prompt injection is highlighted like a marker pen: yellow tag, navy ink. */
 .event-injection {
-  border-left-color: var(--injection);
+  border-left-color: var(--color-tag);
+  background: color-mix(in srgb, var(--color-tag) 45%, var(--color-surface-raised));
 }
 .event-injection .event-icon {
-  background: var(--injection);
+  color: var(--color-tag-ink);
+  background: var(--color-tag);
 }
 .event-injection .event-text {
-  color: var(--injection);
+  font-weight: 700;
 }
 
 .event-expiry {
-  border-left-color: var(--expiry);
+  border-left-color: var(--color-highlight);
 }
 .event-expiry .event-icon {
-  background: var(--expiry);
+  background: var(--color-highlight);
 }
 
 @keyframes arrive {
@@ -314,34 +306,36 @@ p {
 
 /* One line, sized to the column (about 360px wide at 1440). */
 .agent-id {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: clamp(32px, 3.1vw, 56px);
   font-weight: 800;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  color: var(--text);
+  color: var(--color-ink);
 }
 
 .hint {
   font-size: 18px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .spent {
-  font-size: 44px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 46px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .spent .of {
-  color: var(--muted);
-  font-weight: 400;
+  color: var(--color-ink-muted);
+  font-weight: 500;
 }
 
 .gauge {
   height: 24px;
-  border-radius: 14px;
-  background: #1d2330;
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
   overflow: hidden;
 }
 
@@ -349,15 +343,15 @@ p {
   --fill: 0%;
   width: var(--fill);
   height: 100%;
-  border-radius: 14px;
-  background: var(--paid);
+  border-radius: var(--radius-pill);
+  background: var(--color-ok);
   transition:
-    width 0.6s ease,
-    background 0.3s;
+    width 0.6s var(--ease-out),
+    background var(--motion-base);
 }
 
 .gauge-fill.warning {
-  background: var(--waiting);
+  background: var(--color-warn);
 }
 
 .budget-facts {
@@ -369,68 +363,78 @@ p {
 
 .budget-facts dt {
   font-size: 18px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .budget-facts dd {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 32px;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .budget-facts dd.expired {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .session-state {
   font-size: 20px;
   line-height: 1.25;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .session-open {
-  color: var(--paid);
+  color: var(--color-ok);
 }
 
 .session-waiting {
-  color: var(--waiting);
+  color: var(--color-warn);
 }
 
 .session-over {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 /* Stax */
 
 .stax-status {
   font-size: 20px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .stax-status.post-quantum {
-  color: var(--device);
+  color: var(--color-accent);
 }
 
+/* Commons buttons: pills; primary is the accent, secondary an outline. */
 button {
   font: inherit;
   font-size: 24px;
   font-weight: 700;
   padding: 14px 22px;
-  border-radius: 12px;
-  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  border: var(--border-width) solid transparent;
   cursor: pointer;
+  transition:
+    background var(--motion-fast),
+    opacity var(--motion-fast);
 }
 
 button.primary {
-  background: var(--accent);
-  color: #fff;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 button.secondary {
   background: transparent;
-  color: var(--text);
-  border-color: var(--line);
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
+}
+
+button:focus-visible {
+  outline: 3px solid var(--color-highlight);
+  outline-offset: 2px;
 }
 
 button:disabled {
@@ -448,7 +452,7 @@ button:disabled {
 
 .pending-empty {
   font-size: 22px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .card {
@@ -456,20 +460,20 @@ button:disabled {
   flex-direction: column;
   gap: 8px;
   padding: 18px;
-  border: 2px solid var(--waiting);
-  border-radius: 14px;
-  background: #1a1509;
+  border: var(--border-width) solid var(--color-warn);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warn) 12%, var(--color-surface));
 }
 
 .card-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--waiting);
+  color: var(--color-warn);
 }
 
 .card-agent-id,
 .card-amount {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 30px;
   font-weight: 800;
   white-space: nowrap;
@@ -484,7 +488,7 @@ button:disabled {
 .card-memo {
   font-size: 18px;
   font-style: italic;
-  color: var(--muted);
+  color: var(--color-ink-muted);
   overflow-wrap: anywhere;
 }
 
@@ -497,30 +501,30 @@ button:disabled {
 .stax-message {
   margin-top: auto;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   font-size: 22px;
   font-weight: 600;
-  background: #0c1017;
+  background: var(--color-surface-sunken);
 }
 
 .message-ok {
-  color: var(--paid);
+  color: var(--color-ok);
 }
 
 .message-device {
-  color: var(--device);
-  border: 2px solid var(--device);
+  color: var(--color-accent);
+  border: var(--border-width) solid var(--color-accent);
 }
 
 .message-error {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .message-info {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
-/* Footer: the two guardrail layers */
+/* Footer: the two guardrail layers. The Device layer is in Ledger mode (the Stax). */
 
 .layers {
   display: grid;
@@ -533,18 +537,23 @@ button:disabled {
   align-items: baseline;
   gap: 14px;
   padding: 12px 22px;
-  border: 2px solid var(--line);
-  border-radius: 16px;
-  color: var(--muted);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-ink-muted);
   transition:
-    border-color 0.3s,
-    background 0.3s,
-    color 0.3s;
+    border-color var(--motion-base),
+    background var(--motion-base),
+    color var(--motion-base);
+}
+
+.layer[data-theme="ledger"] {
+  background: var(--color-surface);
 }
 
 .layer-name {
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .layer-what {
@@ -557,23 +566,25 @@ button:disabled {
   font-weight: 700;
 }
 
+/* In Ledger mode the violet is close to the muted ink: a lit layer also gets a violet wash. */
 .layer-device.lit {
-  border-color: var(--device);
-  color: var(--device);
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--color-surface));
+  color: var(--color-accent);
 }
 
 .layer-ledger.lit {
-  border-color: var(--ledger);
-  color: var(--ledger);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .layer-device.flash {
-  background: color-mix(in srgb, var(--device) 22%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface));
   animation: pulse 0.8s ease-in-out 3;
 }
 
 .layer-ledger.flash {
-  background: color-mix(in srgb, var(--ledger) 22%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface-raised));
   animation: pulse 0.8s ease-in-out 3;
 }
 

@@ -3,6 +3,7 @@
 #ifdef HAVE_NBGL
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "nbgl_content.h"
 
@@ -17,5 +18,11 @@ void session_policy_menu_prepare(nbgl_contentSwitch_t *switches, nbgl_content_t 
 
 // Handles a tap on a policy switch. Returns false for any other token.
 bool session_policy_switch_tapped(int token);
+
+// Text of a limit bar, SETTINGS_BAR_TEXT_SIZE bytes: "<name>: XRP 50",
+// "Max duration: 3 min", or "no limit" for SESSION_POLICY_NO_LIMIT.
+#define SETTINGS_BAR_TEXT_SIZE 40
+void settings_format_xrp_limit(const char *name, uint64_t drops, char *out);
+void settings_format_duration_limit(uint32_t seconds, char *out);
 
 #endif

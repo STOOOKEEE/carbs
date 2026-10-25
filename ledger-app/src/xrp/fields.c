@@ -117,6 +117,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Allows";
             case XRP_UINT32_SESSION_DURATION:
                 return "Valid for";
+            case XRP_UINT32_SESSION_MAX_TX_COUNT:
+                return "Max transactions";
         }
     }
 
@@ -236,6 +238,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Note";
             case XRP_VL_SESSION_SCOPE:
                 return "Allows";
+            case XRP_VL_SESSION_PROFILE:
+                return "Profile";
         }
     }
 

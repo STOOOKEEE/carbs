@@ -1,9 +1,5 @@
 /* The DEX page, on top of the stage demo's look (demo.css): order book, session, controls. */
 
-:root {
-  --own: #5b8cff;
-}
-
 .dex-grid {
   grid-template-columns: 1fr 1fr 1.1fr;
 }
@@ -20,7 +16,7 @@
 
 .book-head {
   font-size: 16px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -53,35 +49,35 @@
 }
 
 .book-ask span:first-child {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .book-bid span:first-child {
-  color: var(--paid);
+  color: var(--color-ok);
 }
 
 .book-row span:last-child {
-  color: var(--muted);
+  color: var(--color-ink-muted);
   font-size: 16px;
   align-self: center;
 }
 
 .book-own {
-  background: color-mix(in srgb, var(--own) 22%, transparent);
+  background: color-mix(in srgb, var(--color-highlight) 22%, transparent);
 }
 
 .book-own span:last-child {
-  color: var(--own);
+  color: var(--color-highlight-text);
   font-weight: 700;
 }
 
 .book-reference {
   padding: 6px 8px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
   font-size: 18px;
   font-weight: 700;
-  color: var(--expiry);
+  color: var(--color-highlight-text);
 }
 
 .book-legend {
@@ -91,11 +87,11 @@
 }
 
 .legend-own {
-  color: var(--own);
+  color: var(--color-highlight-text);
 }
 
 .legend-market {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 /* Session */
@@ -110,16 +106,17 @@
 
 .dex-honest {
   margin-top: auto;
-  padding: 12px 14px;
-  border: 1px solid var(--waiting);
-  border-radius: 12px;
+  padding: 10px 14px;
+  border: var(--border-width) solid var(--color-warn);
+  border-radius: var(--radius-md);
   font-size: 17px;
-  line-height: 1.35;
-  color: var(--text);
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+  color: var(--color-ink);
 }
 
 .dex-honest strong {
-  color: var(--waiting);
+  color: var(--color-warn);
 }
 
 /* Controls */
@@ -137,8 +134,8 @@
 }
 
 .dex-abuse button {
-  border-color: var(--ledger);
-  color: var(--ledger);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .dex-activity {
@@ -158,15 +155,15 @@
   flex-direction: column;
   gap: 2px;
   padding: 6px 10px;
-  border-left: 4px solid var(--line);
+  border-left: 4px solid var(--color-line);
   border-radius: 6px;
-  background: #0c1017;
+  background: var(--color-surface-sunken);
   font-size: 16px;
 }
 
 .activity a {
   font-size: 14px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .activity-detail {
@@ -174,24 +171,24 @@
 }
 
 .activity-ok {
-  border-left-color: var(--paid);
+  border-left-color: var(--color-ok);
 }
 
 .activity-ledger {
-  border-left-color: var(--ledger);
-  color: var(--ledger);
+  border-left-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .activity-device {
-  border-left-color: var(--device);
-  color: var(--device);
+  border-left-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .activity-warning {
-  border-left-color: var(--waiting);
-  color: var(--waiting);
+  border-left-color: var(--color-warn);
+  color: var(--color-warn);
 }
 
 .activity-info .activity-text {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
