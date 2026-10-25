@@ -59,7 +59,7 @@ async function create(profile: Profile): Promise<void> {
       <article
         v-for="profile in PROFILES"
         :key="profile.id"
-        class="panel space-y-3"
+        class="panel panel-stack space-y-3"
         :data-testid="`profile-${profile.id}`"
       >
         <h2 class="panel-title">{{ profile.title }}</h2>

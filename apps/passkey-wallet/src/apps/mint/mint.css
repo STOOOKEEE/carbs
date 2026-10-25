@@ -1,24 +1,12 @@
-/* The ticket desk: the stage demo's visual language (dark, large type, two guardrail layers). */
+/*
+ * The ticket desk: the stage demo's visual language (XRPL Commons look from
+ * src/theme/stage.css, large type, two guardrail layers). The owner column, where the
+ * Ledger Stax opens the session, is in Ledger mode (data-theme="ledger" in mint.html).
+ */
+
+@import "../../theme/stage.css";
 
 :root {
-  color-scheme: dark;
-  --bg: #07090d;
-  --panel: #11151d;
-  --line: #262d3a;
-  --text: #f4f6fa;
-  --muted: #a3acbb;
-  --ok: #3ddc84;
-  --ledger: #ff5a5f;
-  --device: #b98cff;
-  --waiting: #ffb020;
-  --accent: #5b8cff;
-  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
   font-size: 19px;
   line-height: 1.35;
 }
@@ -30,8 +18,8 @@
 html,
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 body {
@@ -60,29 +48,29 @@ p {
 .mint-header h1 {
   flex: 1 1 auto;
   font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 600;
 }
 
 .mint-header .dot {
-  color: var(--muted);
+  color: var(--color-ink-muted);
   padding: 0 6px;
 }
 
 .mint-header .accent {
+  font-family: var(--font-sans);
   font-size: 18px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--color-accent);
 }
 
 .status {
   font-size: 15px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
   overflow-wrap: anywhere;
 }
 
 .status.problem {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 /* Columns */
@@ -100,27 +88,27 @@ p {
   gap: 14px;
   min-width: 0;
   padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--panel);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
 }
 
 .column h2 {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .label {
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .hint {
   font-size: 15px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .card {
@@ -128,15 +116,15 @@ p {
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #0c1017;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
 }
 
 .rules-profile {
   font-size: 26px;
   font-weight: 800;
-  color: var(--device);
+  color: var(--color-accent);
 }
 
 .rules-list {
@@ -157,20 +145,20 @@ button {
   font-size: 20px;
   font-weight: 700;
   padding: 12px 18px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   border: 2px solid transparent;
   cursor: pointer;
 }
 
 button.primary {
-  background: var(--accent);
-  color: #fff;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 button.secondary {
   background: transparent;
-  color: var(--text);
-  border-color: var(--line);
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
 }
 
 button:disabled {
@@ -190,79 +178,81 @@ button.abuse {
   align-items: flex-start;
   gap: 4px;
   text-align: left;
-  background: #1a0f12;
-  color: var(--text);
-  border-color: var(--ledger);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  color: var(--color-ink);
+  border-color: var(--color-danger);
 }
 
 button.abuse.device {
-  background: #150f1f;
-  border-color: var(--device);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-color: var(--color-accent);
 }
 
 .expect {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 15px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 /* Messages */
 
 .message {
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   font-size: 17px;
   font-weight: 600;
-  background: #0c1017;
+  background: var(--color-surface-sunken);
 }
 
 .message-info {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .message-ok {
-  color: var(--ok);
+  color: var(--color-ok);
 }
 
 .message-error {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 /* Session card */
 
 .agent-id {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 40px;
   font-weight: 800;
   letter-spacing: 0.04em;
 }
 
 .big-figure {
+  font-family: var(--font-display);
   font-size: 44px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .big-figure .of {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .gauge {
   height: 14px;
-  border-radius: 7px;
-  background: var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sunken);
   overflow: hidden;
 }
 
 .gauge-fill {
   width: var(--fill, 0%);
   height: 100%;
-  background: var(--ok);
+  background: var(--color-ok);
   transition: width 0.4s;
 }
 
 .gauge-fill.warning {
-  background: var(--waiting);
+  background: var(--color-warn);
 }
 
 .facts {
@@ -273,7 +263,7 @@ button.abuse.device {
 
 .facts dt {
   font-size: 14px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .facts dd {
@@ -284,7 +274,7 @@ button.abuse.device {
 }
 
 .facts dd.expired {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .session-state {
@@ -293,15 +283,15 @@ button.abuse.device {
 }
 
 .session-idle {
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .session-open {
-  color: var(--ok);
+  color: var(--color-ok);
 }
 
 .session-over {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 /* Gallery */
@@ -320,13 +310,13 @@ button.abuse.device {
   flex-direction: column;
   gap: 2px;
   padding: 10px 12px;
-  border: 1px dashed var(--line);
+  border: 1px dashed var(--color-line);
   border-radius: 12px;
-  background: #0c1017;
+  background: var(--color-surface-sunken);
 }
 
 .ticket-fresh {
-  border: 1px solid var(--ok);
+  border: 1px solid var(--color-ok);
 }
 
 .ticket-seat {
@@ -336,13 +326,13 @@ button.abuse.device {
 
 .ticket-number {
   font-size: 15px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .ticket-id {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 /* Activity */
@@ -361,7 +351,7 @@ button.abuse.device {
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: #0c1017;
+  background: var(--color-surface-sunken);
 }
 
 .event-icon {
@@ -385,7 +375,7 @@ button.abuse.device {
 }
 
 .event-code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 16px;
   font-weight: 700;
 }
@@ -394,40 +384,40 @@ button.abuse.device {
 .event-expected,
 .event-link {
   font-size: 15px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .event-ok .event-icon,
 .event-ok .event-code {
-  color: var(--ok);
+  color: var(--color-ok);
 }
 
 .event-ledger {
-  border: 1px solid var(--ledger);
+  border: 1px solid var(--color-danger);
 }
 
 .event-ledger .event-icon,
 .event-ledger .event-code,
 .event-ledger .event-detail {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .event-device {
-  border: 1px solid var(--device);
+  border: 1px solid var(--color-accent);
 }
 
 .event-device .event-icon,
 .event-device .event-code,
 .event-device .event-detail {
-  color: var(--device);
+  color: var(--color-accent);
 }
 
 .event-info .event-text {
   font-weight: 400;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
-/* Footer: the two guardrail layers */
+/* Footer: the two guardrail layers. The Device layer is in Ledger mode (the Stax). */
 
 .layers {
   display: grid;
@@ -440,18 +430,23 @@ button.abuse.device {
   align-items: baseline;
   gap: 14px;
   padding: 12px 22px;
-  border: 2px solid var(--line);
-  border-radius: 16px;
-  color: var(--muted);
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-ink-muted);
   transition:
-    border-color 0.3s,
-    background 0.3s,
-    color 0.3s;
+    border-color var(--motion-base),
+    background var(--motion-base),
+    color var(--motion-base);
+}
+
+.layer[data-theme="ledger"] {
+  background: var(--color-surface);
 }
 
 .layer-name {
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .layer-what {
@@ -464,23 +459,25 @@ button.abuse.device {
   font-weight: 700;
 }
 
+/* In Ledger mode the violet is close to the muted ink: a lit layer also gets a violet wash. */
 .layer-device.lit {
-  border-color: var(--device);
-  color: var(--device);
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--color-surface));
+  color: var(--color-accent);
 }
 
 .layer-ledger.lit {
-  border-color: var(--ledger);
-  color: var(--ledger);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .layer-device.flash {
-  background: color-mix(in srgb, var(--device) 22%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface));
   animation: pulse 0.8s ease-in-out 3;
 }
 
 .layer-ledger.flash {
-  background: color-mix(in srgb, var(--ledger) 22%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface-raised));
   animation: pulse 0.8s ease-in-out 3;
 }
 

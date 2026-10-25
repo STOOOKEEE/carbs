@@ -32,6 +32,10 @@
 #define XRP_UINT64_SESSION_MAX_PER_TX 49   // SessionMaxPerTx, Amount (XRP only)
 #define XRP_ACCOUNT_SESSION_WITNESS   35   // SessionWitness, AccountID
 
+// The most transactions the session may sign, in any mode: 1 to 100000, the
+// node counts them in the ledger entry's SessionTxCount.
+#define XRP_UINT32_SESSION_MAX_TX_COUNT 115  // SessionMaxTxCount
+
 // SigningSessionSet flag: mode A (6.1). SigningSessionDelete has no flag.
 #define TF_ALL_TRANSACTIONS 0x00010000u
 
@@ -54,6 +58,11 @@
 // grouped "XXXX-XXXX", so the agent can show the same short identifier
 // (docs/device-contract.md).
 #define XRP_ACCOUNT_AGENT_ID 0xFC
+
+// Not a real XRPL field code: the synthetic "Profile" row the app appends to
+// a SigningSessionSet checked against a session profile (session_profiles.h),
+// refused in signed data like the "Note" row.
+#define XRP_VL_SESSION_PROFILE 0xFB
 
 // Parse result of a session transaction that cannot be clear-signed: it is
 // refused, never offered for blind signing, whatever the setting says.

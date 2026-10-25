@@ -4,12 +4,15 @@
  * vectors (`ledger-app/tests/standalone/testcases/*.txt`, one `Label; value` line each).
  *
  * Order: `Transaction Type`, `Account`, `Session key` and `Agent ID` (when present), then every
- * shown field in serialization order, then the synthetic rows of `SigningSessionSet`: `Allows` in
- * mode C (a `SessionCap` is set), then `Note`.
+ * shown field in serialization order (`Memos` as `Memo Type [i]`, `Memo Data [i]`...), then the
+ * synthetic rows of `SigningSessionSet`: `Allows` in mode C (a `SessionCap` is set), then `Note`.
+ * A `SigningSessionSet` whose one `carbs-profile` memo names a profile gets a `Profile` row right
+ * after `Agent ID`, whether the session policy is on or not.
  */
 
-import { kPermissionMaxSize, type Definitions } from "@carbs/sessions";
+import { hexToBytes, kPermissionMaxSize, type Definitions } from "@carbs/sessions";
 import { agentIdOf } from "./agent-id.js";
+import { profileMemoOf, sessionProfileTitle } from "./session-policy.js";
 
 export interface ScreenLine {
   label: string;
@@ -134,6 +137,7 @@ const kLabels: Record<string, string> = {
   SessionKey: "Session key",
   NetworkID: "Network ID",
   SessionDuration: "Valid for",
+  SessionMaxTxCount: "Max transactions",
   Fee: "Fee",
   SessionCap: "Max spend",
   SessionMaxPerTx: "Max per payment",
@@ -170,6 +174,45 @@ export function formatDuration(seconds: number): string {
   if (minutes === 0) return `${rest} s`;
   if (rest === 0) return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   return `${minutes} min ${rest} s`;
+}
+
+/** `MAX_ARRAY_LEN` (`ledger-app/src/limitations.h`): the most items the app parses in an array. */
+const kMaxArrayLength = 10;
+/** `blob_formatter`'s room: `MAX_FIELD_LEN` (1024, Stax) less the NUL. */
+const kBlobMaxLength = 1023;
+/** Where `blob_formatter` writes `...` over a value too long for its room. */
+const kBlobEllipsisAt = kBlobMaxLength - 3;
+/** The memo fields, in serialization order, and their review labels (`fields.c`). */
+const kMemoLabels: [string, string][] = [
+  ["MemoType", "Memo Type"],
+  ["MemoData", "Memo Data"],
+  ["MemoFormat", "Memo Fmt"],
+];
+
+/** A memo field → text when every byte is printable ASCII, else lowercase hex (`blob_formatter`). */
+function blobValue(hex: string): string {
+  const bytes = hexToBytes(hex);
+  const text = bytes.every((byte) => byte >= 0x20 && byte <= 0x7e)
+    ? String.fromCharCode(...bytes)
+    : hex.toLowerCase();
+  return text.length > kBlobMaxLength ? `${text.slice(0, kBlobEllipsisAt)}...` : text;
+}
+
+/** The rows of `Memos`: `Memo Type [i]`, `Memo Data [i]`, `Memo Fmt [i]` for memo i. */
+function memoLines(memos: unknown[]): ScreenLine[] | undefined {
+  const lines: ScreenLine[] = [];
+  for (const [index, wrapped] of memos.entries()) {
+    const memo: unknown =
+      typeof wrapped === "object" && wrapped !== null ? Reflect.get(wrapped, "Memo") : undefined;
+    if (typeof memo !== "object" || memo === null) return undefined;
+    for (const [field, label] of kMemoLabels) {
+      const raw: unknown = Reflect.get(memo, field);
+      if (raw === undefined) continue;
+      if (typeof raw !== "string") return undefined;
+      lines.push({ label: `${label} [${index + 1}]`, value: blobValue(raw) });
+    }
+  }
+  return lines;
 }
 
 function value(
@@ -218,6 +261,10 @@ export function reviewLines(tx: Record<string, unknown>, defs: Definitions): Rev
     lines.push({ label: "Session key", value: tx["SessionKey"] });
     lines.push({ label: "Agent ID", value: agentIdOf(tx["SessionKey"]) });
   }
+  const profile = type === "SigningSessionSet" ? profileMemoOf(tx["Memos"]) : undefined;
+  if (profile?.kind === "found") {
+    lines.push({ label: "Profile", value: sessionProfileTitle(profile.name) });
+  }
   const ordinal = (field: string) =>
     defs.codec.field.fromString(field)?.ordinal ?? Number.MAX_SAFE_INTEGER;
   const fields = Object.keys(tx)
@@ -242,6 +289,17 @@ export function reviewLines(tx: Record<string, unknown>, defs: Definitions): Rev
         lines.push({ label: "Flags", value: String(raw) });
       } else if (all !== 0 && (flags & all) !== 0) {
         lines.push({ label: "Allows", value: "All transactions" });
+      }
+      continue;
+    }
+    if (field === "Memos" && Array.isArray(raw)) {
+      // The app parses at most MAX_ARRAY_LEN items of an array (`limitations.h`).
+      const memos = raw.length > kMaxArrayLength ? undefined : memoLines(raw);
+      if (memos === undefined) {
+        kind = "blind";
+        lines.push({ label: field, value: JSON.stringify(raw) });
+      } else {
+        lines.push(...memos);
       }
       continue;
     }

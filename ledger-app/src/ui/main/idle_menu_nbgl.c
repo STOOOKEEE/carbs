@@ -23,6 +23,7 @@
 #include "nbgl_use_case.h"
 #include "os.h"
 #include "session_policy_menu.h"
+#include "session_profiles_menu.h"
 #include "ui.h"
 
 //  -----------------------------------------------------------
@@ -51,12 +52,13 @@ enum {
     BLIND_SIGNING_TOKEN = FIRST_USER_TOKEN,
 };
 
-// settings menu definition: the switches, then the session policy limits.
-// Filled at runtime (set_switches_states): the app may not have an
-// initialized .data section.
+// settings menu definition: the switches, then the session policy limits,
+// then the session profiles. Filled at runtime (set_switches_states): the
+// app may not have an initialized .data section.
 enum {
     SWITCHES_CONTENT_IDX = 0,
     SESSION_POLICY_LIMITS_CONTENT_IDX,
+    SESSION_PROFILES_CONTENT_IDX,
     SETTING_CONTENTS_NB,
 };
 static nbgl_content_t contents[SETTING_CONTENTS_NB];
@@ -98,6 +100,7 @@ void set_switches_states(void) {
     contents[SWITCHES_CONTENT_IDX].contentActionCallback = settings_controls_callback;
     session_policy_menu_prepare(&G_switches[SESSION_POLICY_SWITCHES_IDX],
                                 &contents[SESSION_POLICY_LIMITS_CONTENT_IDX]);
+    session_profiles_menu_prepare(&contents[SESSION_PROFILES_CONTENT_IDX]);
 }
 
 static void on_quit_clbk(void) { os_sched_exit(-1); }

@@ -1,11 +1,15 @@
+import { readFile } from "node:fs/promises";
 import {
   addressFromPublicKey,
+  bytesToHex,
+  decodeTx,
   generateClassicSeed,
+  parseDefinitions,
   signTransaction,
   type BytesSigner,
   type TxJson,
 } from "@carbs/sessions";
-import { simulatedSessionDefinitions } from "@carbs/sessions/testing";
+import { simulatedSessionServerDefinitions } from "@carbs/sessions/testing";
 import { describe, expect, it } from "vitest";
 import { agentIdOf } from "./agent-id.js";
 import {
@@ -19,6 +23,7 @@ import {
   type ApduTransport,
 } from "./apdu.js";
 import { describeLedgerError } from "./ledger-error.js";
+import { parseScreenVector, reviewLines } from "./screen.js";
 import {
   encodeSessionPolicy,
   getSessionPolicy,
@@ -32,8 +37,18 @@ import { deviceClassicSigner, deviceMlDsaSigner } from "./signers.js";
 import { SimulatedDevice } from "./simulated-device.js";
 import { bip39Seed } from "./slip21.js";
 
-/** SIMULATED definitions: the recorded standalone node does not know `SessionMaxPerTx`/`SessionWitness`. */
-const defs = simulatedSessionDefinitions();
+/**
+ * SIMULATED definitions: the recorded standalone node does not know `SessionMaxPerTx`,
+ * `SessionWitness` nor `SessionMaxTxCount` (rippled `sfields.macro`, UINT32 115).
+ */
+const defs = (() => {
+  const server = simulatedSessionServerDefinitions();
+  server.FIELDS.push([
+    "SessionMaxTxCount",
+    { nth: 115, isVLEncoded: false, isSerialized: true, isSigningField: true, type: "UInt32" },
+  ]);
+  return parseDefinitions(server);
+})();
 /** Speculos' default mnemonic, public on purpose (it is in Speculos' documentation). */
 const kSpeculosMnemonic =
   "glory promote mansion idle axis finger extra february uncover one trip resource lawn turtle enact monster seven myth punch hobby comfort wild raise skin";
@@ -108,24 +123,52 @@ describe("Agent ID", () => {
   });
 });
 
+/** Big-endian bytes, as the device writes them. */
+const be32 = (value: number) => [
+  value >>> 24,
+  (value >>> 16) & 0xff,
+  (value >>> 8) & 0xff,
+  value & 0xff,
+];
+const be64 = (value: bigint) => [
+  ...be32(Number(value >> 32n)),
+  ...be32(Number(value & 0xffffffffn)),
+];
+
+/** The profiles of a fresh install, as `session_policy_serialize` writes them. */
+const kFreshProfiles = [
+  5,
+  ...[0, 1, 0x01, ...be64(50n * kXrp), ...be64(5n * kXrp), ...be32(180), ...be32(20), 0],
+  ...[1, 1, 0x01, ...be64(5n * kXrp), ...be64(100_000n), ...be32(600), ...be32(500), 0],
+  ...[2, 1, 0x04, ...be64(0n), ...be64(0n), ...be32(600), ...be32(200), 2, ...be32(8), ...be32(9)],
+  ...[3, 1, 0x01, ...be64(2n * kXrp), ...be64(10_000n), ...be32(600), ...be32(1000), 0],
+  ...[4, 1, 0x04, ...be64(0n), ...be64(0n), ...be32(600), ...be32(100), 1, ...be32(26)],
+];
+
 describe("INS 0x08: session policy", () => {
-  it("reads the fresh install answer as the policy off", () => {
-    const fresh = Uint8Array.of(1, ...new Uint8Array(21));
+  it("reads the fresh install answer as the policy off, every profile on", () => {
+    const fresh = Uint8Array.of(2, ...new Uint8Array(21), ...kFreshProfiles);
+    expect(fresh.length).toBe(175);
     expect(parseSessionPolicy(fresh)).toEqual(kSessionPolicyOff);
     expect(encodeSessionPolicy(kSessionPolicyOff)).toEqual(fresh);
   });
 
-  it("reads the flags and the big-endian limits", () => {
+  it("reads the flags, the big-endian limits and each profile", () => {
     const bytes = Uint8Array.of(
-      1,
+      2,
       0x0f,
       ...[0, 0, 0, 0, 0x02, 0xfa, 0xf0, 0x80], // 50 000 000 drops
       ...[0, 0, 0, 0, 0, 0x98, 0x96, 0x80], // 10 000 000 drops
       ...[0, 0, 0x02, 0x58], // 600 s
+      ...kFreshProfiles,
     );
+    // The game profile turned off and its max transactions moved to 1000 on the device
+    const game = 23 + 28;
+    bytes[game + 1] = 0;
+    bytes.set(be32(1000), game + 23);
     const policy = parseSessionPolicy(bytes);
     expect(policy).toEqual({
-      version: 1,
+      ...kSessionPolicyOff,
       enabled: true,
       allowAll: true,
       allowPermissions: true,
@@ -133,16 +176,35 @@ describe("INS 0x08: session policy", () => {
       maxCapDrops: 50_000_000n,
       maxPerTxDrops: 10_000_000n,
       maxDurationSeconds: 600,
+      profiles: kSessionPolicyOff.profiles.map((profile) =>
+        profile.name === "game" ? { ...profile, enabled: false, maxTxCount: 1000 } : profile,
+      ),
+    });
+    expect(policy.profiles[2]).toEqual({
+      name: "trading",
+      enabled: true,
+      modes: ["permissions"],
+      maxCapDrops: null,
+      maxPerTxDrops: null,
+      maxDurationSeconds: 600,
+      maxTxCount: 200,
+      permissions: [8, 9],
     });
     expect(encodeSessionPolicy(policy)).toEqual(bytes);
   });
 
-  it("refuses a wrong length or an unknown version", () => {
-    expect(() => parseSessionPolicy(new Uint8Array(21))).toThrow(SessionPolicyError);
-    expect(() => parseSessionPolicy(Uint8Array.of(1, ...new Uint8Array(22)))).toThrow(/23 bytes/);
-    expect(() => parseSessionPolicy(Uint8Array.of(2, ...new Uint8Array(21)))).toThrow(
-      SessionPolicyError,
+  it("refuses a version 1 answer, a truncated one and trailing bytes", () => {
+    // What a device without profiles answers: 22 bytes, version 1
+    expect(() => parseSessionPolicy(Uint8Array.of(1, ...new Uint8Array(21)))).toThrow(
+      /format 1 is not supported \(expected 2\)/,
     );
+    expect(() => parseSessionPolicy(new Uint8Array())).toThrow(SessionPolicyError);
+    const fresh = encodeSessionPolicy(kSessionPolicyOff);
+    expect(() => parseSessionPolicy(fresh.subarray(0, 22))).toThrow(/at least 23 bytes/);
+    expect(() => parseSessionPolicy(fresh.subarray(0, fresh.length - 1))).toThrow(
+      /truncated in profile 4/,
+    );
+    expect(() => parseSessionPolicy(Uint8Array.of(...fresh, 0))).toThrow(/1 bytes after/);
   });
 
   it("refuses to store a limit of 0 (it would mean no limit)", () => {
@@ -329,5 +391,130 @@ describe("session policy check (the device's rules)", () => {
       ],
     };
     expect(refusal(kDemoPolicy, batch)).toBe("Transaction 2: Max spend XRP 60 is above XRP 50");
+  });
+});
+
+const hexText = (text: string) => bytesToHex(new TextEncoder().encode(text));
+const profileMemo = (name: string) => ({
+  Memo: { MemoType: hexText("carbs-profile"), MemoData: hexText(name) },
+});
+/** The real app's game opening: 5 XRP, 0.1 XRP per payment, 300 transactions, 10 minutes. */
+const gameSession = (account: string, fields: Record<string, unknown> = {}): TxJson => ({
+  ...capSession(account, 5n),
+  SessionMaxPerTx: "100000",
+  SessionDuration: 600,
+  SessionMaxTxCount: 300,
+  Memos: [profileMemo("game")],
+  ...fields,
+});
+/** The real app's trading opening: OfferCreate and OfferCancel, 200 transactions. */
+const tradingSession = (permissions: string[]): Record<string, unknown> => ({
+  TransactionType: "SigningSessionSet",
+  Account: kWitness,
+  SessionKey: kSessionKey,
+  SessionDuration: 600,
+  SessionMaxTxCount: 200,
+  Permissions: permissions.map((value) => ({ Permission: { PermissionValue: value } })),
+  Memos: [profileMemo("trading")],
+});
+
+describe("session profiles (the device's rules)", () => {
+  const refusal = (policy: SessionPolicy, tx: Record<string, unknown>) =>
+    sessionPolicyRefusal(policy, tx, defs);
+  const on: SessionPolicy = { ...kSessionPolicyOff, enabled: true };
+
+  it("checks a session naming a profile against that profile, not the default limits", () => {
+    expect(refusal(kDemoPolicy, gameSession(kWitness))).toBeUndefined();
+    expect(refusal(kDemoPolicy, gameSession(kWitness, { SessionCap: "50000000" }))).toBe(
+      "Profile Game: Max spend XRP 50 is above XRP 5",
+    );
+    expect(refusal(on, tradingSession(["OfferCreate", "OfferCancel"]))).toBeUndefined();
+  });
+
+  it("refuses each limit of the profile, and a permission outside it", () => {
+    const { SessionMaxTxCount: _count, ...noCount } = gameSession(kWitness);
+    expect(refusal(on, noCount)).toBe("Profile Game: Set a transaction limit (at most 500)");
+    expect(refusal(on, gameSession(kWitness, { SessionMaxTxCount: 501 }))).toBe(
+      "Profile Game: Max transactions 501 is above 500",
+    );
+    expect(refusal(on, gameSession(kWitness, { SessionMaxPerTx: "200000" }))).toBe(
+      "Profile Game: Max per payment XRP 0.2 is above XRP 0.1",
+    );
+    expect(
+      refusal(on, gameSession(kWitness, { Memos: [profileMemo("agent")], SessionMaxTxCount: 20 })),
+    ).toBe("Profile Agent: Duration 600 s is above 180 s");
+    expect(refusal(on, tradingSession(["OfferCreate", "Payment"]))).toBe(
+      "Profile Trading: Payment is not allowed",
+    );
+    expect(refusal(on, gameSession(kWitness, { Memos: [profileMemo("minting")] }))).toBe(
+      "Profile Minting: Session mode not allowed by this profile",
+    );
+    expect(refusal(on, gameSession(kWitness, { SessionMaxTxCount: 0 }))).toBe(
+      "Max transactions 0 is not 1 to 100000",
+    );
+  });
+
+  it("refuses an unknown profile, two profile memos, a profile turned off", () => {
+    expect(refusal(on, gameSession(kWitness, { Memos: [profileMemo("casino")] }))).toBe(
+      "Unknown session profile",
+    );
+    expect(
+      refusal(on, gameSession(kWitness, { Memos: [profileMemo("game"), profileMemo("game")] })),
+    ).toBe("More than one session profile");
+    const gameOff: SessionPolicy = {
+      ...on,
+      profiles: on.profiles.map((profile) =>
+        profile.name === "game" ? { ...profile, enabled: false } : profile,
+      ),
+    };
+    expect(refusal(gameOff, gameSession(kWitness))).toBe(
+      "Profile Game: This profile is off in your settings",
+    );
+    expect(refusal({ ...on, requireWitness: true }, gameSession(kWitness))).toBe(
+      "Profile Game: No witness, your policy requires one",
+    );
+    expect(
+      refusal(kSessionPolicyOff, gameSession(kWitness, { SessionCap: "50000000" })),
+    ).toBeUndefined();
+  });
+});
+
+describe("the real app's profile openings clear-sign, policy on or off (SIMULATED)", () => {
+  const vectors = new URL(
+    "../../../ledger-app/tests/standalone/testcases/33-session-policy/",
+    import.meta.url,
+  );
+
+  for (const name of ["04-profile-game", "07-profile-trading"]) {
+    it(`${name}: the device vector's review, Profile row and Max transactions included`, async () => {
+      const raw = new Uint8Array(await readFile(new URL(`${name}.raw`, vectors)));
+      const lines = parseScreenVector(await readFile(new URL(`${name}.txt`, vectors), "utf8"));
+      const review = reviewLines(decodeTx(bytesToHex(raw), defs), defs);
+      expect(review).toEqual({ kind: "clear", lines });
+    });
+  }
+
+  it("signs the game opening on both paths with the policy off, and checks it when on", async () => {
+    for (const policy of [undefined, kDemoPolicy]) {
+      const { simulated, approvals } = device(policy);
+      for (const { signer, account } of await signers(simulated)) {
+        await expect(signTransaction(gameSession(account), signer, defs)).resolves.toBeDefined();
+        expect(simulated.reviews.at(-1)?.lines.slice(3, 5)).toEqual([
+          { label: "Agent ID", value: "A1E8-094F" },
+          { label: "Profile", value: "Game" },
+        ]);
+      }
+      expect(approvals).toEqual(["classic", "ml-dsa"]);
+    }
+    const { simulated } = device(kDemoPolicy);
+    for (const { signer, account } of await signers(simulated)) {
+      await expect(
+        signTransaction(gameSession(account, { SessionCap: "50000000" }), signer, defs),
+      ).rejects.toMatchObject({ statusWord: kSw.sessionPolicyRefused });
+    }
+    expect(simulated.refusals).toEqual([
+      "Blocked by your session policy: Profile Game: Max spend XRP 50 is above XRP 5",
+      "Blocked by your session policy: Profile Game: Max spend XRP 50 is above XRP 5",
+    ]);
   });
 });
