@@ -10,6 +10,7 @@
 #include "../src/globals.h"
 #include "../src/xrp/fmt.h"
 #include "../src/xrp/xrp_helpers.h"
+#include "../src/xrp/signing_session.h"
 #include "../src/xrp/xrp_parse.h"
 #include "cx.h"
 
@@ -152,6 +153,11 @@ static const char* testcases[] = {
     "01-own-close.raw",
     "../../tests/standalone/testcases/31-signing-session-delete/"
     "02-expired-by-third-party.raw",
+    // carbs: Batch clear signing (FIANSO-SPEC 7.4), encoded the same way.
+    "../../tests/standalone/testcases/32-batch/01-session-and-payment.raw",
+    "../../tests/standalone/testcases/32-batch/02-three-session-deletes.raw",
+    // carbs: the Agent ID row, and the SessionMaxPerTx / SessionWitness rows.
+    "../../tests/standalone/testcases/34-session-agent-id/01-agent-id.raw",
     NULL,
 };
 
@@ -228,21 +234,6 @@ static uint8_t* load_transaction_data(const char* filename, size_t* size) {
     return data;
 }
 
-static void update_title(field_t* field, field_name_t* title) {
-    const char* name = resolve_field_name(field);
-    strncpy(title->buf, name, sizeof(title->buf));
-    title->buf[sizeof(title->buf) - 1] = '\x00';
-
-    size_t len = strlen(title->buf);
-    if (field->array_info.type == ARRAY_PATHSET) {
-        snprintf(title->buf + len, sizeof(title->buf) - len, " [P%d: S%d]",
-                 field->array_info.index1, field->array_info.index2);
-    } else if (field->array_info.type != ARRAY_NONE) {
-        snprintf(title->buf + len, sizeof(title->buf) - len, " [%d]",
-                 field->array_info.index1);
-    }
-}
-
 static void update_value(field_t* field, field_value_t* value) {
     format_field(field, value);
 }
@@ -267,7 +258,7 @@ static void generate_expected_result(const char* filename,
         field_t* field = &transaction->fields[i];
         field_name_t field_name;
         field_value_t field_value;
-        update_title(field, &field_name);
+        format_field_title(field, &field_name);
         update_value(field, &field_value);
         fprintf(fp, "%s; %s\n", field_name.buf, field_value.buf);
     }
@@ -288,7 +279,7 @@ static void check_transaction_results(const char* filename,
         field_t* field = &transaction->fields[i];
         field_name_t field_name;
         field_value_t field_value;
-        update_title(field, &field_name);
+        format_field_title(field, &field_name);
         update_value(field, &field_value);
 
         char line[4096];
@@ -355,9 +346,12 @@ void test_invalid_transactions(void** state) {
     }
 }
 
-// A session review the app cannot fully explain must go blind (FIANSO-SPEC
-// 7.3 h, h2), never clear-sign with a row missing or unlabeled.
-static const char* session_blind_testcases[] = {
+// A session transaction the app cannot fully explain is refused, never
+// offered for blind signing (FIANSO-SPEC 7.3 h, h2): parse_tx() returns
+// SESSION_BLIND_SIGN_REFUSED, which sign_transaction.c turns into the
+// refusal screen before review_transaction() reads the blind-signing setting,
+// so the answer is the same with the setting on.
+static const char* session_never_blind_testcases[] = {
     // Permission value 999999 is neither a delegable type + 1 nor granular.
     "../../tests/standalone/testcases/30-signing-session-set/"
     "06-unknown-permission.raw",
@@ -367,6 +361,28 @@ static const char* session_blind_testcases[] = {
     // Two top-level Flags fields.
     "../../tests/standalone/testcases/30-signing-session-set/"
     "08-duplicate-flags.raw",
+    // A UINT32 field (id 48) the app cannot name.
+    "../../tests/standalone/testcases/34-session-agent-id/"
+    "02-unknown-field-refused.raw",
+    // A Batch that would go blind (TicketCreate inner) holding a session.
+    "../../tests/standalone/testcases/34-session-agent-id/"
+    "03-batch-session-refused.raw",
+    // Batches whose parsing stops early, so what is left may open a session:
+    // an inner Fee other than 0 (it would be hidden as a protocol constant)...
+    "../../tests/standalone/testcases/32-batch/04-inner-fee-not-zero.raw",
+    // ...an array nested in RawTransactions...
+    "../../tests/standalone/testcases/32-batch/05-memos-in-inner.raw",
+    // ...or outer Memos filling the field budget before a SigningSessionSet.
+    "../../tests/standalone/testcases/32-batch/"
+    "06-session-after-field-limit.raw",
+    NULL,
+};
+
+// A fully read Batch the app cannot show in full goes blind (FIANSO-SPEC
+// 7.4), never a partial clear-sign review.
+static const char* batch_blind_testcases[] = {
+    // TicketCreate is not an inner type the review supports.
+    "../../tests/standalone/testcases/32-batch/03-unsupported-inner-type.raw",
     NULL,
 };
 
@@ -384,6 +400,15 @@ static const char* session_refused_testcases[] = {
     // 11 permissions: one more than a session can hold.
     "../../tests/standalone/testcases/30-signing-session-set/"
     "11-eleven-permissions.raw",
+    // A signed field claiming the id of the app's own "Agent ID" row.
+    "../../tests/standalone/testcases/34-session-agent-id/"
+    "04-spoofed-agent-id.raw",
+    // SessionCap carried twice (20 XRP, then 500 XRP).
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "16-duplicate-cap.raw",
+    // SessionKey carried twice: the Agent ID would follow only one.
+    "../../tests/standalone/testcases/34-session-agent-id/"
+    "05-duplicate-session-key.raw",
     NULL,
 };
 
@@ -400,14 +425,22 @@ static int parse_file(const char* filename) {
     return result;
 }
 
-void test_session_blind_required(void** state) {
-    (void)state;
-
-    for (const char** testcase = session_blind_testcases; *testcase != NULL;
-         testcase++) {
+static void assert_all_parse_to(const char** cases, int expected) {
+    for (const char** testcase = cases; *testcase != NULL; testcase++) {
         printf("[*] %s\n", *testcase);
-        assert_int_equal(parse_file(*testcase), BLIND_SIGN_REQUIRED);
+        assert_int_equal(parse_file(*testcase), expected);
     }
+}
+
+void test_session_never_blind(void** state) {
+    (void)state;
+    assert_all_parse_to(session_never_blind_testcases,
+                        SESSION_BLIND_SIGN_REFUSED);
+}
+
+void test_batch_blind_required(void** state) {
+    (void)state;
+    assert_all_parse_to(batch_blind_testcases, BLIND_SIGN_REQUIRED);
 }
 
 void test_session_refused(void** state) {
@@ -422,12 +455,35 @@ void test_session_refused(void** state) {
     }
 }
 
+// The Agent ID row: the first 4 bytes of the SessionKey AccountID, uppercase
+// hex, grouped "XXXX-XXXX" (docs/device-contract.md).
+void test_agent_id_format(void** state) {
+    (void)state;
+
+    xrp_account_t key = {.buf = {0x0a, 0xbc, 0x12, 0xef, 0xff}};
+    field_t field;
+    memset(&field, 0, sizeof(field));
+    field.data_type = STI_ACCOUNT;
+    field.id = XRP_ACCOUNT_AGENT_ID;
+    field.data.account = &key;
+    field.length = XRP_ACCOUNT_SIZE;
+
+    field_name_t title;
+    field_value_t value;
+    format_field_title(&field, &title);
+    format_field(&field, &value);
+    assert_string_equal(title.buf, "Agent ID");
+    assert_string_equal(value.buf, "0ABC-12EF");
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_transactions),
         cmocka_unit_test(test_invalid_transactions),
-        cmocka_unit_test(test_session_blind_required),
+        cmocka_unit_test(test_session_never_blind),
+        cmocka_unit_test(test_batch_blind_required),
         cmocka_unit_test(test_session_refused),
+        cmocka_unit_test(test_agent_id_format),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

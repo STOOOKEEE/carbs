@@ -110,6 +110,8 @@ static const char* resolve_transaction_name(uint16_t value) {
             return "Open session";
         case TRANSACTION_SIGNING_SESSION_DELETE:
             return "Close session";
+        case TRANSACTION_BATCH:
+            return "Batch";
         default:
             return "Unknown";
     }
@@ -127,7 +129,7 @@ void uint16_formatter(field_t* field, field_value_t* dst) {
 }
 
 // A permission the app does not know is shown by number, but the parser has
-// already forced blind signing for it (xrp_parse.c, final pass).
+// already refused the transaction for it (xrp_parse.c, final pass).
 static void format_permission_value(field_t* field, field_value_t* dst) {
     const char* name = resolve_permission_name(field->data.u32);
     if (name != NULL) {
@@ -207,9 +209,22 @@ void vector_formatter256(field_t* field, field_value_t* dst) {
     snprintf(dst->buf, sizeof(dst->buf), "%d", count);
 }
 
+// The session key's short identifier: its first 4 bytes in uppercase hex,
+// grouped "XXXX-XXXX" (signing_session.h).
+static void format_agent_id(field_t* field, field_value_t* dst) {
+    const uint8_t* key = field->data.account->buf;
+    snprintf(dst->buf, sizeof(dst->buf), "%02X%02X-%02X%02X", key[0], key[1],
+             key[2], key[3]);
+}
+
 void account_formatter(field_t* field, field_value_t* dst) {
     if (field->data.ptr == NULL) {
         strncpy(dst->buf, "[empty]", sizeof(dst->buf));
+        return;
+    }
+
+    if (field->id == XRP_ACCOUNT_AGENT_ID) {
+        format_agent_id(field, dst);
         return;
     }
 

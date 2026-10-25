@@ -23,6 +23,7 @@
 
 #include "os.h"
 #include "cx.h"
+#include "batch.h"
 #include "fields.h"
 #include "limitations.h"
 
@@ -42,8 +43,15 @@ typedef struct {
     uint8_t array_index1;
     uint8_t array_index2;
     uint8_t object_depth;
+    // Inner transactions of a Batch, filled while parsing (batch.h)
+    batchState_t batch;
 } parseContext_t;
 
 int parse_tx(parseContext_t *parse_context);
+
+// A Batch whose parsing stopped before its end (too many fields, a nested
+// array...): the inner transactions after that point are unknown, so one of
+// them may open a session.
+bool is_batch_unread(const parseContext_t *parse_context);
 
 #endif  // LEDGER_APP_XRP_XRPPARSE_H

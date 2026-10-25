@@ -32,26 +32,12 @@ static nbgl_contentTagValueList_t pairList;
 static parseResult_t* transaction;
 static resultAction_t approval_menu_callback;
 
-static void build_title(const field_t* field, field_name_t* title) {
-    const char* name = resolve_field_name((field_t*)field);
-    strncpy(title->buf, name, sizeof(title->buf));
-    title->buf[sizeof(title->buf) - 1] = '\0';
-    size_t len = strlen(title->buf);
-    if (field->array_info.type == ARRAY_PATHSET) {
-        snprintf(title->buf + len, sizeof(title->buf) - len, " [P%d: S%d]",
-                 field->array_info.index1, field->array_info.index2);
-    } else if (field->array_info.type != ARRAY_NONE) {
-        snprintf(title->buf + len, sizeof(title->buf) - len, " [%d]",
-                 field->array_info.index1);
-    }
-}
-
 // function called by NBGL to get the pair indexed by "index"
 static nbgl_layoutTagValue_t* getPair(uint8_t index) {
     uint8_t arr_idx = index % MAX_FIELDS_PER_PAGE;
     memset(&txFieldValueStrings[arr_idx], 0, sizeof(field_value_t));
     memset(&txFieldNameStrings[arr_idx], 0, sizeof(field_name_t));
-    build_title(&transaction->fields[index], &txFieldNameStrings[arr_idx]);
+    format_field_title(&transaction->fields[index], &txFieldNameStrings[arr_idx]);
     pair.item = txFieldNameStrings[arr_idx].buf;
     format_field(&transaction->fields[index], &txFieldValueStrings[arr_idx]);
     pair.value = txFieldValueStrings[arr_idx].buf;

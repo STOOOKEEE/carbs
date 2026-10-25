@@ -13,6 +13,8 @@ import {
 const REQUESTS_PATH = "/api/agent/requests";
 const POLL_INTERVAL_MS = 1_000;
 const HTTP_CREATED = 201;
+/** How long the agent waits for the human's decision on the Stax (session or escalation). */
+export const DECISION_TIMEOUT_MS = 600_000;
 
 async function call(url: string, init?: RequestInit): Promise<Response> {
   try {

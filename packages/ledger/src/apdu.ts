@@ -8,6 +8,8 @@ export const kCla = 0xe0;
 export const kInsGetPublicKey = 0x02;
 export const kInsSign = 0x04;
 export const kInsGetAppConfiguration = 0x06;
+/** Session policy read, `P1 = P2 = 0x00`, no data (`ledger-app/src/apdu/messages/get_session_policy.c`). */
+export const kInsGetSessionPolicy = 0x08;
 export const kP1Confirm = 0x01;
 export const kP1NonConfirm = 0x00;
 export const kP2NoChainCode = 0x00;
@@ -39,7 +41,11 @@ export const kMaxRawTx = 10000;
 /** Hardened BIP32 index bit. */
 export const kHardened = 0x80000000;
 
-/** Status words the app sends (`ledger-app/src/pq/pq_root.c:48-54`, `ledger-app/src/apdu/entry.c:37`, `:67`). */
+/**
+ * Status words the app sends (`ledger-app/src/pq/pq_root.c:48-54`, `ledger-app/src/apdu/entry.c:37`, `:67`;
+ * `sessionPolicyRefused`: `ledger-app/src/policy/session_policy.h`; `sessionBlindRefused`:
+ * `0x6800 | SESSION_BLIND_SIGN_REFUSED`, `ledger-app/src/xrp/signing_session.h`).
+ */
 export const kSw = {
   ok: 0x9000,
   denied: 0x6985,
@@ -51,9 +57,27 @@ export const kSw = {
   internal: 0x6f00,
   insNotSupported: 0x6d00,
   claNotSupported: 0x6e00,
+  sessionPolicyRefused: 0x6986,
+  sessionBlindRefused: 0x6815,
 } as const;
 
-const kSwNames = new Map<number, string>(Object.entries(kSw).map(([name, sw]) => [sw, name]));
+type StatusWordName = keyof typeof kSw;
+
+/** Parse errors of the classical path: `0x6800 | code` (`ledger-app/src/apdu/messages/sign_transaction.c`). */
+const kSwParseErrorClass = 0x68;
+
+/** What a status word means: a name of `kSw`, a classical parse error, or unknown. */
+export type DeviceErrorKind = StatusWordName | "parseError" | "unknown";
+
+const kSwNames = new Map<number, StatusWordName>(
+  (Object.keys(kSw) as StatusWordName[]).map((name): [number, StatusWordName] => [kSw[name], name]),
+);
+
+export function deviceErrorKind(statusWord: number): DeviceErrorKind {
+  return (
+    kSwNames.get(statusWord) ?? (statusWord >> 8 === kSwParseErrorClass ? "parseError" : "unknown")
+  );
+}
 
 /** `0x6985`. */
 export function formatStatusWord(statusWord: number): string {
@@ -80,13 +104,16 @@ export interface ApduTransport {
 
 export class DeviceError extends Error {
   override readonly name = "DeviceError";
+  readonly kind: DeviceErrorKind;
   constructor(
     readonly statusWord: number,
     readonly ins: number,
   ) {
+    const kind = deviceErrorKind(statusWord);
     super(
-      `device answered ${formatStatusWord(statusWord)} (${kSwNames.get(statusWord) ?? (statusWord >> 8 === 0x68 ? "parse error" : "unknown")}) to INS 0x${ins.toString(16).padStart(2, "0")}`,
+      `device answered ${formatStatusWord(statusWord)} (${kind}) to INS 0x${ins.toString(16).padStart(2, "0")}`,
     );
+    this.kind = kind;
   }
 }
 

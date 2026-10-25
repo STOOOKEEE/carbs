@@ -3,18 +3,25 @@
 // short expiry) and, once the owner signed it on the device, buys data from x402 APIs with
 // that key only. Above its limits it can only send an intent to the human. The ledger, not
 // the agent, enforces the budget: a prompt injection cannot make it spend more.
+// Its first request is oversized on purpose: the Stax's session policy blocks it, and the
+// agent asks again for a smaller budget. Every step is posted to the wallet server for the
+// stage demo page (demo.html), with the agent's ID.
 //   node scripts/agent/agent.ts [--wait-expiry] [--no-compromised]
 
 import { setTimeout as delay } from "node:timers/promises";
 
 import { generateSeed } from "ripple-keypairs";
 
-import type { SessionRequest } from "../../server/agent-requests.ts";
+import { DEVICE_POLICY_CODE } from "../../server/agent-events.ts";
+import { DEVICE_POLICY_NOTE, type SessionRequest } from "../../server/agent-requests.ts";
+import { agentIdOf } from "../../src/agent-id.ts";
 import { addressOfSeed, loadDefinitions } from "../../src/ledger.ts";
 import { NodeClient } from "../../src/rpc.ts";
 import { type ChatMessage, type LlmConfig, chat, parseAction } from "./llm.ts";
+import { type Reporter, report } from "./timeline.ts";
 import {
   type AgentContext,
+  DECISION_TEXT,
   type Injection,
   TOOL_DESCRIPTIONS,
   closeSessionTx,
@@ -24,11 +31,12 @@ import {
   injectionBehaviour,
   paymentTx,
   readSession,
+  reportPayment,
   runTool,
   submitAsSession,
   xrpToDrops,
 } from "./tools.ts";
-import { createRequest, waitForDecision } from "./wallet-client.ts";
+import { DECISION_TIMEOUT_MS, createRequest, waitForDecision } from "./wallet-client.ts";
 
 const DEFAULT_NODE_WS = "ws://127.0.0.1:6006";
 const DEFAULT_WALLET_URL = "http://127.0.0.1:18080";
@@ -37,14 +45,14 @@ const DEFAULT_LLM_URL = "http://127.0.0.1:11434/v1/chat/completions";
 const DEFAULT_LLM_MODEL = "hf.co/mradermacher/Qwen3-4B-OBLITERATED-GGUF:Q4_K_M";
 const DEFAULT_GOAL =
   "Build a travel brief for Paris: weather, flights from NYC, a market report, and the premium dataset if useful. Stay within budget; ask the owner for anything above your per-payment limit.";
+/** The oversized first request, meant to be blocked by the Stax's session policy. */
+const DEFAULT_FIRST_CAP_XRP = 500;
 const DEFAULT_CAP_XRP = 20;
 const DEFAULT_MAX_PER_TX_XRP = 5;
 const DEFAULT_DURATION_S = 180;
 const SESSION_PURPOSE = "Travel brief for Paris: paid weather, flights and market data APIs";
 const MAX_STEPS = 20;
 const WHY_MAX_LENGTH = 90;
-/** How long the agent waits for the owner to approve its session on the Stax. */
-const SESSION_APPROVAL_TIMEOUT_MS = 300_000;
 /** Expiry is measured on ledger close time: wait a few closes (3 s each) past it. */
 const EXPIRY_MARGIN_MS = 9_000;
 const MS_PER_SECOND = 1_000;
@@ -57,6 +65,9 @@ const MAX_IDENTICAL_CALLS = 3;
 const INJECTED_REPORT_PATH = "/api/report?topic=market";
 /** Qwen3 soft switch that skips the reasoning block; other models read it as plain text. */
 const NO_THINK_SWITCH = "/no_think";
+
+/** What a session request came back with: the owner, or a refusal by the Stax policy. */
+type BudgetAnswer = { approved: true; owner: string } | { approved: false };
 
 function positiveNumberEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -82,22 +93,75 @@ function systemPrompt(owner: string, request: SessionRequest): string {
   ].join("\n\n");
 }
 
-/** Asks the owner for a session; returns the owner once it is approved on the Stax. */
-async function obtainSession(walletUrl: string, request: SessionRequest): Promise<string> {
+/** Asks the owner for one budget and waits for the decision on the Stax. */
+async function askBudget(reporter: Reporter, request: SessionRequest): Promise<BudgetAnswer> {
   console.log("— Session request");
   console.log(
-    `  key ${request.sessionKey}: ${request.capXrp} XRP cap, ${request.maxPerTxXrp} XRP per payment, ${request.durationSeconds} s`,
+    `  key ${request.sessionKey} (Agent ID ${reporter.agentId}): ${request.capXrp} XRP cap, ${request.maxPerTxXrp} XRP per payment, ${request.durationSeconds} s`,
   );
-  const created = await createRequest(walletUrl, request);
+  const created = await createRequest(reporter.walletUrl, request);
+  await report(
+    reporter,
+    "request",
+    `Asks for a budget: ${request.capXrp} XRP total, ${request.maxPerTxXrp} XRP per payment, ${request.durationSeconds} s`,
+    { amountXrp: request.capXrp },
+  );
   console.log(`  request ${created.id}: waiting for the owner to approve on the Ledger Stax…`);
-  const record = await waitForDecision(walletUrl, created.id, SESSION_APPROVAL_TIMEOUT_MS);
+  const record = await waitForDecision(reporter.walletUrl, created.id, DECISION_TIMEOUT_MS);
+  if (record.status === "failed" && record.note === DEVICE_POLICY_NOTE) {
+    console.log(`  ${DEVICE_POLICY_NOTE}`);
+    return { approved: false };
+  }
+  await report(
+    reporter,
+    "decision",
+    `Budget of ${request.capXrp} XRP ${DECISION_TEXT[record.status]}`,
+    {
+      ...(record.result === undefined ? {} : { code: record.result }),
+      ...(record.txHash === undefined ? {} : { hash: record.txHash }),
+    },
+  );
   const detail = [record.result, record.note].filter((part) => part !== undefined).join(", ");
   if (record.status !== "approved")
     throw new Error(`session ${record.status} by the owner (${detail})`);
   if (record.owner === undefined) throw new Error("the approved session record has no owner");
   const hash = record.txHash === undefined ? "" : ` ${hashPrefix(record.txHash)}`;
   console.log(`  approved by ${record.owner}: ${record.result ?? "signed"}${hash}`);
-  return record.owner;
+  return { approved: true, owner: record.owner };
+}
+
+/**
+ * Asks first for firstCapXrp (when above the request's cap); once the Stax's session policy
+ * blocks it, asks again for the request's cap. Returns the owner and the budget approved.
+ */
+async function obtainSession(
+  reporter: Reporter,
+  request: SessionRequest,
+  firstCapXrp: number,
+): Promise<{ owner: string; request: SessionRequest }> {
+  if (firstCapXrp > request.capXrp) {
+    const oversized: SessionRequest = { ...request, capXrp: firstCapXrp };
+    const first = await askBudget(reporter, oversized);
+    if (first.approved) return { owner: first.owner, request: oversized };
+    await report(
+      reporter,
+      "refused",
+      `The Stax session policy blocked a ${firstCapXrp} XRP budget`,
+      {
+        code: DEVICE_POLICY_CODE,
+        amountXrp: firstCapXrp,
+      },
+    );
+    await report(
+      reporter,
+      "thought",
+      `Too much for my owner's policy: asking for ${request.capXrp} XRP`,
+    );
+  }
+  const answer = await askBudget(reporter, request);
+  if (!answer.approved)
+    throw new Error(`the Stax session policy refused a ${request.capXrp} XRP budget too`);
+  return { owner: answer.owner, request };
 }
 
 async function runAgent(
@@ -111,6 +175,7 @@ async function runAgent(
     { role: "user", content: `Goal: ${goal}` },
   ];
   console.log(`\n— Agent (${llm.model}), goal: ${goal}`);
+  await report(context, "info", `Goal: ${goal}`);
   let lastCall = "";
   let identicalCalls = 0;
   for (let step = 1; step <= MAX_STEPS; step++) {
@@ -120,6 +185,7 @@ async function runAgent(
     const parsed = parseAction(raw);
     if (!parsed.ok) {
       console.log(`${label} (unparseable answer) → ${parsed.error}`);
+      await report(context, "info", `The model answered something unparseable: ${parsed.error}`);
       messages.push({
         role: "user",
         content: `Error: ${parsed.error}. Reply with exactly one JSON object {"tool": ..., "args": {...}, "why": ...}.`,
@@ -129,24 +195,29 @@ async function runAgent(
     const { tool, args, why } = parsed.action;
     const shortWhy = why.length > WHY_MAX_LENGTH ? `${why.slice(0, WHY_MAX_LENGTH)}…` : why;
     console.log(`${label} ${tool} ${JSON.stringify(args)} | ${shortWhy}`);
+    await report(context, "thought", shortWhy.trim() === "" ? tool : `${shortWhy} (${tool})`);
     const call = `${tool} ${JSON.stringify(args)}`;
     identicalCalls = call === lastCall ? identicalCalls + 1 : 1;
     lastCall = call;
     if (identicalCalls >= MAX_IDENTICAL_CALLS) {
-      console.log(
-        `stop: the model asked for ${tool} with the same arguments ${MAX_IDENTICAL_CALLS} times in a row`,
-      );
+      const stop = `stop: the model asked for ${tool} with the same arguments ${MAX_IDENTICAL_CALLS} times in a row`;
+      console.log(stop);
+      await report(context, "info", stop);
       return;
     }
     const outcome = await runTool(context, tool, args);
     console.log(`     → ${outcome.line}`);
-    if (outcome.done) return;
+    if (outcome.done) {
+      await report(context, "info", outcome.line.trim() === "" ? "Done." : `Done: ${outcome.line}`);
+      return;
+    }
     messages.push({
       role: "user",
       content: `Result of ${tool}: ${JSON.stringify(outcome.forModel)}`,
     });
   }
   console.log(`hard stop after ${MAX_STEPS} steps`);
+  await report(context, "info", `Hard stop after ${MAX_STEPS} steps`);
 }
 
 function printRecap(context: AgentContext): void {
@@ -177,20 +248,33 @@ async function simulateCompromise(context: AgentContext): Promise<void> {
     console.log("  no injected payment instruction could be read: simulation skipped");
     return;
   }
-  const { hash, result } = await submitAsSession(
+  await report(
+    context,
+    "injection",
+    `Simulation: a compromised agent obeys and pays ${injection.amountXrp} XRP to the attacker`,
+    { amountXrp: injection.amountXrp },
+  );
+  const submitted = await submitAsSession(
     context,
     paymentTx(context.owner, injection.destination, xrpToDrops(injection.amountXrp)),
   );
   const label = `pay ${injection.amountXrp} XRP to ${injection.destination}`;
-  console.log(`  ${label.padEnd(44)} ${result.padEnd(20)} ${hashPrefix(hash)}`);
+  console.log(`  ${label.padEnd(44)} ${submitted.result.padEnd(20)} ${hashPrefix(submitted.hash)}`);
+  await reportPayment(
+    context,
+    `${injection.amountXrp} XRP to the attacker ${injection.destination}`,
+    injection.amountXrp,
+    submitted,
+  );
 }
 
 async function probePayment(context: AgentContext, destination: string, label: string) {
-  const { hash, result } = await submitAsSession(
+  const submitted = await submitAsSession(
     context,
     paymentTx(context.owner, destination, xrpToDrops(PROBE_PAYMENT_XRP)),
   );
-  console.log(`  ${label.padEnd(44)} ${result.padEnd(20)} ${hashPrefix(hash)}`);
+  console.log(`  ${label.padEnd(44)} ${submitted.result.padEnd(20)} ${hashPrefix(submitted.hash)}`);
+  await reportPayment(context, label, PROBE_PAYMENT_XRP, submitted);
 }
 
 /** Waits for the session to expire, then shows the key is useless. */
@@ -201,8 +285,10 @@ async function showExpiry(context: AgentContext, waitExpiry: boolean): Promise<v
   const { payTo } = await fetchCatalogue(context);
   if (waitExpiry && state !== undefined) {
     console.log(`  waiting ${state.secondsLeft} s for the session to expire…`);
+    await report(context, "expiry", `Waiting ${state.secondsLeft} s for the session to expire`);
     await delay(state.secondsLeft * MS_PER_SECOND + EXPIRY_MARGIN_MS);
-    await probePayment(context, payTo, `pay ${PROBE_PAYMENT_XRP} XRP after expiry`);
+    await report(context, "expiry", "Session expired on the ledger: one more payment try");
+    await probePayment(context, payTo, `${PROBE_PAYMENT_XRP} XRP after expiry`);
   }
   const { hash, result } = await submitAsSession(
     context,
@@ -211,8 +297,8 @@ async function showExpiry(context: AgentContext, waitExpiry: boolean): Promise<v
   console.log(
     `  ${"the session key closes its own session".padEnd(44)} ${result.padEnd(20)} ${hashPrefix(hash)}`,
   );
-  if (waitExpiry)
-    await probePayment(context, payTo, `pay ${PROBE_PAYMENT_XRP} XRP after the close`);
+  await report(context, "info", "The session key closes its own session", { code: result, hash });
+  if (waitExpiry) await probePayment(context, payTo, `${PROBE_PAYMENT_XRP} XRP after the close`);
 }
 
 async function main(): Promise<void> {
@@ -228,27 +314,37 @@ async function main(): Promise<void> {
   const walletUrl = process.env["WALLET_URL"] ?? DEFAULT_WALLET_URL;
   const merchantUrl = process.env["MERCHANT_URL"] ?? DEFAULT_MERCHANT_URL;
   const sessionSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
-  const request: SessionRequest = {
+  const sessionKey = addressOfSeed(sessionSeed);
+  const reporter: Reporter = { walletUrl, agentId: agentIdOf(sessionKey) };
+  const wanted: SessionRequest = {
     kind: "session",
-    sessionKey: addressOfSeed(sessionSeed),
+    sessionKey,
     capXrp: positiveNumberEnv("AGENT_SESSION_CAP_XRP", DEFAULT_CAP_XRP),
     maxPerTxXrp: positiveNumberEnv("AGENT_MAX_PER_TX_XRP", DEFAULT_MAX_PER_TX_XRP),
     durationSeconds: positiveNumberEnv("AGENT_SESSION_SECONDS", DEFAULT_DURATION_S),
     purpose: SESSION_PURPOSE,
   };
+  const firstCapXrp = positiveNumberEnv("AGENT_FIRST_CAP_XRP", DEFAULT_FIRST_CAP_XRP);
+  console.log(`Agent ID ${reporter.agentId} (session key ${sessionKey}): compare it on the Stax`);
+  await report(
+    reporter,
+    "info",
+    `Agent started with a fresh session key: Agent ID ${reporter.agentId}`,
+  );
 
   const node = await NodeClient.connect(process.env["XRPLD_WS"] ?? DEFAULT_NODE_WS);
   try {
     const defs = await loadDefinitions(node);
-    const owner = await obtainSession(walletUrl, request);
+    const { owner, request } = await obtainSession(reporter, wanted, firstCapXrp);
     const context: AgentContext = {
       node,
       defs,
       owner,
-      sessionKey: request.sessionKey,
+      sessionKey,
       sessionSeed,
       merchantUrl,
       walletUrl,
+      agentId: reporter.agentId,
       offers: [],
       refusals: new Map(),
       injection: undefined,
