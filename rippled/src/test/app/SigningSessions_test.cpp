@@ -1689,8 +1689,11 @@ class SigningSessions_test : public beast::unit_test::Suite
         testcase("session key types need their amendment");
         using namespace jtx;
 
+        // P-256 needs fixP256StrictDer too: before it, anyone could re-encode
+        // a P-256 signature and change the transaction's ID.
         for (auto const& [type, feature] :
              {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::P256, fixP256StrictDer},
               std::pair{KeyType::Dilithium, featureQuantum}})
         {
             for (bool const enabled : {false, true})
@@ -2575,6 +2578,7 @@ class SigningSessions_test : public beast::unit_test::Suite
 
         for (auto const& [type, feature] :
              {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::P256, fixP256StrictDer},
               std::pair{KeyType::Dilithium, featureQuantum}})
         {
             for (bool const enabled : {false, true})
@@ -2598,6 +2602,23 @@ class SigningSessions_test : public beast::unit_test::Suite
                 env.close();
                 BEAST_EXPECT(!sessionEntry(env, alice, key));
             }
+        }
+
+        // An Ed25519 witness needs no amendment: it co-signs without the P-256
+        // fix.
+        {
+            Env env{*this, features - fixP256StrictDer};
+            Account const alice{"alice"}, bob{"bob"}, key{"key"};
+            Account const witness{"witness", KeyType::Ed25519};
+            env.fund(XRP(10000), alice, bob, witness);
+            env.close();
+            env(session::set(alice, key, 600),
+                Txflags(tfAllTransactions),
+                session::Witness(witness));
+            env.close();
+            auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+            env(pay(alice, bob, XRP(1)), Sig(key), Sig(sfWitnessSignature, witness), lls());
+            env.close();
         }
 
         Env env{*this, features};
