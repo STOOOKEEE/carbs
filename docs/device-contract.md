@@ -137,14 +137,41 @@ Then three limits, each a bar whose tap moves to the next preset: `Max spend: �
 
 **Check.** On the classical path (`0x04`) and the ML-DSA path (`0x11`), when the policy is on, every `SigningSessionSet` (the transaction itself, or each inner transaction of a `Batch`) is checked before any review and before the `0x6815` refusal of section 6 (`review_transaction` and `refused_by_session_policy`, `ledger-app/src/transaction/transaction.c`; `ledger-app/src/apdu/messages/sign_transaction.c`; `review_signing_data`, `ledger-app/src/pq/pq_root.c`; all call `session_policy_check_transaction`). Refused first, whatever the limits, what the node refuses (`SigningSessionSet::preflight`): not exactly one mode among A (flag), P (a `Permissions` array) and C (`SessionCap`) (`Not exactly one session mode`); a `SessionCap` or `SessionMaxPerTx` that is not a positive XRP amount of at most 10^17 drops (zero, an issued currency or an MPT amount: `… is not a positive XRP amount`); `SessionMaxPerTx` without `SessionCap` or above it; `SessionDuration` missing, 0 or above 600 s; and a `SigningSessionSet` or `Batch` whose parsing stopped before its end (`Too long to check against your policy`). Then the user's limits: mode A when not allowed; mode P when not allowed; `SessionCap` above `Max spend`; under a `SessionCap`, `SessionMaxPerTx` missing or above `Max per payment` (when that limit is set); `SessionDuration` above `Max duration`; no `SessionWitness` when required. A limit at "no limit" is not checked. The device shows `Blocked by your session policy` with the reason (for example `Max spend XRP 500 is above XRP 50`, prefixed `Transaction n: ` for an inner transaction of a `Batch`), buttons `Back to home` / `Session policy settings` (Nano: `Blocked by your session policy` only), and answers **`0x6986`** at once, on both paths.
 
-**`INS 0x08`: get session policy.** `P1 = P2 = 0x00` (else `0x6B00`), no data. Answer, 22 bytes, `0x9000` (`session_policy_serialize`, `ledger-app/src/policy/session_policy.c`; `ledger-app/src/apdu/messages/get_session_policy.c`):
+**Session profiles** (`ledger-app/src/policy/session_profiles.c`). A `SigningSessionSet` names a profile with a memo `MemoType` `carbs-profile`, `MemoData` the profile's name (ASCII). Its review then shows `Profile: Game` (etc.) right after `Agent ID`, **whether the policy is on or not**; `SessionMaxTxCount` (UINT32 115) is shown as `Max transactions`, and the memo keeps its generic `Memo Type [i]` / `Memo Data [i]` rows. When the policy is on, a session that names a profile is checked against that profile instead of the default limits (the `Witness` switch still applies); one with no profile memo gets the default limits above; an unknown name (`Unknown session profile`) or two `carbs-profile` memos (`More than one session profile`) are refused. A profile requires `SessionMaxTxCount` (absent: `Set a transaction limit (at most N)`), refuses mode A, a mode or a permission it does not list (`Payment is not allowed`), and every limit beyond its own; a profile turned off is refused (`This profile is off in your settings`). Every refusal under a profile is prefixed `Profile Game: `. The node's own bound on `SessionMaxTxCount`, 1 to 100000, is checked whenever the policy is on.
+
+| Profile (`MemoData`) | id  | Modes | Max spend | Max per payment | Max duration | Max transactions | Permissions                      |
+| -------------------- | --- | ----- | --------- | --------------- | ------------ | ---------------- | -------------------------------- |
+| `agent`              | 0   | C     | XRP 50    | XRP 5           | 3 min        | 20               | —                                |
+| `game`               | 1   | C     | XRP 5     | XRP 0.1         | 10 min       | 500              | —                                |
+| `trading`            | 2   | P     | —         | —               | 10 min       | 200              | OfferCreate (8), OfferCancel (9) |
+| `streaming`          | 3   | C     | XRP 2     | XRP 0.01        | 10 min       | 1000             | —                                |
+| `minting`            | 4   | P     | —         | —               | 10 min       | 100              | NFTokenMint (26)                 |
+
+These are the defaults of a fresh install, every profile on. Edited only on the device: `Settings`, then the `Profiles` bars (`Game profile: on`…), each opening the profile's own page (`ledger-app/src/ui/main/session_profiles_menu.c`): `Profile: on/off`, then each limit, a tap moving to the next preset (max spend XRP 1, 2, 5, 10, 20, 50, 100; max per payment XRP 0.01, 0.1, 1, 5, 10; max duration 1, 3, 5, 10 min; max transactions 10, 20, 50, 100, 200, 500, 1000). Modes and permissions are fixed. NVM: 5 bytes per profile (off flag, then one preset index + 1 per limit, `0` = the default), `session_policy_t` grows from 32 to 64 bytes (`N_storage_real`); RAM: about 330 bytes of settings texts.
+
+**`INS 0x08`: get session policy.** `P1 = P2 = 0x00` (else `0x6B00`), no data. Answer, format version 2, 175 bytes with the default profiles, `0x9000` (`session_policy_serialize`, `ledger-app/src/policy/session_policy.c`; `ledger-app/src/apdu/messages/get_session_policy.c`). The default limits:
 
 | Offset | Size | Field                                                                                          |
 | ------ | ---- | ---------------------------------------------------------------------------------------------- |
-| 0      | 1    | format version, `0x01`                                                                         |
+| 0      | 1    | format version, `0x02`                                                                         |
 | 1      | 1    | flags: `0x01` policy on, `0x02` mode A allowed, `0x04` mode P allowed, `0x08` witness required |
 | 2      | 8    | max `SessionCap`, drops, big-endian; `0` = no limit                                            |
 | 10     | 8    | max `SessionMaxPerTx`, drops, big-endian; `0` = no limit                                       |
 | 18     | 4    | max `SessionDuration`, seconds, big-endian; `0` = no limit                                     |
+| 22     | 1    | number of profiles, `5`                                                                        |
 
-Fresh install: `01` followed by 21 zero bytes.
+Then one record per profile, in id order (28 bytes plus 4 per permission):
+
+| Offset | Size  | Field                                                        |
+| ------ | ----- | ------------------------------------------------------------ |
+| 0      | 1     | profile id (table above)                                     |
+| 1      | 1     | flags: `0x01` profile on                                     |
+| 2      | 1     | modes allowed: `0x01` C, `0x02` A, `0x04` P                  |
+| 3      | 8     | max `SessionCap`, drops, big-endian; `0` outside mode C      |
+| 11     | 8     | max `SessionMaxPerTx`, drops, big-endian; `0` outside mode C |
+| 19     | 4     | max `SessionDuration`, seconds, big-endian                   |
+| 23     | 4     | max `SessionMaxTxCount`, big-endian                          |
+| 27     | 1     | number of permissions `n`                                    |
+| 28     | 4 × n | each allowed `PermissionValue`, big-endian                   |
+
+Fresh install: `02`, 21 zero bytes, `05`, then the five default records. A version 1 reader (22 bytes expected) fails on the length or the version byte; `parseSessionPolicy` (`packages/ledger/src/session-policy.ts`) refuses any version but 2, a truncated record and trailing bytes.

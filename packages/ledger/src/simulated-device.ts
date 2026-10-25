@@ -234,8 +234,8 @@ export class SimulatedDevice implements ApduTransport {
   /**
    * What both signing paths do before signing (`sign_transaction.c` and `review_transaction`,
    * `review_signing_data` in `pq_root.c`): parse, refuse a session transaction that cannot be
-   * clear-signed (`0x6815`), check the session policy (`0x6986`), then show the review. Answers the
-   * status word, `0x9000` once the user approved.
+   * clear-signed (`0x6815`), check the session policy and the profile a session names (`0x6986`),
+   * then show the review. Answers the status word, `0x9000` once the user approved.
    */
   async #reviewAndApprove(
     fields: Uint8Array,
