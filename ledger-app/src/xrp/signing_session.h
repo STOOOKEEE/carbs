@@ -36,6 +36,13 @@
 // SigningSessionSet review (7.3 f). A real field carrying this id in the
 // signed data is refused by the parser, so the row cannot be spoofed.
 #define XRP_VL_SESSION_NOTE 0xFD
-#define SESSION_NOTE_TEXT   "Cannot change keys, signers or the account"
+#define SESSION_NOTE_TEXT   "Cannot change keys or signers"
+
+// Not a real XRPL field code either: the synthetic "Allows" row of a mode C
+// review (a SessionCap is set). The node lets such a session sign a direct
+// XRP payment and nothing else, and counts the fee against the cap
+// (rippled Transactor.cpp, mode C and rule 5). Refused like the Note id.
+#define XRP_VL_SESSION_SCOPE   0xFC
+#define SESSION_SCOPE_CAP_TEXT "XRP payments only, fees included"
 
 #endif  // LEDGER_APP_XRP_SIGNING_SESSION_H

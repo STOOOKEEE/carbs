@@ -4,7 +4,8 @@
  * vectors (`ledger-app/tests/standalone/testcases/*.txt`, one `Label; value` line each).
  *
  * Order: `Transaction Type`, `Account`, `Session key` (when present), then every shown field in
- * serialization order, then the synthetic `Note` of `SigningSessionSet`.
+ * serialization order, then the synthetic rows of `SigningSessionSet`: `Allows` in mode C (a
+ * `SessionCap` is set), then `Note`.
  */
 
 import { kPermissionMaxSize, type Definitions } from "@carbs/sessions";
@@ -23,8 +24,10 @@ const kTransactionNames: Record<string, string> = {
   Payment: "Payment",
 };
 
-/** `ledger-app/src/xrp/signing_session.h:33` */
-export const kSessionNoteText = "Cannot change keys, signers or the account";
+/** `ledger-app/src/xrp/signing_session.h:39` */
+export const kSessionNoteText = "Cannot change keys or signers";
+/** The mode C `Allows` row (`ledger-app/src/xrp/signing_session.h:45-46`). */
+export const kSessionCapScopeText = "XRP payments only, fees included";
 
 /**
  * The permission names the app can show (`ledger-app/src/xrp/session_permissions.c`; a test reads
@@ -256,7 +259,11 @@ export function reviewLines(tx: Record<string, unknown>, defs: Definitions): Rev
     }
     lines.push({ label, value: shown });
   }
-  if (type === "SigningSessionSet") lines.push({ label: "Note", value: kSessionNoteText });
+  if (type === "SigningSessionSet") {
+    if (tx["SessionCap"] !== undefined)
+      lines.push({ label: "Allows", value: kSessionCapScopeText });
+    lines.push({ label: "Note", value: kSessionNoteText });
+  }
   return { kind, lines };
 }
 

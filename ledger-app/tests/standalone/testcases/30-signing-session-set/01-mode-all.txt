@@ -5,4 +5,4 @@ Network ID; 24100
 Allows; All transactions
 Valid for; 10 minutes
 Fee; XRP 0.000012
-Note; Cannot change keys, signers or the account
+Note; Cannot change keys or signers
