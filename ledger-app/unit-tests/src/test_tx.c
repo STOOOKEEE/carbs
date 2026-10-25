@@ -378,6 +378,9 @@ static const char* session_refused_testcases[] = {
     // A signed field claiming the id of the app's own "Note" row.
     "../../tests/standalone/testcases/30-signing-session-set/"
     "10-spoofed-note.raw",
+    // A signed field claiming the id of the app's own mode C "Allows" row.
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "13-spoofed-scope.raw",
     // 11 permissions: one more than a session can hold.
     "../../tests/standalone/testcases/30-signing-session-set/"
     "11-eleven-permissions.raw",

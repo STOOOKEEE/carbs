@@ -468,7 +468,8 @@ Fee                12 drops               (as for every transaction)
 Allows             All transactions       (mode A, flag formatter)
                    Payment, OfferCreate   (mode P, one line per permission)
 Max spend          20 XRP                 (mode C)
-Note               Cannot change keys, signers or the account   (synthetic line; precedent in the parser)
+Allows             XRP payments only, fees included   (mode C, synthetic line)
+Note               Cannot change keys or signers      (synthetic line; precedent in the parser)
 ```
 
 **Tests**: cmocka with ≥ 10 vectors (one per mode, 10 permissions, unknown permission → blind required, unknown flag, truncated, duplicate), distinct values per field (not the same account everywhere), fuzzing without crash; Ragger snapshots generated for **all devices the CI lists**; **one session opened on the node and signed on the Stax** (acceptance).

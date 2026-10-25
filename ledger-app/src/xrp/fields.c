@@ -229,6 +229,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Condition";
             case XRP_VL_SESSION_NOTE:
                 return "Note";
+            case XRP_VL_SESSION_SCOPE:
+                return "Allows";
         }
     }
 

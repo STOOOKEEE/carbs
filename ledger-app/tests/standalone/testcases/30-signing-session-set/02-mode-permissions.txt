@@ -6,4 +6,4 @@ Valid for; 5 minutes
 Fee; XRP 0.000013
 Allows [1]; Payment
 Allows [2]; OfferCreate
-Note; Cannot change keys, signers or the account
+Note; Cannot change keys or signers
