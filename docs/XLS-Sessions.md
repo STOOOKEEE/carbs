@@ -124,7 +124,7 @@ The rules are at `rippled/src/libxrpl/tx/transactors/session/SigningSessionDelet
 
 ## 6. The session-signed predicate
 
-One function decides whether a transaction is session-signed: `signingSessionOf` / `isSessionSigned` (`rippled/src/libxrpl/tx/SigningSession.cpp:78`, `:88`). Authorization, accounting and the invariant all ask it, so they cannot disagree. A transaction is session-signed when all of the following hold:
+One function decides whether a transaction is session-signed: `signingSessionOf` / `isSessionSigned` (`rippled/src/libxrpl/tx/SigningSession.cpp:78`, `:88`). Authorization and accounting ask it, and the invariant asks its shape test (§9), so they cannot disagree. A transaction is session-signed when all of the following hold:
 
 1. `SigningSessions` is enabled (before that, no ledger read happens);
 2. the transaction carries no `Delegate`, `Sponsor`, `SponsorSignature` or `CounterpartySignature`, and it is not a Batch inner transaction;

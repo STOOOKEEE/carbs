@@ -1781,7 +1781,10 @@ class SigningSessions_test : public beast::unit_test::Suite
             signingSessionOf(*env.current(), *signedByKey.stx)->key ==
             sessionKeylet(alice, key).key);
 
-        check(env.jt(pay(alice, bob, XRP(1)), lls), false);            // the master key
+        check(env.jt(pay(alice, bob, XRP(1)), lls), false);
+        check(
+            env.jt(pay(alice, bob, XRP(1)), Sig(Account{"noSession"}), lls),
+            false);                                                    // the master key
         check(env.jt(pay(bob, alice, XRP(1)), Sig(key), lls), false);  // another account
         check(env.jt(pay(alice, bob, XRP(1)), delegate::As(bob), Sig(key), lls), false);
     }
