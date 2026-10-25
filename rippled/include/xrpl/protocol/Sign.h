@@ -32,7 +32,12 @@ enum class SignatureRole {
     /**
      * The sponsor's signature, in sfSponsorSignature.
      */
-    Sponsor
+    Sponsor,
+    /**
+     * The witness of a signing session, in sfWitnessSignature
+     * (SigningSessions). Always single-signed.
+     */
+    Witness
 };
 
 /**

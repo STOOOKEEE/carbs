@@ -289,6 +289,29 @@ class InvariantsSigningSession_test : public InvariantsBase
             open('C'),
             TxAccount::A1);
 
+        // SessionMaxPerTx and SessionWitness, added after the creation.
+        for (bool const maxPerTx : {true, false})
+        {
+            doInvariantCheck(
+                {{"a signing session changed a field that never changes"}},
+                [maxPerTx](Account const& a1, Account const& a2, ApplyContext& ac) {
+                    auto const sle = ac.view().peek(sessionOf(a1));
+                    if (!sle)
+                        return false;
+                    if (maxPerTx)
+                        (*sle)[sfSessionMaxPerTx] = XRP(1);
+                    else
+                        (*sle)[sfSessionWitness] = a2.id();
+                    ac.view().update(sle);
+                    return true;
+                },
+                XRPAmount{},
+                STTx{ttACCOUNT_SET, [](STObject&) {}},
+                {tecINVARIANT_FAILED, tefINVARIANT_FAILED},
+                open(maxPerTx ? 'C' : 'A'),
+                TxAccount::A1);
+        }
+
         doInvariantCheck(
             {{"a signing session changed a field that never changes"}},
             [](Account const& a1, Account const&, ApplyContext& ac) {

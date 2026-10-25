@@ -28,6 +28,8 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 
 - `ledger_entry`: With the `SigningSessions` amendment, a `signing_session` request field returns a `SigningSession` entry, either by index (a hex string) or by an object with `account` and `session_key` (both addresses); a missing or invalid address returns `malformedRequest` or `malformedAddress`.
 - `account_objects`: The `type` filter accepts `signing_session`.
+- `ledger_entry`, `account_objects`: A `SigningSession` entry may carry `SessionMaxPerTx` (the most one payment of a mode-C session may send) and `SessionWitness` (an account that co-signs every session transaction).
+- `sign`: With `signature_target` set to `WitnessSignature`, the witness of a signing session signs the transaction into its `WitnessSignature` field.
 
 ### Bugfixes
 

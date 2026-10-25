@@ -26,6 +26,8 @@ TEST(SigningSessionTests, BuilderSettersRoundTrip)
     auto const permissionsValue = canonical_ARRAY();
     auto const sessionCapValue = canonical_AMOUNT();
     auto const sessionSpentValue = canonical_AMOUNT();
+    auto const sessionMaxPerTxValue = canonical_AMOUNT();
+    auto const sessionWitnessValue = canonical_ACCOUNT();
     auto const ownerNodeValue = canonical_UINT64();
     auto const previousTxnIDValue = canonical_UINT256();
     auto const previousTxnLgrSeqValue = canonical_UINT32();
@@ -42,6 +44,8 @@ TEST(SigningSessionTests, BuilderSettersRoundTrip)
     builder.setPermissions(permissionsValue);
     builder.setSessionCap(sessionCapValue);
     builder.setSessionSpent(sessionSpentValue);
+    builder.setSessionMaxPerTx(sessionMaxPerTxValue);
+    builder.setSessionWitness(sessionWitnessValue);
 
     builder.setLedgerIndex(index);
     builder.setFlags(0x1u);
@@ -112,6 +116,22 @@ TEST(SigningSessionTests, BuilderSettersRoundTrip)
         EXPECT_TRUE(entry.hasSessionSpent());
     }
 
+    {
+        auto const& expected = sessionMaxPerTxValue;
+        auto const actualOpt = entry.getSessionMaxPerTx();
+        ASSERT_TRUE(actualOpt.has_value());
+        expectEqualField(expected, *actualOpt, "sfSessionMaxPerTx");
+        EXPECT_TRUE(entry.hasSessionMaxPerTx());
+    }
+
+    {
+        auto const& expected = sessionWitnessValue;
+        auto const actualOpt = entry.getSessionWitness();
+        ASSERT_TRUE(actualOpt.has_value());
+        expectEqualField(expected, *actualOpt, "sfSessionWitness");
+        EXPECT_TRUE(entry.hasSessionWitness());
+    }
+
     EXPECT_TRUE(entry.hasLedgerIndex());
     auto const ledgerIndex = entry.getLedgerIndex();
     ASSERT_TRUE(ledgerIndex.has_value());
@@ -131,6 +151,8 @@ TEST(SigningSessionTests, BuilderFromSleRoundTrip)
     auto const permissionsValue = canonical_ARRAY();
     auto const sessionCapValue = canonical_AMOUNT();
     auto const sessionSpentValue = canonical_AMOUNT();
+    auto const sessionMaxPerTxValue = canonical_AMOUNT();
+    auto const sessionWitnessValue = canonical_ACCOUNT();
     auto const ownerNodeValue = canonical_UINT64();
     auto const previousTxnIDValue = canonical_UINT256();
     auto const previousTxnLgrSeqValue = canonical_UINT32();
@@ -143,6 +165,8 @@ TEST(SigningSessionTests, BuilderFromSleRoundTrip)
     sle->setFieldArray(sfPermissions, permissionsValue);
     sle->at(sfSessionCap) = sessionCapValue;
     sle->at(sfSessionSpent) = sessionSpentValue;
+    sle->at(sfSessionMaxPerTx) = sessionMaxPerTxValue;
+    sle->at(sfSessionWitness) = sessionWitnessValue;
     sle->at(sfOwnerNode) = ownerNodeValue;
     sle->at(sfPreviousTxnID) = previousTxnIDValue;
     sle->at(sfPreviousTxnLgrSeq) = previousTxnLgrSeqValue;
@@ -255,6 +279,32 @@ TEST(SigningSessionTests, BuilderFromSleRoundTrip)
         expectEqualField(expected, *fromBuilderOpt, "sfSessionSpent");
     }
 
+    {
+        auto const& expected = sessionMaxPerTxValue;
+
+        auto const fromSleOpt = entryFromSle.getSessionMaxPerTx();
+        auto const fromBuilderOpt = entryFromBuilder.getSessionMaxPerTx();
+
+        ASSERT_TRUE(fromSleOpt.has_value());
+        ASSERT_TRUE(fromBuilderOpt.has_value());
+
+        expectEqualField(expected, *fromSleOpt, "sfSessionMaxPerTx");
+        expectEqualField(expected, *fromBuilderOpt, "sfSessionMaxPerTx");
+    }
+
+    {
+        auto const& expected = sessionWitnessValue;
+
+        auto const fromSleOpt = entryFromSle.getSessionWitness();
+        auto const fromBuilderOpt = entryFromBuilder.getSessionWitness();
+
+        ASSERT_TRUE(fromSleOpt.has_value());
+        ASSERT_TRUE(fromBuilderOpt.has_value());
+
+        expectEqualField(expected, *fromSleOpt, "sfSessionWitness");
+        expectEqualField(expected, *fromBuilderOpt, "sfSessionWitness");
+    }
+
     EXPECT_EQ(entryFromSle.getKey(), index);
     EXPECT_EQ(entryFromBuilder.getKey(), index);
 }
@@ -325,5 +375,9 @@ TEST(SigningSessionTests, OptionalFieldsReturnNullopt)
     EXPECT_FALSE(entry.getSessionCap().has_value());
     EXPECT_FALSE(entry.hasSessionSpent());
     EXPECT_FALSE(entry.getSessionSpent().has_value());
+    EXPECT_FALSE(entry.hasSessionMaxPerTx());
+    EXPECT_FALSE(entry.getSessionMaxPerTx().has_value());
+    EXPECT_FALSE(entry.hasSessionWitness());
+    EXPECT_FALSE(entry.getSessionWitness().has_value());
 }
 }

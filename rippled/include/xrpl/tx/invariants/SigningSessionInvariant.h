@@ -20,8 +20,9 @@ namespace xrpl {
  * The checks, for every transaction:
  *  1. Only SigningSessionSet creates a session, and only SigningSessionDelete
  *     or AccountDelete removes one; the owner count moves by one with each.
- *  2. Account, SessionKey, Expiration, Permissions, SessionCap and the mode
- *     flag never change; a session has exactly one mode, SessionSpent only
+ *  2. Account, SessionKey, Expiration, Permissions, SessionCap,
+ *     SessionMaxPerTx, SessionWitness and the mode flag never change; a
+ *     session has exactly one mode, SessionSpent only
  *     with SessionCap and zero at creation; Expiration is within
  *     kMaxSessionDuration of the parent close time at creation.
  *  3. SessionSpent only increases, never above SessionCap, and only in a

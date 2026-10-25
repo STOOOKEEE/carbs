@@ -1838,6 +1838,133 @@ class SigningSessions_test : public beast::unit_test::Suite
         check(env.jt(pay(alice, bob, XRP(1)), delegate::As(bob), Sig(key), lls), false);
     }
 
+    // SessionMaxPerTx: mode C only, a positive XRP amount within the cap; a
+    // payment above it is refused with no fee, one at it passes.
+    void
+    testMaxPerTx(FeatureBitset features)
+    {
+        testcase("SessionMaxPerTx");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, gw{"gw"}, key{"key"};
+        env.fund(XRP(10000), alice, bob, gw);
+        env.close();
+
+        // Only under a cap.
+        env(session::set(alice, key, 600),
+            Txflags(tfAllTransactions),
+            session::MaxPerTx(XRP(1)),
+            Ter(temMALFORMED));
+        env(session::set(alice, key, 600),
+            session::Permissions({"Payment"}),
+            session::MaxPerTx(XRP(1)),
+            Ter(temMALFORMED));
+
+        // A positive XRP amount, at most the cap.
+        auto const cap = session::Cap(XRP(30));
+        env(session::set(alice, key, 600), cap, session::MaxPerTx(XRP(0)), Ter(temBAD_AMOUNT));
+        env(session::set(alice, key, 600), cap, session::MaxPerTx(XRP(-1)), Ter(temBAD_AMOUNT));
+        env(session::set(alice, key, 600),
+            cap,
+            session::MaxPerTx(gw["USD"](1)),
+            Ter(temBAD_AMOUNT));
+        env(session::set(alice, key, 600), cap, session::MaxPerTx(XRP(31)), Ter(temBAD_AMOUNT));
+
+        env(session::set(alice, key, 600), cap, session::MaxPerTx(XRP(10)));
+        env.close();
+        auto const sle = sessionEntry(env, alice, key);
+        if (!BEAST_EXPECT(sle))
+            return;
+        BEAST_EXPECT((*sle)[sfSessionMaxPerTx] == XRP(10).value());
+
+        auto const fee = env.current()->fees().base;
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        // One drop above SessionMaxPerTx, well within the cap.
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(10) + drops(1)), Sig(key), lls(), Ter(tefSESSION_LIMIT));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(0));
+
+        // Exactly SessionMaxPerTx.
+        env(pay(alice, bob, XRP(10)), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(sessionSpent(env, alice, key) == XRP(10) + fee);
+    }
+
+    // SessionWitness: a third account that exists; every session transaction
+    // but the own close carries its co-signature, by its enabled master key or
+    // its RegularKey.
+    void
+    testWitness(FeatureBitset features)
+    {
+        testcase("SessionWitness");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"}, witness{"witness"},
+            mallory{"mallory"}, witnessRegular{"witnessRegular"}, ghost{"ghost"};
+        env.fund(XRP(10000), alice, bob, witness, mallory);
+        env.close();
+
+        auto const modeA = Txflags(tfAllTransactions);
+
+        // Neither the account nor the session key.
+        env(session::set(alice, key, 600), modeA, session::Witness(alice), Ter(temMALFORMED));
+        env(session::set(alice, key, 600), modeA, session::Witness(key), Ter(temMALFORMED));
+
+        // The witness account must exist.
+        env(session::set(alice, key, 600), modeA, session::Witness(ghost), Ter(tecNO_TARGET));
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+
+        env(session::set(alice, key, 600), modeA, session::Witness(witness));
+        env.close();
+        auto const sle = sessionEntry(env, alice, key);
+        if (!BEAST_EXPECT(sle))
+            return;
+        BEAST_EXPECT((*sle)[sfSessionWitness] == witness.id());
+
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        // No co-signature, or one by another account: refused with no fee.
+        auto const balance = env.balance(alice);
+        env(pay(alice, bob, XRP(1)), Sig(key), lls(), Ter(tefSESSION_NO_WITNESS));
+        env(pay(alice, bob, XRP(1)),
+            Sig(key),
+            Sig(sfWitnessSignature, mallory),
+            lls(),
+            Ter(tefSESSION_NO_WITNESS));
+        env.close();
+        BEAST_EXPECT(env.balance(alice) == balance);
+
+        // The witness's master key.
+        env(pay(alice, bob, XRP(1)), Sig(key), Sig(sfWitnessSignature, witness), lls());
+        env.close();
+
+        // The witness's RegularKey, and its master key once disabled.
+        env(regkey(witness, witnessRegular));
+        env.close();
+        env(pay(alice, bob, XRP(1)), Sig(key), Sig(sfWitnessSignature, witnessRegular), lls());
+        // Only the master key may set asfDisableMaster (tecNEED_MASTER_KEY otherwise).
+        env(fset(witness, asfDisableMaster), Sig(witness));
+        env.close();
+        env(pay(alice, bob, XRP(1)),
+            Sig(key),
+            Sig(sfWitnessSignature, witness),
+            lls(),
+            Ter(tefSESSION_NO_WITNESS));
+        env(pay(alice, bob, XRP(1)), Sig(key), Sig(sfWitnessSignature, witnessRegular), lls());
+        env.close();
+
+        // The own close needs no co-signature.
+        env(session::del(alice, key), Sig(key), lls());
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
+    }
+
 public:
     void
     run() override
@@ -1882,6 +2009,8 @@ public:
         testModeP(all);
         testKeyTypes(all);
         testMlDsaLedgerAccount(all);
+        testMaxPerTx(all);
+        testWitness(all);
     }
 };
 

@@ -60,6 +60,8 @@ sameImmutableFields(SLE const& before, SLE const& after)
     return before[sfAccount] == after[sfAccount] && before[sfSessionKey] == after[sfSessionKey] &&
         before[sfExpiration] == after[sfExpiration] &&
         before[~sfSessionCap] == after[~sfSessionCap] &&
+        before[~sfSessionMaxPerTx] == after[~sfSessionMaxPerTx] &&
+        before[~sfSessionWitness] == after[~sfSessionWitness] &&
         before.isFlag(lsfAllTransactions) == after.isFlag(lsfAllTransactions) &&
         permissionsOf(before) == permissionsOf(after);
 }

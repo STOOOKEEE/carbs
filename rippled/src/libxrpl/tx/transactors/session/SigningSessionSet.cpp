@@ -110,6 +110,31 @@ SigningSessionSet::preflight(PreflightContext const& ctx)
         return temBAD_AMOUNT;
     }
 
+    // A per-transaction bound only makes sense under a total cap (mode C).
+    if (auto const maxPerTx = tx[~sfSessionMaxPerTx])
+    {
+        auto const cap = tx[~sfSessionCap];
+        if (!cap)
+        {
+            JLOG(ctx.j.trace()) << "SigningSessionSet: SessionMaxPerTx without SessionCap";
+            return temMALFORMED;
+        }
+        if (!isXRP(*maxPerTx) || *maxPerTx <= beast::kZero || *maxPerTx > *cap)
+        {
+            JLOG(ctx.j.trace())
+                << "SigningSessionSet: SessionMaxPerTx is not a positive XRP amount within the cap";
+            return temBAD_AMOUNT;
+        }
+    }
+
+    // The witness is a third party: neither the account nor the session key.
+    if (auto const witness = tx[~sfSessionWitness];
+        witness && (*witness == tx[sfAccount] || *witness == tx[sfSessionKey]))
+    {
+        JLOG(ctx.j.trace()) << "SigningSessionSet: the witness is the account or the session key";
+        return temMALFORMED;
+    }
+
     return tesSUCCESS;
 }
 
@@ -158,6 +183,13 @@ SigningSessionSet::preclaim(PreclaimContext const& ctx)
         return tecDUPLICATE;
     }
 
+    if (auto const witness = ctx.tx[~sfSessionWitness];
+        witness && !ctx.view.exists(keylet::account(*witness)))
+    {
+        JLOG(ctx.j.trace()) << "SigningSessionSet: the witness account does not exist";
+        return tecNO_TARGET;
+    }
+
     return tesSUCCESS;
 }
 
@@ -197,6 +229,12 @@ SigningSessionSet::doApply()
         (*sle)[sfSessionCap] = *cap;
         (*sle)[sfSessionSpent] = STAmount{XRPAmount{0}};
     }
+
+    if (auto const maxPerTx = ctx_.tx[~sfSessionMaxPerTx])
+        (*sle)[sfSessionMaxPerTx] = *maxPerTx;
+
+    if (auto const witness = ctx_.tx[~sfSessionWitness])
+        (*sle)[sfSessionWitness] = *witness;
 
     auto const page =
         view().dirInsert(keylet::ownerDir(accountID_), sessionKeylet, describeOwnerDir(accountID_));

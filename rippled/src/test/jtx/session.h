@@ -75,4 +75,39 @@ public:
     operator()(Env&, JTx& jt) const;
 };
 
+/**
+ * Mode C only: the most one payment may send (SessionMaxPerTx).
+ */
+class MaxPerTx
+{
+private:
+    STAmount maxPerTx_;
+
+public:
+    explicit MaxPerTx(STAmount const& maxPerTx) : maxPerTx_(maxPerTx)
+    {
+    }
+
+    void
+    operator()(Env&, JTx& jt) const;
+};
+
+/**
+ * Any mode: the account that co-signs every session transaction
+ * (SessionWitness). Its co-signature is Sig(sfWitnessSignature, witness).
+ */
+class Witness
+{
+private:
+    jtx::Account witness_;
+
+public:
+    explicit Witness(jtx::Account const& witness) : witness_(witness)
+    {
+    }
+
+    void
+    operator()(Env&, JTx& jt) const;
+};
+
 }  // namespace xrpl::test::jtx::session

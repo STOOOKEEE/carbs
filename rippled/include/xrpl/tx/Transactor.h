@@ -404,7 +404,8 @@ public:
 
     /**
      * The rules of invokeCheckSession, in order: eligibility, then
-     * LastLedgerSequence, expiry, the fee ceiling and, in mode C, the cap.
+     * LastLedgerSequence, expiry, the fee ceiling, in mode C the cap and
+     * SessionMaxPerTx, and the SessionWitness co-signature.
      */
     static NotTEC
     checkSession(

@@ -1633,6 +1633,8 @@ TRANSACTION(ttSIGNING_SESSION_SET, 130, SigningSessionSet,
     {sfSessionDuration, SoeRequired},
     {sfPermissions, SoeOptional},
     {sfSessionCap, SoeOptional},
+    {sfSessionMaxPerTx, SoeOptional},
+    {sfSessionWitness, SoeOptional},
 }))
 
 /** This transaction closes a signing session. */
