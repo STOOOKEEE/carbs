@@ -509,7 +509,7 @@ Final review gate, round 2 (an independent reviewer, model Opus, read-only, on `
 - **What ran:** the four unit-test binaries of `ledger-app/unit-tests`, natively on macOS (Apple clang 17, arm64, cmocka 1.1.7 built from its tarball into a scratch prefix, Homebrew OpenSSL 3), the first run of these unit tests on this repository: `test_printers` 4/4, `test_swap` 2/2, `test_tx` 4/4, `test_pq_root` 16/16. Recipe and the two local workarounds in `docs/BUILDING.md`.
 - **What did not run:** the app was **not** built for the Stax (no `ledger-app-builder` image and no SDK on this machine; Docker was not running), so the change is compiled only against the test doubles of the SDK headers, not against the real `lcx_mldsa.h`, `io.h` or `cx.h`. No Speculos or Ragger run, no device. The real SDK calls used are the ones the app already uses elsewhere (`cx_sha256_init` and `cx_hash_no_throw` in `ledger-app/src/xrp/xrp_helpers.c:130-131`, `ui_error_blind_signing` in `ledger-app/src/transaction/transaction.c:205`). Left as before, as on the classical path: when an approval signs nothing (a review cancelled by an instruction change, or bytes that changed), the status page that follows still says "signed" (`ledger-app/src/ui/transaction/review_menu_nbgl.c:63-72`).
 
-## 2026-10-25: audit fix, the session fee ceiling uses the exception-safe base fee
+## 2026-10-25: audit 24.10, section B (the session fee ceiling uses the exception-safe base fee)
 
 From the audit task list (section B, minor): `Transactor::invokeCheckSession` passed `T::calculateBaseFee` straight to `checkSession`, while the fee check of `invokePreclaim` uses `xrpl::calculateBaseFee` (`rippled/src/libxrpl/tx/applySteps.cpp:247-275`, `:446-449`), which catches an exception and returns `tefEXCEPTION`.
 
