@@ -166,7 +166,7 @@ TEST(P256Signature, sign_makes_low_s)
         auto const s = sOf(Slice(sig.data(), sig.size()));
         if (s > kHalfOrder)
             ++high;
-        EXPECT_TRUE(verify(pk, makeSlice(message), Slice(sig.data(), sig.size())));
+        EXPECT_TRUE(verify(pk, makeSlice(message), Slice(sig.data(), sig.size()), true));
     }
     EXPECT_EQ(high, 0);
 }
@@ -194,7 +194,7 @@ TEST(P256Signature, truncated_at_the_tag_of_s_is_not_read_past)
 
     std::uint8_t* const at = base + pageSize - sig.size();
     std::memcpy(at, sig.data(), sig.size());
-    EXPECT_FALSE(verify(pk, makeSlice(message), Slice(at, sig.size())));
+    EXPECT_FALSE(verify(pk, makeSlice(message), Slice(at, sig.size()), false));
 
     munmap(region, 2 * pageSize);
 }
@@ -273,4 +273,28 @@ TEST(P256Signature, non_minimal_integers_are_refused_when_strict)
         EXPECT_TRUE(verifies(x, der, false));
         EXPECT_FALSE(verifies(x, der, true));
     }
+}
+
+// R equal to n is out of range: refused by the strict form, as by ECDSA.
+TEST(P256Signature, r_at_the_order_is_refused)
+{
+    auto const x = signOnce();
+    auto const der = sequence(integer(kOrder), integer(x.s));
+    EXPECT_FALSE(verifies(x, der, false));
+    EXPECT_FALSE(verifies(x, der, true));
+}
+
+// verify() without the strictness argument is for keys that are not P-256:
+// a caller that does not say which rules apply cannot accept a P-256
+// signature in either form.
+TEST(P256Signature, verify_without_the_rules_refuses_p256)
+{
+    auto const x = signOnce();
+    auto const der = sequence(integer(x.r), integer(x.s));
+    EXPECT_TRUE(verifies(x, der, true));
+    EXPECT_FALSE(verify(x.pk, makeSlice(x.message), makeSlice(der)));
+
+    auto const [pk, sk] = generateKeyPair(KeyType::Secp256k1, generateSeed("not p256"));
+    auto const sig = sign(pk, sk, makeSlice(x.message));
+    EXPECT_TRUE(verify(pk, makeSlice(x.message), Slice(sig.data(), sig.size())));
 }

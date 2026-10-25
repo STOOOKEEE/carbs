@@ -73,10 +73,10 @@ AttestationBase::sameEventHelper(AttestationBase const& lhs, AttestationBase con
 }
 
 bool
-AttestationBase::verify(STXChainBridge const& bridge) const
+AttestationBase::verify(STXChainBridge const& bridge, bool strictP256Der) const
 {
     std::vector<std::uint8_t> const msg = message(bridge);
-    return xrpl::verify(publicKey, makeSlice(msg), signature);
+    return xrpl::verify(publicKey, makeSlice(msg), signature, strictP256Der);
 }
 
 AttestationBase::AttestationBase(STObject const& o)

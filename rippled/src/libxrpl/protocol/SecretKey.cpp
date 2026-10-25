@@ -429,8 +429,16 @@ sign(PublicKey const& pk, SecretKey const& sk, Slice const& m)
                 ECDSA_SIG_get0(sigObj, &r, &s);
                 BIGNUM const* order = EC_GROUP_get0_order(group);
                 BIGNUM* half = BN_new();
-                bool const high =
-                    order && half && BN_rshift1(half, order) == 1 && BN_cmp(s, half) > 0;
+                if (!order || !half || BN_rshift1(half, order) != 1)
+                {
+                    BN_free(half);
+                    ECDSA_SIG_free(sigObj);
+                    BN_free(privKey);
+                    EC_KEY_free(key);
+                    EC_GROUP_free(group);
+                    logicError("sign: low S normalization failed");
+                }
+                bool const high = BN_cmp(s, half) > 0;
                 BN_free(half);
                 if (high)
                 {

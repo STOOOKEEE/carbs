@@ -1482,7 +1482,8 @@ NetworkOPsImp::preProcessTransaction(std::shared_ptr<Transaction>& transaction)
         // BAD for a role-signature transaction once fixCleanup3_4_0 is
         // enabled on this node. Remove together with the amendment. The same
         // holds for a WebAuthn passkey signature until fixPasskeyChallenge is
-        // enabled (see isSignatureVerdictCacheable).
+        // enabled, and for a P-256 signature until fixP256StrictDer is (see
+        // isSignatureVerdictCacheable).
         if ((viewRules.enabled(fixCleanup3_4_0) ||
              (!sttx.isFieldPresent(sfSponsorSignature) &&
               !sttx.isFieldPresent(sfCounterpartySignature))) &&
@@ -1732,8 +1733,9 @@ NetworkOPsImp::apply(std::unique_lock<std::mutex>& batchLock)
             e.transaction->setResult(e.result);
 
             // A WebAuthn passkey signature refused before fixPasskeyChallenge
-            // may be good once it is enabled (see isSignatureVerdictCacheable):
-            // do not mark it BAD until then. Every transaction here passed
+            // may be good once it is enabled, and no P-256 verdict is kept
+            // before fixP256StrictDer (see isSignatureVerdictCacheable): do not
+            // mark either BAD until then. Every transaction here passed
             // preProcessTransaction, now or, for a held one, under earlier
             // rules, which cannot have more of the fix; this guard only matters
             // if the rules lose the fix, as when the last closed ledger
