@@ -2164,6 +2164,24 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(queuedFor(alice) == 0);
         BEAST_EXPECT(sessionEntry(env, alice, key3));
+
+        // A third party's cleanup of an expired session is not a blocker:
+        // carol's next transaction queues behind it.
+        Account const key4{"key4"};
+        env(session::set(alice, key4, 30), Txflags(tfAllTransactions));
+        env.close();
+        auto const expiration = (*sessionEntry(env, alice, key4))[sfExpiration];
+        while (parentCloseTime(env) < expiration)
+            env.close();
+        fillOpenLedger();
+        seq = env.seq(carol);
+        env(session::del(carol, key4, alice), Ter(terQUEUED));
+        env(pay(carol, bob, XRP(1)), Seq(seq + 1), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(carol) == 2);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(carol) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key4));
     }
 
     // Case 24: a session cannot sign for a pseudo-account (the refusal of

@@ -17,10 +17,12 @@ namespace xrpl {
 class SigningSessionDelete : public Transactor
 {
 public:
-    // A blocker, like SetRegularKey: once a close applies, what its session
-    // key signed loses its authority, so the queue must hold nothing of the
-    // account behind it.
-    static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Blocker;
+    // A blocker, like SetRegularKey, when the account closes one of its own
+    // sessions: once that close applies, what the session key signed loses
+    // its authority, so the queue must hold nothing of the account behind it.
+    // A third party's cleanup of an expired session (with Owner) removes no
+    // authority from its own account, and stays an ordinary transaction.
+    static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Custom;
 
     explicit SigningSessionDelete(ApplyContext& ctx) : Transactor(ctx)
     {
@@ -31,6 +33,9 @@ public:
 
     static std::uint32_t
     getFlagsMask(PreflightContext const& ctx);
+
+    static TxConsequences
+    makeTxConsequences(PreflightContext const& ctx);
 
     static NotTEC
     preflight(PreflightContext const& ctx);

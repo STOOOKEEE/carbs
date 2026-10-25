@@ -35,6 +35,14 @@ SigningSessionDelete::getFlagsMask(PreflightContext const&)
     return tfUniversalMask;
 }
 
+TxConsequences
+SigningSessionDelete::makeTxConsequences(PreflightContext const& ctx)
+{
+    if (ctx.tx.isFieldPresent(sfOwner))
+        return TxConsequences{ctx.tx};
+    return TxConsequences{ctx.tx, TxConsequences::Category::Blocker};
+}
+
 NotTEC
 SigningSessionDelete::preflight(PreflightContext const& ctx)
 {
