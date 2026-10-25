@@ -48,6 +48,9 @@ describe("Content-Security-Policy", () => {
     expect(directive(csp, "base-uri")).toEqual(["'none'"]);
     expect(directive(csp, "frame-ancestors")).toEqual(["'none'"]);
     expect(directive(csp, "default-src")).toEqual(["'self'"]);
+    // form-action does not fall back to default-src: without it a form could post anywhere.
+    expect(directive(csp, "form-action")).toEqual(["'self'"]);
+    expect(buildMetaCsp(options)).toContain("form-action 'self'");
   });
 
   it("leaves frame-ancestors out of the meta form", () => {
