@@ -2,7 +2,7 @@ import { createXrplConnect, useWallet } from "@xrpl-commons/xrpl-connect-vue";
 import { createApp } from "vue";
 import { describe, expect, it } from "vitest";
 import { createAppContext } from "../app-context";
-import { createWalletAdapters } from "./adapters";
+import { createWalletAdapters, walletNetwork } from "./adapters";
 import { createWalletsApi } from "./api";
 import { browserPasskeySource, softwarePasskeySource } from "./passkey";
 
@@ -15,11 +15,10 @@ function wired(passkeys = softwarePasskeySource()) {
   );
   // The same wiring as plugins/xrpl-connect.client.ts.
   const app = createApp({});
-  const selected = ctx.network.selected();
   app.use(
     createXrplConnect({
       adapters,
-      network: { id: selected.id, name: selected.name, wss: selected.wss, rpc: selected.rpc },
+      network: walletNetwork(ctx),
       autoConnect: false,
       logger: { level: "error" },
     }),

@@ -4,6 +4,8 @@ import { buildCsp, buildMetaCsp, netlifyHeaders, securityHeaders } from "./lib/c
 import {
   DEFAULT_LOCAL_FAUCET,
   DEFAULT_LOCAL_WSS,
+  DEFAULT_TEAM_FAUCET,
+  DEFAULT_TEAM_WSS,
   allConnectOrigins,
   createNetworks,
   localRpcFor,
@@ -12,9 +14,16 @@ import { extractEmbeddedScripts } from "./server/utils/inline-scripts";
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 const isProduction = process.env.NODE_ENV === "production";
-const localWss = (process.env.NUXT_PUBLIC_LOCAL_NODE_URL ?? "").trim() || DEFAULT_LOCAL_WSS;
-const localFaucet = (process.env.NUXT_PUBLIC_LOCAL_FAUCET_URL ?? "").trim() || DEFAULT_LOCAL_FAUCET;
-const networks = createNetworks({ wss: localWss, rpc: localRpcFor(localWss), faucet: localFaucet });
+const env = (name: string, fallback: string): string =>
+  (process.env[name] ?? "").trim() || fallback;
+const localWss = env("NUXT_PUBLIC_LOCAL_NODE_URL", DEFAULT_LOCAL_WSS);
+const localFaucet = env("NUXT_PUBLIC_LOCAL_FAUCET_URL", DEFAULT_LOCAL_FAUCET);
+const teamWss = env("NUXT_PUBLIC_TEAM_NODE_URL", DEFAULT_TEAM_WSS);
+const teamFaucet = env("NUXT_PUBLIC_TEAM_FAUCET_URL", DEFAULT_TEAM_FAUCET);
+const networks = createNetworks(
+  { wss: localWss, rpc: localRpcFor(localWss), faucet: localFaucet },
+  { wss: teamWss, faucet: teamFaucet },
+);
 // The policy lists the hosts of the configured networks' nodes and faucets, no bare scheme.
 const cspOptions = { connectOrigins: allConnectOrigins(networks), dev: !isProduction };
 const CONTENT_SECURITY_POLICY = buildCsp(cspOptions);
@@ -53,13 +62,16 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      defaultNetwork: "alphanet",
-      // Public WebSocket of the standalone node (infra/standalone.cfg); wss:// when hosted.
-      // "live" runs Session, Actions and Attack on the local node; "" or "simulated" on the simulation.
+      // The header's Node before a visitor picks one: "local" or "team" (or "live", the former
+      // name of "local") runs Account, Session, Actions and Attack on that node; "" on the simulation.
       backend: "",
+      // Public WebSocket of the standalone node on this machine (infra/standalone.cfg).
       localNodeUrl: "",
       // The dev faucet of the local node (started by `pnpm demo`).
       localFaucetUrl: "",
+      // The team's node and faucet (its server, on the tailnet); "" is the default of lib/networks.ts.
+      teamNodeUrl: "",
+      teamFaucetUrl: "",
       // The team's wallet server behind the Apps screen; "" is its tailnet host (lib/live-apps.ts).
       // Only linked to, never fetched: it is not in connect-src.
       appsUrl: "",

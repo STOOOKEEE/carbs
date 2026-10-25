@@ -63,8 +63,9 @@ export const DEMO_ACCOUNT: WalletDescription = {
     "Session key (P-256): the transactions inside its session, no prompt",
   ],
   summary: "A throw-away account to try the screens. Nothing is kept.",
-  simulatedWhenBackendSimulated: ["node"],
-  alwaysSimulated: ["account"],
+  // On a live node the account is real (funded by its faucet); only its key is thrown away.
+  simulatedWhenBackendSimulated: ["node", "account"],
+  alwaysSimulated: [],
 };
 
 export const WALLET_DESCRIPTIONS: readonly WalletDescription[] = [

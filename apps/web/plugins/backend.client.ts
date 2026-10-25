@@ -1,7 +1,7 @@
 import { SIM_TICK_MS } from "~/lib/constants";
 import { sharedAppContext, setSharedAppContext } from "~/lib/app-context";
-import { readBackendChoice } from "~/lib/backend-choice";
 import { chooseBackend } from "~/lib/boot";
+import { clearNodeChoice, readNodeChoice } from "~/lib/node-choice";
 import {
   BACKEND_KEY,
   BACKEND_STATUS_KEY,
@@ -14,26 +14,40 @@ import {
   NETWORK_KEY,
 } from "~/lib/context";
 import { watchLedgerDisconnects } from "~/lib/live/device-selection";
+import type { NetworkStoreOptions } from "~/lib/network-store";
 import { browserPasskeySource } from "~/lib/wallets/passkey";
 
-// Builds the context once per page load, chooses the backend (the simulation, or the live node
-// when it was asked for and answers) and provides it to every screen. When the live node
-// cannot be used the page stays on the simulation and the header says why.
+/** A runtime-config value, or nothing when it is empty (the default of `lib/networks.ts` applies). */
+function configured(value: unknown): string | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text === "" ? undefined : text;
+}
+
+// Builds the context once per page load, chooses the node (the simulation, or the local or
+// team node when it was chosen and answers) and provides it to every screen. When the live
+// node cannot be used the page stays on the simulation, the header says why once, and the
+// saved choice is forgotten so the next load does not wait for it again.
 export default defineNuxtPlugin(async (nuxtApp) => {
   const config = useRuntimeConfig().public;
-  const localWss = String(config.localNodeUrl ?? "").trim();
-  const localFaucet = String(config.localFaucetUrl ?? "").trim();
-  const base = sharedAppContext({
+  const options: NetworkStoreOptions = {
     storage: window.localStorage,
     pageProtocol: window.location.protocol,
-    ...(localWss === "" ? {} : { localWss }),
-    ...(localFaucet === "" ? {} : { localFaucet }),
-  });
-  const requested = readBackendChoice(window.localStorage, config.backend);
+  };
+  const localWss = configured(config.localNodeUrl);
+  const localFaucet = configured(config.localFaucetUrl);
+  const teamWss = configured(config.teamNodeUrl);
+  const teamFaucet = configured(config.teamFaucetUrl);
+  if (localWss !== undefined) options.localWss = localWss;
+  if (localFaucet !== undefined) options.localFaucet = localFaucet;
+  if (teamWss !== undefined) options.teamWss = teamWss;
+  if (teamFaucet !== undefined) options.teamFaucet = teamFaucet;
+  const base = sharedAppContext(options);
+  const requested = readNodeChoice(window.localStorage, config.backend);
   const { ctx, status } = await chooseBackend(base, {
     requested,
     passkeys: browserPasskeySource(),
   });
+  if (status.active !== status.requested) clearNodeChoice(window.localStorage);
   setSharedAppContext(ctx);
 
   nuxtApp.vueApp.provide(BACKEND_KEY, ctx.backend);

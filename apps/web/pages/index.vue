@@ -51,8 +51,8 @@ const SCREENS = [
       class="panel sim-frame mt-6 max-w-2xl text-sm"
       data-testid="sim-note"
     >
-      <SimBadge /> Every node answer and every device screen in this app is simulated until the real
-      ones are wired in. The badge stays visible wherever a result comes from the simulation.
+      <SimBadge /> The node and the device are simulated. To use a real node, pick Local node or
+      Team node under Node, at the top. The badge marks every result that comes from the simulation.
     </p>
     <div class="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <NuxtLink

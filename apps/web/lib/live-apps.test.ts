@@ -28,7 +28,7 @@ import {
   type LiveAppId,
   type LiveAppProbe,
 } from "./live-apps";
-import { NETWORKS, allConnectOrigins } from "./networks";
+import { NETWORKS, allConnectOrigins, createNetworks } from "./networks";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 /** The node's own `server_definitions` (the standalone node with the amendment, recorded). */
@@ -391,8 +391,14 @@ describe("the link to the team's server", () => {
     }
   });
 
-  it("is navigation only: connect-src does not list the team's host", () => {
-    const csp = buildCsp({ connectOrigins: allConnectOrigins(NETWORKS) });
+  it("is navigation only: the team's host is in connect-src for the Team node's faucet, not for the links", () => {
+    // The Team node choice reaches the same server's faucet; that, not the links, lists it.
+    expect(allConnectOrigins(NETWORKS)).toContain(new URL(DEFAULT_APPS_URL).origin);
+    const elsewhere = createNetworks(undefined, {
+      wss: "wss://team.example.org:9448",
+      faucet: "https://team.example.org:9449/api/faucet",
+    });
+    const csp = buildCsp({ connectOrigins: allConnectOrigins(elsewhere) });
     expect(csp).not.toContain(new URL(DEFAULT_APPS_URL).hostname);
   });
 });

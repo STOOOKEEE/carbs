@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useBackend, useDemo, useDevicePrompt } from "~/lib/context";
+import { useDevicePrompt } from "~/lib/context";
 import { useLedgerMode } from "~/lib/ledger-mode";
 
-const backend = useBackend();
-const demo = useDemo();
 const prompt = useDevicePrompt();
 const route = useRoute();
 const router = useRouter();
@@ -24,8 +22,6 @@ const SCREENS = [
 const screen = computed(
   () => SCREENS.find((entry) => route.path === `/${entry.value}`)?.value ?? "",
 );
-const ledger = computed(() => demo.state.server?.ledgerIndex ?? null);
-
 function go(value: string): void {
   void router.push(`/${value}`);
 }
@@ -79,18 +75,7 @@ useHead({ htmlAttrs: { "data-theme": computed(() => (ledgerMode.value ? "ledger"
           </nav>
           <div class="ml-auto"><WalletConnector /></div>
         </div>
-        <div class="status-strip">
-          <div
-            class="mx-auto flex w-full max-w-content flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2 text-xs text-muted-foreground"
-          >
-            <span v-if="ledger !== null" class="mono">ledger {{ ledger }}</span>
-            <SimBadge v-if="backend.mode === 'simulated'" />
-            <span class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
-              <BackendSwitch />
-              <NetworkSelector />
-            </span>
-          </div>
-        </div>
+        <div class="status-strip"><HeaderStatus /></div>
       </header>
       <main class="mx-auto w-full max-w-content flex-1 px-5 py-8">
         <slot />
@@ -112,18 +97,32 @@ useHead({ htmlAttrs: { "data-theme": computed(() => (ledgerMode.value ? "ledger"
 
 <style>
 .top-bar {
+  /* Above the page, so that the dialogs opened from the bar cover it. */
+  position: relative;
+  z-index: 20;
   border-bottom: var(--border-width) solid var(--color-line-strong);
+  transition: border-color var(--motion-slow) var(--ease-out);
+}
+
+/* The blur sits on a layer behind the bar, not on the bar: a backdrop filter on the bar would
+   make the fixed dialogs it holds (wallet, node) as small as the bar. */
+.top-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--color-surface);
   -webkit-backdrop-filter: blur(var(--panel-blur));
   backdrop-filter: blur(var(--panel-blur));
-  transition:
-    background-color var(--motion-slow) var(--ease-out),
-    border-color var(--motion-slow) var(--ease-out);
+  transition: background-color var(--motion-slow) var(--ease-out);
 }
 
 :root[data-theme="ledger"] .top-bar {
-  background: rgb(10 7 20 / 55%);
   border-bottom-color: var(--color-line);
+}
+
+:root[data-theme="ledger"] .top-bar::before {
+  background: rgb(10 7 20 / 55%);
 }
 
 /* Below Tailwind's sm breakpoint the screens take the whole width: six fit a phone in small type. */

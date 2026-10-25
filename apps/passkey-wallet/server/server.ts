@@ -33,6 +33,7 @@ import { STREAM_API_PREFIX, handleStream } from "./stream.ts";
 import { handleGame } from "./game.ts";
 import { GAME_API_PREFIX } from "../src/apps/game/protocol.ts";
 import { handleDex } from "./dex.ts";
+import { faucetCorsHeaders } from "./faucet-cors.ts";
 import { DEX_API_PREFIX } from "../src/apps/dex/api.ts";
 
 const PORT = Number(process.env["PORT"] ?? 8080);
@@ -256,14 +257,15 @@ async function handleStatic(url: string, res: ServerResponse): Promise<void> {
   }
 }
 
-/** CORS for the faucet: only the listed origins, POST with a JSON body, no credentials. */
+/** CORS for the faucet (`faucet-cors.ts`): only the listed origins, POST with a JSON body. */
 function allowFaucetOrigin(req: IncomingMessage, res: ServerResponse): boolean {
-  const origin = req.headers.origin;
-  if (origin === undefined || !FAUCET_ORIGINS.has(origin)) return false;
-  res.setHeader("access-control-allow-origin", origin);
-  res.setHeader("access-control-allow-methods", "POST");
-  res.setHeader("access-control-allow-headers", "content-type");
-  res.setHeader("vary", "Origin");
+  const headers = faucetCorsHeaders(
+    req.headers.origin,
+    FAUCET_ORIGINS,
+    req.headers["access-control-request-private-network"] === "true",
+  );
+  if (headers === null) return false;
+  for (const [name, value] of Object.entries(headers)) res.setHeader(name, value);
   return true;
 }
 

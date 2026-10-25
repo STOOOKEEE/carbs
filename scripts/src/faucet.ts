@@ -107,6 +107,10 @@ export function createFaucetServer(
       response.setHeader("access-control-allow-headers", "content-type");
       response.setHeader("access-control-allow-methods", "POST, OPTIONS");
       response.setHeader("vary", "origin");
+      // A page on another site (the hosted web app) reaching this loopback faucet: Chrome's
+      // Private Network Access preflight asks for this answer.
+      if (request.headers["access-control-request-private-network"] === "true")
+        response.setHeader("access-control-allow-private-network", "true");
     }
     const reply = (status: number, body: unknown): void => {
       response.statusCode = status;
