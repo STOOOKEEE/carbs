@@ -18,7 +18,8 @@
     "ripple-binary-codec": "2.11.0",
     "ripple-keypairs": "3.1.0",
     "ripple-address-codec": "5.0.1",
-    "@carbs/ledger": "workspace:*"
+    "@carbs/ledger": "workspace:*",
+    "@carbs/sessions": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

@@ -3,6 +3,7 @@
 #include <xrpl/basics/Slice.h>
 #include <xrpl/basics/chrono.h>
 #include <xrpl/ledger/ReadView.h>
+#include <xrpl/ledger/View.h>
 #include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Indexes.h>
@@ -141,8 +142,7 @@ isSessionCapPayment(STTx const& tx)
 bool
 isSessionExpired(ReadView const& view, SLE const& session)
 {
-    return view.parentCloseTime() >=
-        NetClock::time_point{NetClock::duration{session.getFieldU32(sfExpiration)}};
+    return hasExpired(view, session.getFieldU32(sfExpiration), ExpiryComparison::Inclusive);
 }
 
 bool

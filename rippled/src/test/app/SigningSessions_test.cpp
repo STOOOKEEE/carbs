@@ -33,6 +33,7 @@
 #include <test/jtx/txflags.h>
 #include <test/jtx/webauthn.h>
 
+#include <xrpld/app/ledger/LedgerMaster.h>
 #include <xrpld/app/main/Application.h>
 #include <xrpld/app/misc/TxQ.h>
 
@@ -40,6 +41,8 @@
 #include <xrpl/beast/unit_test.h>
 #include <xrpl/config/Constants.h>
 #include <xrpl/json/to_string.h>
+#include <xrpl/ledger/Ledger.h>
+#include <xrpl/ledger/OpenView.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Firewall.h>
 #include <xrpl/protocol/Indexes.h>
@@ -56,6 +59,7 @@
 #include <xrpl/protocol/jss.h>
 #include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
+#include <xrpl/tx/apply.h>
 
 #pragma push_macro("TRANSACTION")
 #undef TRANSACTION
@@ -1395,6 +1399,109 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(txCount() == 3);
     }
 
+    // A fee cut short by the reset: in a closed ledger an account whose
+    // balance is below the fee pays what it holds (tecINSUFF_FEE), and the
+    // session counts that amount, not the declared Fee (chargeSession takes
+    // the fee reset returns). The ledger is built and applied by hand, like
+    // Regression_test, since an open ledger refuses the transaction instead.
+    void
+    testModeCShortFee(FeatureBitset features)
+    {
+        testcase("mode C accounting, fee cut short");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), session::Cap(XRP(100)));
+        env.close();
+
+        auto const closed = env.app().getLedgerMaster().getClosedLedger();
+        auto next = std::make_shared<Ledger>(*closed, env.app().getTimeKeeper().closeTime());
+        auto const fee = next->fees().base;
+        auto const held = drops(4);
+        BEAST_EXPECT(held < fee);
+        {
+            auto const sle = next->read(keylet::account(alice.id()));
+            if (!BEAST_EXPECT(sle))
+                return;
+            auto replacement = std::make_shared<SLE>(*sle);
+            (*replacement)[sfBalance] = STAmount{held};
+            next->rawReplace(replacement);
+        }
+
+        auto const jt = env.jt(
+            pay(alice, bob, XRP(1)),
+            Sig(key),
+            Fee(fee),
+            Seq(env.seq(alice)),
+            LastLedgerSeq(next->seq() + 10));
+        OpenView accum(&*next);
+        auto const result = xrpl::apply(env.app(), accum, *jt.stx, TapNone, env.journal);
+        BEAST_EXPECT(result.ter == tecINSUFF_FEE);
+        BEAST_EXPECT(result.applied);
+        accum.apply(*next);
+
+        auto const session = next->read(sessionKeylet(alice, key));
+        if (!BEAST_EXPECT(session))
+            return;
+        BEAST_EXPECT((*session)[sfSessionSpent] == STAmount{held});
+        BEAST_EXPECT((*next->read(keylet::account(alice.id())))[sfBalance] == STAmount{0});
+    }
+
+    // Mode P checks eligibility again at use: a session entry that lists a
+    // non-delegable type, at the transaction level or as a granular
+    // permission, cannot sign it. No transaction can write such an entry
+    // (SigningSessionSet refuses it), so it is written into the open ledger.
+    void
+    testModePEligibilityAtUse(FeatureBitset features)
+    {
+        testcase("mode P eligibility at use");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, keyTx{"keyTx"}, keyGranular{"keyGranular"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, keyTx, 600), session::Permissions({"Payment"}));
+        env(session::set(alice, keyGranular, 600), session::Permissions({"Payment"}));
+        env.close();
+
+        auto const list = [&](Account const& key, std::uint32_t value) {
+            env.app().getOpenLedger().modify([&](OpenView& view, beast::Journal) {
+                auto const sle = view.read(sessionKeylet(alice, key));
+                if (!sle)
+                    return false;
+                auto replacement = std::make_shared<SLE>(*sle);
+                STArray permissions(sfPermissions, 2);
+                for (auto const v : {static_cast<std::uint32_t>(ttPAYMENT + 1), value})
+                {
+                    STObject permission = STObject::makeInnerObject(sfPermission);
+                    permission.setFieldU32(sfPermissionValue, v);
+                    permissions.push_back(std::move(permission));
+                }
+                replacement->setFieldArray(sfPermissions, permissions);
+                view.rawReplace(replacement);
+                return true;
+            });
+        };
+        list(keyTx, ttACCOUNT_SET + 1);
+        list(keyGranular, AccountDomainSet);
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        env(pay(alice, bob, XRP(1)), Sig(keyTx), lls());
+        env(pay(alice, bob, XRP(1)), Sig(keyGranular), lls());
+        env(fset(alice, asfRequireDest), Sig(keyTx), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        auto jt = noop(alice);
+        jt[sfDomain] = strHex(std::string{"example.com"});
+        env(jt, Sig(keyGranular), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env.close();
+        auto const root = env.le(alice);
+        BEAST_EXPECT(!root->isFlag(lsfRequireDestTag));
+        BEAST_EXPECT(!root->isFieldPresent(sfDomain));
+    }
+
     // Case 17: a session key later made the RegularKey stays bounded until its
     // session is deleted; case 17b: LastLedgerSequence present and near.
     void
@@ -1559,6 +1666,46 @@ class SigningSessions_test : public beast::unit_test::Suite
                 WebAuthnSig(key, "AA"),
                 LastLedgerSeq(env.current()->seq() + 10),
                 Ter(tefSESSION_TX_NOT_ALLOWED));
+        }
+    }
+
+    // A session key of a type whose amendment is not enabled cannot sign: a
+    // P-256 key needs Passkey, an ML-DSA-44 key needs Quantum. The opening
+    // names the key by its AccountID, so the refusal is at use, the own close
+    // included; the owner's own close and a third party's after expiry still
+    // remove the session.
+    void
+    testKeyTypeAmendments(FeatureBitset features)
+    {
+        testcase("session key types need their amendment");
+        using namespace jtx;
+
+        for (auto const& [type, feature] :
+             {std::pair{KeyType::P256, featurePasskey},
+              std::pair{KeyType::Dilithium, featureQuantum}})
+        {
+            for (bool const enabled : {false, true})
+            {
+                Env env{*this, enabled ? features : features - feature};
+                Account const alice{"alice"}, bob{"bob"};
+                Account const key{"session", type};
+                env.fund(XRP(10000), alice, bob);
+                env.close();
+                env(session::set(alice, key, 600), Txflags(tfAllTransactions));
+                env.close();
+                auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+                auto const expected = enabled ? Ter(tesSUCCESS) : Ter(tefSESSION_TX_NOT_ALLOWED);
+                env(pay(alice, bob, XRP(1)), Sig(key), lls(), expected);
+                env(session::del(alice, key), Sig(key), lls(), expected);
+                env.close();
+                BEAST_EXPECT(sessionEntry(env, alice, key) == nullptr == enabled);
+                if (!enabled)
+                {
+                    env(session::del(alice, key));
+                    env.close();
+                    BEAST_EXPECT(!sessionEntry(env, alice, key));
+                }
+            }
         }
     }
 
@@ -1922,6 +2069,94 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(env.balance(bob) == bobBefore);
     }
 
+    // A queued SigningSessionDelete is a blocker, like SetRegularKey: once it
+    // applies, the transactions its session key signed lose their authority
+    // and would be dropped without claiming a fee, so nothing may queue behind
+    // it, and it does not queue behind other transactions of the account. A
+    // SigningSessionSet removes no authority (spec 6.3 refuses a session for
+    // a key that already has one), so it stays a normal transaction.
+    void
+    testQueueBlocker(FeatureBitset features)
+    {
+        testcase("transaction queue: the close is a blocker");
+        using namespace jtx;
+
+        Env env(*this, makeConfig({{Keys::kMinimumTxnInLedgerStandalone, "3"}}), features);
+        Account const alice{"alice"}, bob{"bob"}, carol{"carol"}, dave{"dave"};
+        Account const key1{"key1"}, key2{"key2"}, key3{"key3"};
+        env.fund(XRP(50000), noripple(alice, bob, carol, dave));
+        env.close();
+        env(session::set(alice, key1, 600), Txflags(tfAllTransactions));
+        env(session::set(alice, key2, 600), Txflags(tfAllTransactions));
+        env.close();
+
+        auto fillOpenLedger = [&] {
+            auto const metrics = env.app().getTxQ().getMetrics(*env.current());
+            std::array<Account const*, 3> const fillers{&bob, &carol, &dave};
+            for (std::size_t i = metrics.txInLedger; i <= metrics.txPerLedger; ++i)
+                env(noop(*fillers[i % fillers.size()]));
+        };
+        auto queuedFor = [&](Account const& account) {
+            return env.app().getTxQ().getAccountTxs(account.id()).size();
+        };
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        // The node keeps a refused local transaction and tries it again on
+        // the next open ledgers; ending it with this ledger keeps it out of
+        // the balances below.
+        auto const thisLedger = [&] { return LastLedgerSeq(env.current()->seq()); };
+
+        // A queued close blocks the account's queue: a session-signed
+        // payment, and one signed by the master key, are refused.
+        fillOpenLedger();
+        auto seq = env.seq(alice);
+        env(session::del(alice, key1), Ter(terQUEUED));
+        env(pay(alice, bob, XRP(1)),
+            Sig(key1),
+            Seq(seq + 1),
+            thisLedger(),
+            Ter(telCAN_NOT_QUEUE_BLOCKED));
+        env(pay(alice, bob, XRP(1)), Seq(seq + 1), thisLedger(), Ter(telCAN_NOT_QUEUE_BLOCKED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key1));
+
+        // A close, the own close included, does not queue behind another
+        // transaction of the account.
+        fillOpenLedger();
+        seq = env.seq(alice);
+        env(pay(alice, bob, XRP(1)), Sig(key2), lls(), Ter(terQUEUED));
+        env(session::del(alice, key2), Seq(seq + 1), thisLedger(), Ter(telCAN_NOT_QUEUE_BLOCKS));
+        env(session::del(alice, key2),
+            Sig(key2),
+            Seq(seq + 1),
+            thisLedger(),
+            Ter(telCAN_NOT_QUEUE_BLOCKS));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        // The owner can still revoke at once: a close at the account's
+        // sequence that pays the open ledger's fee is applied directly, as a
+        // SetRegularKey is, and the queued payment it overtakes is dropped.
+        auto const before = env.balance(alice);
+        env(session::del(alice, key2), Seq(seq), Fee(XRP(1)));
+        BEAST_EXPECT(!sessionEntry(env, alice, key2));
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(env.balance(alice) == before - XRP(1));
+
+        // A queued opening is not a blocker.
+        fillOpenLedger();
+        seq = env.seq(alice);
+        env(session::set(alice, key3, 600), Txflags(tfAllTransactions), Ter(terQUEUED));
+        env(pay(alice, bob, XRP(1)), Seq(seq + 1), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(alice) == 2);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(sessionEntry(env, alice, key3));
+    }
+
     // Case 24: a session cannot sign for a pseudo-account (the refusal of
     // Transactor::checkSign that the session path redoes). The state is
     // written into the open ledger: a pseudo-account never opens a session.
@@ -2279,14 +2514,18 @@ public:
         testModeC(all);
         testModeCShapes(all);
         testModeCAccounting(all);
+        testModeCShortFee(all);
+        testModePEligibilityAtUse(all);
         testModeCAntiDrain(all);
         testFirewall(all);
         testQueue(all);
+        testQueueBlocker(all);
         testPseudoAccount(all);
         testFeeSponsoredOpen(all);
         testRegularKeyAndLastLedger(all);
         testModeP(all);
         testKeyTypes(all);
+        testKeyTypeAmendments(all);
         testMlDsaLedgerAccount(all);
         testMaxPerTx(all);
         testWitness(all);

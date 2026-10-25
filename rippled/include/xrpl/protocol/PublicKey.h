@@ -251,9 +251,17 @@ verifyDigest(
  * Verify a signature on a message.
  * With secp256k1 signatures, the data is first hashed with
  * SHA512-Half, and the resulting digest is signed.
+ *
+ * With strictP256Der (the fixP256StrictDer amendment), a P-256 signature must
+ * be strict DER, exactly as long as its sequence says, with minimal integers,
+ * and have a low S. Other key types ignore it.
  */
 [[nodiscard]] bool
-verify(PublicKey const& publicKey, Slice const& m, Slice const& sig) noexcept;
+verify(
+    PublicKey const& publicKey,
+    Slice const& m,
+    Slice const& sig,
+    bool strictP256Der = false) noexcept;
 
 /**
  * Calculate the 160-bit node ID from a node public key.

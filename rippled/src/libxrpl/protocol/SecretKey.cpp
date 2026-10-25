@@ -419,6 +419,37 @@ sign(PublicKey const& pk, SecretKey const& sk, Slice const& m)
                 logicError("sign: ECDSA_do_sign failed");
             }
 
+            // Make S low. (r, n - s) verifies as well as (r, s), so a high S
+            // is a second valid form anyone can derive, which changes the
+            // transaction's hash; ECDSA signatures elsewhere in the protocol
+            // are fully canonical (low S) for the same reason.
+            {
+                BIGNUM const* r = nullptr;
+                BIGNUM const* s = nullptr;
+                ECDSA_SIG_get0(sigObj, &r, &s);
+                BIGNUM const* order = EC_GROUP_get0_order(group);
+                BIGNUM* half = BN_new();
+                bool const high =
+                    order && half && BN_rshift1(half, order) == 1 && BN_cmp(s, half) > 0;
+                BN_free(half);
+                if (high)
+                {
+                    BIGNUM* lowS = BN_new();
+                    BIGNUM* sameR = BN_dup(r);
+                    if (!lowS || !sameR || BN_sub(lowS, order, s) != 1 ||
+                        ECDSA_SIG_set0(sigObj, sameR, lowS) != 1)
+                    {
+                        BN_free(lowS);
+                        BN_free(sameR);
+                        ECDSA_SIG_free(sigObj);
+                        BN_free(privKey);
+                        EC_KEY_free(key);
+                        EC_GROUP_free(group);
+                        logicError("sign: low S normalization failed");
+                    }
+                }
+            }
+
             // Convert signature to DER format
             unsigned char sig[72];
             int len = i2d_ECDSA_SIG(sigObj, nullptr);
