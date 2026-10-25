@@ -15,22 +15,23 @@ pnpm --filter web generate       # static site in apps/web/.output/public (see d
 
 ## What is real and what is SIMULATED
 
-Today every node answer and every device screen comes from a **simulation** (`lib/sim/*`), and the interface says so: a striped **SIMULATED** badge sits wherever a result comes from it. The screens depend on small interfaces only (`lib/ports.ts`: `NodePort`, `DevicePort`, `WalletPort`, `ExposurePort`), so replacing the simulation by `packages/core`, `packages/ledger` and the real node changes the backend, not the screens.
+The app runs on one of two backends behind the same small interfaces (`lib/ports.ts`: `NodePort`, `DevicePort`, `WalletPort`, `ExposurePort`, `TxBuilders`). The default is the **simulation** (`lib/sim/*`); with `pnpm demo` (or the header's Backend switch) it runs on a **live** node (`lib/live/*`). A striped **SIMULATED** badge marks every result or screen that comes from the simulation, including, on the live backend, the Ledger device.
 
-| Piece                                      | Now                                                                                                            | Replaced by                                                        |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Node (submit, account state, sessions)     | `lib/sim/node.ts`: follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals, no real signatures | the standalone node with the amendment, through `packages/core`    |
-| Ledger Stax                                | `lib/sim/device.ts`: the screen lines of spec 7.3                                                              | `packages/ledger` on the Device Management Kit and the real device |
-| Wallet (master key, passkey, session keys) | `lib/sim/wallet.ts`: no WebAuthn prompt, no WebCrypto                                                          | `packages/core` keys                                               |
-| Exposure check                             | `lib/sim/exposure.ts` over the simulated history                                                               | `checkExposure` of `packages/core`                                 |
+| Piece                                      | Simulated backend (default)                                                                                    | Live backend                                                                                                                            |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Node (submit, account state, sessions)     | `lib/sim/node.ts`: follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals; no real signatures | the standalone node with the amendment, through `@carbs/sessions` with the definitions of its `server_definitions` (`lib/live/node.ts`) |
+| Ledger Stax                                | `lib/sim/device.ts`: the screen lines of spec 7.3                                                              | **still SIMULATED**: the contract-following software double of `@carbs/ledger` (`lib/live/device.ts`); no real Stax, no WebHID path     |
+| Wallet (master key, passkey, session keys) | `lib/sim/wallet.ts`: the software authenticator (real P-256, no prompt), keyed digests instead of signatures   | real keys: secp256k1 master, the browser's WebAuthn passkey (the software authenticator in tests), P-256 or ML-DSA-44 session keys      |
+| Exposure check                             | `lib/sim/exposure.ts` over the simulated history                                                               | `checkExposure` of `@carbs/sessions` on the AlphaNet and mainnet (read-only), the Quantum screen's default                              |
+| Quantum migration                          | the simulated node and Stax                                                                                    | a fresh AlphaNet account, signed in the page, validated, with explorer links; the device is the software double                         |
 
-`lib/sim/node.test.ts` checks the simulation against the cases of spec 6.15; it proves that the simulation follows the spec and nothing about rippled.
+`lib/sim/node.test.ts` checks the simulation against the cases of spec 6.15; it proves that the simulation follows the spec and nothing about rippled. The live backend was run against the standalone node in modes A, P and C (see `docs/DEVLOG.md`); the component tests run it against a test double of the node.
 
 ## Wallet entry
 
 The header's **Connect wallet** lists three adapters, written against the `WalletAdapter` interface of xrpl-connect 1.0.0 (`lib/wallets/adapters.ts`) and nothing else: **Ledger Stax** (post-quantum root, Device Management Kit only, SIMULATED until the device track's real flow exists), **Passkey (this Mac)** (the browser's WebAuthn when you press Connect; the software authenticator of `@carbs/sessions` in tests) and **Demo account** (SIMULATED, thrown away on reload). Each shows its key type, who signs what and a SIMULATED badge for the parts that are. No Xaman, WalletConnect or GemWallet adapter, no API key, no environment variable for a wallet. The legacy ledgerjs adapter of xrpl-connect is never imported (a test scans the sources).
 
-The node behind them is still the simulated one: a passkey connected here is registered in the simulated node's passkey list, and its WebAuthn assertion is verified there with real P-256.
+On the simulated backend a passkey connected here is registered in the simulated node's passkey list and its WebAuthn assertion is verified there with real P-256; on the live backend the node verifies it.
 
 ## Art direction
 

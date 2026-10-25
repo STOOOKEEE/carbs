@@ -5,7 +5,7 @@
  * holds and what it logged.
  */
 import { reactive } from "vue";
-import { BLACKHOLE_ADDRESS, TF_FULLY_CANONICAL_SIG } from "./constants";
+import { BLACKHOLE_ADDRESS } from "./constants";
 import { xrpToDrops } from "./format";
 import {
   DeviceRejectedError,
@@ -55,6 +55,8 @@ export interface Signer {
 
 export interface StepLog {
   id: number;
+  /** The step was signed on the SIMULATED device (the node's answer to it is still the node's). */
+  simulatedDevice: boolean;
   label: string;
   status: "pending" | "ok" | "failed";
   result: NodeResult | null;
@@ -143,12 +145,16 @@ export function createDemo(backend: Backend) {
     options: { fee?: string; omitLastLedger?: boolean } = {},
   ): Promise<TxJson> {
     const common = await backend.node.commonFields(tx.Account, options);
+    // Flags come from the transaction and from the backend; none is typed here.
+    const { Flags: backendFlags, ...fields } = common;
+    const flags = ((tx.Flags ?? 0) | (backendFlags ?? 0)) >>> 0;
     const out: TxJson = {
       ...tx,
-      ...common,
+      ...fields,
       Fee: options.fee ?? tx.Fee ?? common.Fee,
-      Flags: ((tx.Flags ?? 0) | TF_FULLY_CANONICAL_SIG) >>> 0,
     };
+    if (flags !== 0) out.Flags = flags;
+    else delete out.Flags;
     return out;
   }
 
@@ -200,6 +206,7 @@ export function createDemo(backend: Backend) {
     counter += 1;
     const step = reactive<StepLog>({
       id: counter,
+      simulatedDevice: false,
       label,
       status: "pending",
       result: null,
@@ -209,12 +216,10 @@ export function createDemo(backend: Backend) {
     return step;
   }
 
-  async function stepTx(
-    label: string,
-    signer: Pick<Signer, "sign">,
-    tx: UnsignedTx,
-  ): Promise<void> {
+  async function stepTx(label: string, signer: Signer, tx: UnsignedTx): Promise<void> {
     const step = addStep(label);
+    // A step signed on the device is signed on the SIMULATED one unless the device is real.
+    step.simulatedDevice = signer.onDevice && backend.device.mode === "simulated";
     const result = await submitWith(signer, tx);
     step.result = result;
     step.status = result.success ? "ok" : "failed";

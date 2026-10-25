@@ -1,8 +1,8 @@
 /**
- * Named constants of the web app. Nothing else in the app holds a bare protocol
- * number. Values that mirror the protocol come from spec section 6.9 and
- * appendix A; once packages/core exports its own `constants.ts` (M2), this file
- * re-exports those and the TEMPORARY block below goes away.
+ * Named constants of the web app. Protocol limits come from spec section 6.9; the
+ * flag and code values below the SIMULATION line are used by the simulation only
+ * (`lib/sim`, `lib/tx-builders.ts`). The live path never reads them: it takes flags,
+ * codes and field names from the `server_definitions` of the node (a test enforces it).
  */
 
 /* ---- Protocol limits (spec 6.9) ---- */
@@ -18,12 +18,12 @@ export const LAST_LEDGER_OFFSET = 150;
 /* ---- Units ---- */
 export const DROPS_PER_XRP = 1_000_000;
 
-/* ---- TEMPORARY: values the simulation needs before packages/core exists ----
+/* ---- SIMULATION ONLY: values the simulated node and its builders need ----
  * Source of each value in the comment. The live backend never reads them: it takes
  * every protocol code from `server_definitions` (CLAUDE.md). */
 /** Spec appendix A, `tfAllTransactions`. */
 export const TF_ALL_TRANSACTIONS = 0x00010000;
-/** `tfFullyCanonicalSig`, set by every client library on every transaction. */
+/** `tfFullyCanonicalSig`, which the simulated node adds to every transaction. */
 export const TF_FULLY_CANONICAL_SIG = 0x80000000;
 /** `AccountSet` flag `asfDisableMaster`. */
 export const ASF_DISABLE_MASTER = 4;

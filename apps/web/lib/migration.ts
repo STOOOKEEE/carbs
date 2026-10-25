@@ -9,7 +9,6 @@
  * Fresh accounts only.
  */
 import { reactive } from "vue";
-import { TF_FULLY_CANONICAL_SIG } from "./constants";
 import {
   DeviceRejectedError,
   type Backend,
@@ -114,11 +113,15 @@ export function createMigration(backend: Backend) {
 
   async function envelope(tx: UnsignedTx): Promise<TxJson> {
     const common = await backend.node.commonFields(tx.Account);
+    // Flags come from the transaction and from the backend; none is typed here.
+    const { Flags: backendFlags, ...fields } = common;
+    const flags = ((tx.Flags ?? 0) | (backendFlags ?? 0)) >>> 0;
     const out: TxJson = {
       ...tx,
-      ...common,
-      Flags: ((tx.Flags ?? 0) | TF_FULLY_CANONICAL_SIG) >>> 0,
+      ...fields,
     };
+    if (flags !== 0) out.Flags = flags;
+    else delete out.Flags;
     return out;
   }
 

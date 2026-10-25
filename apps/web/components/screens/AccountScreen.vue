@@ -137,6 +137,10 @@ async function create(profile: Profile): Promise<void> {
                   {{ step.status === "ok" ? "✓" : step.status === "failed" ? "✕" : "…" }}
                 </span>
                 {{ step.label }}
+                <SimBadge
+                  v-if="step.simulatedDevice"
+                  title="Signed on the simulated device; the node's answer below is real"
+                />
               </p>
               <ResultView
                 v-if="step.result"

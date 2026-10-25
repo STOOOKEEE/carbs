@@ -64,3 +64,30 @@ describe("Account screen, browser support", () => {
     }
   });
 });
+
+describe("Account screen, steps signed on the simulated device", () => {
+  it("badges them even when the node is live", async () => {
+    const mounted = mountScreen(AccountScreen);
+    const backend = {
+      ...mounted.ctx.backend,
+      mode: "live",
+      device: { ...mounted.ctx.backend.device, mode: "simulated" },
+    } as typeof mounted.ctx.backend;
+    const live = mountScreen(AccountScreen, { backend });
+    await live.wrapper.get("[data-testid='create-ledger']").trigger("click");
+    await flushPromises();
+    const steps = live.wrapper.findAll("[data-testid='setup-steps'] li");
+    expect(live.ctx.demo.state.steps.filter((s) => s.simulatedDevice).length).toBe(3);
+    const badged = steps.filter((li) => li.find("p [data-testid='sim-badge']").exists());
+    expect(badged).toHaveLength(3);
+  });
+
+  it("badges none for a passkey account on a live node", async () => {
+    const mounted = mountScreen(AccountScreen);
+    const backend = { ...mounted.ctx.backend, mode: "live" } as typeof mounted.ctx.backend;
+    const live = mountScreen(AccountScreen, { backend });
+    await live.wrapper.get("[data-testid='create-mac']").trigger("click");
+    await flushPromises();
+    expect(live.ctx.demo.state.steps.some((s) => s.simulatedDevice)).toBe(false);
+  });
+});

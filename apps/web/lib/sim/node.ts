@@ -251,7 +251,10 @@ export class SimulatedNode implements NodePort, SimClock {
 
   async commonFields(account: string, options: CommonFieldsOptions = {}): Promise<CommonFields> {
     const info = this.accounts.get(account);
-    const common: CommonFields = { Fee: options.fee ?? DEFAULT_FEE_DROPS };
+    const common: CommonFields = {
+      Fee: options.fee ?? DEFAULT_FEE_DROPS,
+      Flags: TF_FULLY_CANONICAL_SIG,
+    };
     if (info !== undefined) common.Sequence = info.sequence;
     if (options.omitLastLedger !== true) {
       common.LastLedgerSequence = this.openLedger() + LAST_LEDGER_OFFSET;

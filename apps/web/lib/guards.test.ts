@@ -14,7 +14,16 @@ import { describe, expect, it } from "vitest";
 import { checkStaticOutput } from "../scripts/check-static.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const SOURCE_DIRS = ["lib", "components", "pages", "layouts", "plugins", "server", "scripts"];
+const SOURCE_DIRS = [
+  "lib",
+  "components",
+  "pages",
+  "layouts",
+  "plugins",
+  "server",
+  "scripts",
+  "manual",
+];
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -49,6 +58,19 @@ describe("source guards (hard rules of CLAUDE.md)", () => {
       expect(text, file).not.toMatch(/from\s+["']xrpl["']/);
       expect(text, file).not.toMatch(/from\s+["']ripple-binary-codec["']/);
       expect(text, file).not.toMatch(/require\(["']xrpl["']\)/);
+    }
+  });
+
+  it("keeps the hand-typed flag values out of the live path (they come from server_definitions)", () => {
+    const simulationOnly = (file: string) =>
+      /\/lib\/sim\//.test(file) ||
+      file.endsWith("/lib/tx-builders.ts") ||
+      file.endsWith("/lib/constants.ts");
+    for (const file of files.filter((f) => !simulationOnly(f))) {
+      const text = code(file);
+      expect(text, file).not.toMatch(
+        /\b(TF_FULLY_CANONICAL_SIG|TF_ALL_TRANSACTIONS|ASF_DISABLE_MASTER)\b/,
+      );
     }
   });
 
