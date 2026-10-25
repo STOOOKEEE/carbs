@@ -178,7 +178,7 @@ describe("signing with a session key", () => {
       Fee: "12",
       Sequence: 1,
     };
-    await expect(signWithSessionKey(payment, key, defs)).rejects.toThrow(SessionSignError);
+    await expect(signWithSessionKey(payment, key, defs, 10)).rejects.toThrow(SessionSignError);
     await expect(
       signWithSessionKey(
         { ...payment, LastLedgerSequence: 10 + kSessionMaxLedgerWindow + 1 },
@@ -188,10 +188,34 @@ describe("signing with a session key", () => {
       ),
     ).rejects.toThrow(/ledgers ahead/);
     await expect(
-      signWithSessionKey({ ...payment, LastLedgerSequence: 20, Delegate: sessionKey }, key, defs),
+      signWithSessionKey(
+        { ...payment, LastLedgerSequence: 20, Delegate: sessionKey },
+        key,
+        defs,
+        10,
+      ),
     ).rejects.toThrow(/Delegate/);
     const signed = await signWithSessionKey({ ...payment, LastLedgerSequence: 20 }, key, defs, 10);
     expect(signed.tx["SigningPubKey"]).toBe(key.publicKeyHex);
+  });
+
+  it("refuses without the current ledger: the LastLedgerSequence window cannot be checked", async () => {
+    const key = await createSessionKey();
+    const payment = {
+      TransactionType: "Payment",
+      Account: account,
+      Destination: sessionKey,
+      Amount: "1",
+      Fee: "12",
+      Sequence: 1,
+      LastLedgerSequence: 1_000_000,
+    };
+    // A JavaScript caller can still omit it; the type no longer allows it.
+    // @ts-expect-error currentLedger is required
+    await expect(signWithSessionKey(payment, key, defs)).rejects.toThrow(/current ledger/);
+    await expect(signWithSessionKey(payment, key, defs, Number.NaN)).rejects.toThrow(
+      /current ledger/,
+    );
   });
 
   it("gives every builder output a LastLedgerSequence", () => {

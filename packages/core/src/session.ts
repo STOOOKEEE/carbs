@@ -199,21 +199,28 @@ export class SessionSignError extends Error {
 }
 
 /**
- * Sign with a session key. Refuses a transaction without `LastLedgerSequence` (the node would answer
- * `tefSESSION_TX_NOT_ALLOWED`) or with `Signers`, `Delegate` or `Sponsor` (never session-signed,
- * section 6.4), and a session key used for its own account.
+ * Sign with a session key. Refuses a transaction without `LastLedgerSequence`, or with one more than
+ * `kSessionMaxLedgerWindow` ledgers after `currentLedger` (the node answers
+ * `tefSESSION_TX_NOT_ALLOWED` to both), so the current ledger is required; refuses `Signers`,
+ * `Delegate` or `Sponsor` (never session-signed, section 6.4), and a session key used for its own
+ * account.
  */
 export async function signWithSessionKey(
   tx: TxJson,
   sessionKey: BytesSigner,
   defs: Definitions,
-  currentLedger?: number,
+  currentLedger: number,
 ): Promise<SignedTx> {
+  if (!Number.isSafeInteger(currentLedger) || currentLedger < 0) {
+    throw new SessionSignError(
+      "the current ledger is required to check the LastLedgerSequence window",
+    );
+  }
   const lls = tx["LastLedgerSequence"];
   if (typeof lls !== "number") {
     throw new SessionSignError("a session transaction carries LastLedgerSequence");
   }
-  if (currentLedger !== undefined && lls > currentLedger + kSessionMaxLedgerWindow) {
+  if (lls > currentLedger + kSessionMaxLedgerWindow) {
     throw new SessionSignError(
       `LastLedgerSequence is more than ${kSessionMaxLedgerWindow} ledgers ahead`,
     );
