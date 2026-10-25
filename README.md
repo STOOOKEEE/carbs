@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./media/brand/carbs-logo.svg" alt="carbs" width="96" />
+
 # 🔐 carbs
 
 **Quantum-safe by default, delegable signing for the XRP Ledger: a post-quantum ML-DSA-44 root key on a Ledger Stax, and signing sessions whose rules the ledger enforces and the device shows.**
@@ -178,16 +180,16 @@ node ([`infra/`](./infra/)), which enables it in its genesis ledger.
 
 What every node checks on a session-signed transaction, in this order:
 
-| #   | Rule                                                                                                         | Refusal                                     |
-| --- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 0   | not a pseudo-account; the key type's amendment is enabled (P-256 needs `Passkey`, ML-DSA-44 needs `Quantum`) | `tefBAD_AUTH`, `tefSESSION_TX_NOT_ALLOWED`  |
-| 1   | the mode allows the type; never `Batch` or `LoanSet`; no `TicketSequence`, except for the own close          | `tefSESSION_TX_NOT_ALLOWED`                 |
-| 2   | `LastLedgerSequence` present, at most 256 ledgers ahead                                                      | `tefSESSION_TX_NOT_ALLOWED`                 |
-| 3   | before `Expiration` (the own close is exempt)                                                                | `tefSESSION_EXPIRED`                        |
-| 4   | `Fee` at most the base fee of the type plus 1,000 base fee units (the own close: its base fee only)          | `tefSESSION_LIMIT`                          |
-| 5   | mode C: `Fee + Amount` within what is left of `SessionCap`, and `Amount` within `SessionMaxPerTx`            | `tefSESSION_LIMIT`                          |
-| 6   | fewer than `SessionMaxTxCount` transactions signed so far                                                    | `tefSESSION_LIMIT`                          |
-| 7   | a `WitnessSignature` from the witness account when the session has one, and none otherwise                   | `tefSESSION_NO_WITNESS`, `tefBAD_SIGNATURE` |
+| #   | Rule                                                                                                                  | Refusal                                     |
+| --- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 0   | not a pseudo-account; the key type may sign (P-256 needs `Passkey` and `fixP256StrictDer`, ML-DSA-44 needs `Quantum`) | `tefBAD_AUTH`, `tefSESSION_TX_NOT_ALLOWED`  |
+| 1   | the mode allows the type; never `Batch` or `LoanSet`; no `TicketSequence`, except for the own close                   | `tefSESSION_TX_NOT_ALLOWED`                 |
+| 2   | `LastLedgerSequence` present, at most 256 ledgers ahead                                                               | `tefSESSION_TX_NOT_ALLOWED`                 |
+| 3   | before `Expiration` (the own close is exempt)                                                                         | `tefSESSION_EXPIRED`                        |
+| 4   | `Fee` at most the base fee of the type plus 1,000 base fee units (the own close: its base fee only)                   | `tefSESSION_LIMIT`                          |
+| 5   | mode C: `Fee + Amount` within what is left of `SessionCap`, and `Amount` within `SessionMaxPerTx`                     | `tefSESSION_LIMIT`                          |
+| 6   | fewer than `SessionMaxTxCount` transactions signed so far                                                             | `tefSESSION_LIMIT`                          |
+| 7   | a `WitnessSignature` from the witness account when the session has one, and none otherwise                            | `tefSESSION_NO_WITNESS`, `tefBAD_SIGNATURE` |
 
 The check replaces the transaction's signature check in `preclaim`, so a refusal is never included
 in a ledger and never charged. Accounting runs at exactly two places in `Transactor::operator()`, so
@@ -268,14 +270,12 @@ Account page:
   proven to bite: a temporary mutation of the rule (expiry one step late, the fee ceiling one base
   fee higher, a call site of the accounting removed…) makes it fail, and is reverted. The counts are
   in the DEVLOG.
-- **The full rippled suite.** The last full `./xrpld --unittest` (25 October, on the tree of #91;
-  later fixes ran their neighbouring suites): 286 suites, 5,469 cases, 1,294,829 tests. Its failures
-  are the imported tree's own, listed per assertion in
-  [`docs/base-failures.txt`](./docs/base-failures.txt) before we changed anything; three suites
+- **The full rippled suite.** The last full `./xrpld --unittest` ran on the final tree (25 October,
+  `6b189db`, before the last two gate follow-ups, which ran their neighbouring suites): 286 suites,
+  5,411 cases, 1,315,625 tests. Its failures are the imported tree's own, listed per assertion in
+  [`docs/base-failures.txt`](./docs/base-failures.txt) before we changed anything, and three suites
   that fail only under parallel jobs and pass alone (`SignatureVerification`, `ValidatorSite`,
-  `ValidatorSiteV2`); and `SHAMapStore`, which since 25 October fails on our host even with a binary
-  that passed it the day before, its test and code unchanged since the import. No failure comes from
-  the session code.
+  `ValidatorSiteV2`). No failure comes from the session code.
 - **On a real node.** The web app's live backend, driven from Node against the standalone node
   with the amendment (`pnpm --filter web live-run`, which asserts every code). Its printed output,
   lines grouped, as recorded in the DEVLOG on 24 October on the build of `develop` at #53:
@@ -311,6 +311,11 @@ Account page:
   2,048-byte limit, the review lock, the blind-signing setting) and Ragger snapshots on the Speculos
   emulator for Stax, Flex, Apex P, Nano S Plus and Nano X: emulator screens, not photographs of the
   Stax.
+- **Fuzzed.** The XRP app's transaction parser and session policy, built natively under
+  AddressSanitizer and UndefinedBehaviorSanitizer, took 448 million random mutations of the fuzz
+  corpus and of every test vector in 15 minutes with no crash (`ledger-app/fuzzing/native/run.sh`).
+  This loop is not coverage-guided; the ClusterFuzzLite fuzzer of `ledger-app/fuzzing/` needs Docker
+  and was not run.
 - **Reviewed.** Protocol changes went through independent read-only review gates, whose verdicts
   are in the DEVLOG. They found defects in our own work too, such as a `WitnessSignature` that
   anyone could add to a transaction to change its hash, opened by our witness extension and closed
@@ -318,14 +323,14 @@ Account page:
 
 ### What is real, what is simulated, what is not done
 
-|                             | Real                                                                                                                                                                                                                                    | Simulated, or not done                                                                                                                                                                                                            |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Node with the amendment** | a standalone `xrpld` built from `rippled/`; every mode, refusal and the expiry checked against it                                                                                                                                       | not on a public network: the public AlphaNet does not carry `SigningSessions`                                                                                                                                                     |
-| **Ledger Stax**             | the ML-DSA-44 key and the three AlphaNet payments above; the review of a `SigningSessionSet` in modes C and P, signed with the classical and the ML-DSA-44 key and verified locally (not submitted then: no node had the amendment yet) | the DEVLOG does not yet record a session opened on the Stax and accepted by the node (tasks W3 and W7); the other device screens are emulator snapshots; the web app's default device is a software double of the device contract |
-| **Passkey**                 | WebAuthn assertions over the binary signing data, verified by our node with `fixPasskeyChallenge`                                                                                                                                       | every recorded run used a software authenticator (real P-256, no prompt); no real WebAuthn ceremony is recorded                                                                                                                   |
-| **Web app**                 | the Quantum screen against the real AlphaNet and mainnet; the live backend's stores against the amendment node, driven from Node                                                                                                        | on the hosted page, Session, Actions and Attack are SIMULATED; the screens were not run in a browser against the amendment node                                                                                                   |
-| **Stage demos and agent**   | built on the amendment node, the device contract and a real Stax over WebHID                                                                                                                                                            | no automated tests; they run on the team's network only                                                                                                                                                                           |
-| **Not done**                |                                                                                                                                                                                                                                         | fuzzing of the parser changes; an end-to-end test in CI (the rippled and device suites run by hand, recorded in the DEVLOG); `infra/Dockerfile`; the ecosystem tasks E1 and E2 ([below](#contributing-back))                      |
+|                             | Real                                                                                                                                                                                                                                    | Simulated, or not done                                                                                                                                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Node with the amendment** | a standalone `xrpld` built from `rippled/`; every mode, refusal and the expiry checked against it                                                                                                                                       | not on a public network: the public AlphaNet does not carry `SigningSessions`                                                                                                                                                                    |
+| **Ledger Stax**             | the ML-DSA-44 key and the three AlphaNet payments above; the review of a `SigningSessionSet` in modes C and P, signed with the classical and the ML-DSA-44 key and verified locally (not submitted then: no node had the amendment yet) | the DEVLOG does not yet record a session opened on the Stax and accepted by the node (tasks W3 and W7); the other device screens are emulator snapshots; the web app's default device is a software double of the device contract                |
+| **Passkey**                 | WebAuthn assertions over the binary signing data, verified by our node with `fixPasskeyChallenge`                                                                                                                                       | every recorded run used a software authenticator (real P-256, no prompt); no real WebAuthn ceremony is recorded                                                                                                                                  |
+| **Web app**                 | the Quantum screen against the real AlphaNet and mainnet; the live backend's stores against the amendment node, driven from Node                                                                                                        | on the hosted page, Session, Actions and Attack are SIMULATED; the screens were not run in a browser against the amendment node                                                                                                                  |
+| **Stage demos and agent**   | built on the amendment node, the device contract and a real Stax over WebHID; the wallet's end-to-end script passed its 38 checks against the final node                                                                                | no automated tests in CI; they run on the team's network only                                                                                                                                                                                    |
+| **Not done**                |                                                                                                                                                                                                                                         | a coverage-guided fuzzing run (only the native mutation loop ran); an end-to-end test in CI (the rippled and device suites run by hand, recorded in the DEVLOG); `infra/Dockerfile`; the ecosystem tasks E1 and E2 ([below](#contributing-back)) |
 
 ## What building it made visible
 
