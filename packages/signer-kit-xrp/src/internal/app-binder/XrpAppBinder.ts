@@ -1,0 +1,76 @@
+import {
+  type DeviceManagementKit,
+  type DeviceSessionId,
+  type LoggerPublisherService,
+  SendCommandInAppDeviceAction,
+  UserInteractionRequired,
+} from "@ledgerhq/device-management-kit";
+import { inject, injectable } from "inversify";
+
+import { type GetAddressDAReturnType } from "@api/app-binder/GetAddressDeviceActionTypes";
+import { type GetAppConfigDAReturnType } from "@api/app-binder/GetAppConfigDeviceActionTypes";
+import { type SignTransactionDAReturnType } from "@api/app-binder/SignTransactionDeviceActionTypes";
+import { type Curve } from "@api/model/Curve";
+import { APP_NAME } from "@internal/app-binder/constants";
+import { externalTypes } from "@internal/externalTypes";
+
+import { GetAppConfigCommand } from "./command/GetAppConfigCommand";
+import { GetAddressDeviceActionFactory } from "./device-action/GetAddressDeviceActionFactory";
+import { SignTransactionDeviceActionFactory } from "./device-action/SignTransactionDeviceActionFactory";
+
+@injectable()
+export class XrpAppBinder {
+  constructor(
+    @inject(externalTypes.Dmk) private dmk: DeviceManagementKit,
+    @inject(externalTypes.SessionId) private sessionId: DeviceSessionId,
+    @inject(externalTypes.DmkLoggerFactory)
+    private dmkLoggerFactory: (tag: string) => LoggerPublisherService,
+  ) {}
+
+  getAppConfig(args: { skipOpenApp: boolean }): GetAppConfigDAReturnType {
+    return this.dmk.executeDeviceAction({
+      sessionId: this.sessionId,
+      deviceAction: new SendCommandInAppDeviceAction({
+        input: {
+          command: new GetAppConfigCommand(),
+          appName: APP_NAME,
+          requiredUserInteraction: UserInteractionRequired.None,
+          skipOpenApp: args.skipOpenApp,
+        },
+      }),
+    });
+  }
+
+  getAddress(args: {
+    derivationPath: string;
+    checkOnDevice: boolean;
+    returnChainCode: boolean;
+    skipOpenApp: boolean;
+    curve: Curve;
+  }): GetAddressDAReturnType {
+    return this.dmk.executeDeviceAction({
+      sessionId: this.sessionId,
+      deviceAction: GetAddressDeviceActionFactory(args),
+    });
+  }
+
+  /**
+   * Signs via {@link SignTransactionDeviceActionFactory} with the serialized
+   * transaction passed as a factory arg (direct execute path). Nested flows
+   * instead omit that arg and set `transaction` on invoke `input`.
+   */
+  signTransaction(args: {
+    derivationPath: string;
+    transaction: Uint8Array;
+    skipOpenApp: boolean;
+    curve: Curve;
+  }): SignTransactionDAReturnType {
+    return this.dmk.executeDeviceAction({
+      sessionId: this.sessionId,
+      deviceAction: SignTransactionDeviceActionFactory({
+        ...args,
+        loggerFactory: this.dmkLoggerFactory,
+      }),
+    });
+  }
+}
