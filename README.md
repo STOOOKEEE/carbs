@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="./media/brand/carbs-logo.svg" alt="carbs" width="96" />
-
 # 🔐 carbs
 
 **Quantum-safe by default, delegable signing for the XRP Ledger: a post-quantum ML-DSA-44 root key on a Ledger Stax, and signing sessions whose rules the ledger enforces and the device shows.**
