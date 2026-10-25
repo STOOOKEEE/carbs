@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { ml_dsa44 } from "@noble/post-quantum/ml-dsa.js";
-import { sha256 } from "@noble/hashes/sha2.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { verify as keypairsVerify } from "ripple-keypairs";
 import {
   addressFromPublicKey,
@@ -170,8 +171,13 @@ describe("ML-DSA-44 root key through the contract (SIMULATED device)", () => {
   it('derives the key as the device does: SLIP-21 "carbs ML-DSA-44", last 32 bytes, KeyGen_internal', () => {
     const seed = deviceMlDsaSeed(bip39Seed(kSpeculosMnemonic));
     const { publicKey } = ml_dsa44.keygen(seed);
-    // Vector for the device-track owner: compare with `INS 0x10` on Speculos (default seed).
-    expect(bytesToHex(seed)).toBe(bytesToHex(deviceMlDsaSeed(bip39Seed(kSpeculosMnemonic))));
+    // SLIP-0021 by hand, independently of slip21.ts: m = HMAC-SHA512("Symmetric key seed", seed),
+    // node = HMAC-SHA512(m[0..32], 0x00 ‖ label); the ML-DSA seed is node[32..64].
+    const utf8 = (text: string) => new TextEncoder().encode(text);
+    const master = hmac(sha512, utf8("Symmetric key seed"), bip39Seed(kSpeculosMnemonic));
+    const node = hmac(sha512, master.subarray(0, 32), Uint8Array.of(0, ...utf8("carbs ML-DSA-44")));
+    expect(seed).toHaveLength(32);
+    expect(bytesToHex(seed)).toBe(bytesToHex(node.subarray(32, 64)));
     // The vector of docs/device-contract.md (UNVERIFIED on a device until the owner compares it).
     expect(bytesToHex(sha256(publicKey))).toBe(
       "DDDC0737CF9BC347D07D45C562A355192DAA22CBCD5432F5FB8B40CD3525F948",
