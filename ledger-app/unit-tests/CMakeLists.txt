@@ -59,6 +59,8 @@ add_library(xrp
   ../src/xrp/xrp_parse.h
   ../src/policy/session_policy.c
   ../src/policy/session_policy.h
+  ../src/policy/session_profiles.c
+  ../src/policy/session_profiles.h
 )
 
 add_executable(test_printers
