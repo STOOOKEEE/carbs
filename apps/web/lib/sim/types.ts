@@ -24,6 +24,8 @@ export const DELEGABLE_TYPES: readonly string[] = [
   "DepositPreauth",
   "Clawback",
   "CredentialAccept",
+  "CredentialCreate",
+  "DIDSet",
   "PasskeyListSet",
   "SubscriptionSet",
   "SponsorshipSet",
@@ -34,6 +36,8 @@ export const SESSION_EXCLUDED_TYPES: readonly string[] = [
   "PasskeyListSet",
   "SubscriptionSet",
   "SponsorshipSet",
+  "CredentialCreate",
+  "DIDSet",
 ];
 
 /** Types that exist but are not delegable. */
