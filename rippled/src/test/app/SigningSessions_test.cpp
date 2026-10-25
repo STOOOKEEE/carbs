@@ -2164,6 +2164,55 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
         BEAST_EXPECT(queuedFor(alice) == 0);
         BEAST_EXPECT(sessionEntry(env, alice, key3));
+
+        // A third party's cleanup of an expired session is not a blocker:
+        // carol's next transaction queues behind it.
+        Account const key4{"key4"};
+        env(session::set(alice, key4, 30), Txflags(tfAllTransactions));
+        env.close();
+        auto const expiration = (*sessionEntry(env, alice, key4))[sfExpiration];
+        while (parentCloseTime(env) < expiration)
+            env.close();
+        fillOpenLedger();
+        seq = env.seq(carol);
+        env(session::del(carol, key4, alice), Ter(terQUEUED));
+        env(pay(carol, bob, XRP(1)), Seq(seq + 1), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(carol) == 2);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(carol) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key4));
+
+        // Nor does it wait to be alone: it queues behind carol's payment.
+        Account const key5{"key5"};
+        env(session::set(alice, key5, 30), Txflags(tfAllTransactions));
+        env.close();
+        while (parentCloseTime(env) < (*sessionEntry(env, alice, key5))[sfExpiration])
+            env.close();
+        fillOpenLedger();
+        seq = env.seq(carol);
+        env(pay(carol, bob, XRP(1)), Ter(terQUEUED));
+        env(session::del(carol, key5, alice), Seq(seq + 1), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(carol) == 2);
+        env.close();
+        env.close();
+        BEAST_EXPECT(!sessionEntry(env, alice, key5));
+
+        // The own close pays at most the base fee of its type: under fee
+        // escalation it cannot apply at once, is queued, and blocks the
+        // account's queue behind it.
+        Account const key6{"key6"};
+        env(session::set(alice, key6, 600), Txflags(tfAllTransactions));
+        env.close();
+        fillOpenLedger();
+        seq = env.seq(alice);
+        env(session::del(alice, key6), Sig(key6), lls(), Ter(terQUEUED));
+        env(pay(alice, bob, XRP(1)), Seq(seq + 1), thisLedger(), Ter(telCAN_NOT_QUEUE_BLOCKED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key6));
     }
 
     // Case 24: a session cannot sign for a pseudo-account (the refusal of

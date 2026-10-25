@@ -16,6 +16,7 @@
 #include <xrpl/protocol/XRPAmount.h>
 #include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
+#include <xrpl/tx/applySteps.h>
 
 #include <cstdint>
 
@@ -33,6 +34,14 @@ SigningSessionDelete::getFlagsMask(PreflightContext const&)
     // No flag of its own: every bit is refused but the universal flags
     // (tfFullyCanonicalSig, and tfInnerBatchTxn on a Batch inner transaction).
     return tfUniversalMask;
+}
+
+TxConsequences
+SigningSessionDelete::makeTxConsequences(PreflightContext const& ctx)
+{
+    if (ctx.tx.isFieldPresent(sfOwner))
+        return TxConsequences{ctx.tx};
+    return TxConsequences{ctx.tx, TxConsequences::Category::Blocker};
 }
 
 NotTEC
