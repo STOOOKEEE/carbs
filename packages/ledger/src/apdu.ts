@@ -22,12 +22,12 @@ export const kP2Ed25519 = 0x80;
 export const kInsPqGetPublicKey = 0x10;
 export const kInsPqSign = 0x11;
 export const kInsPqGetSignature = 0x12;
-/** `INS_PQ_SIGN` P1 / P2 (`ledger-app/src/pq/pq_root.c:164-181`). */
+/** `INS_PQ_SIGN` P1 / P2 (`ledger-app/src/pq/pq_root.c:209-231`). */
 export const kPqP1First = 0x00;
 export const kPqP1Next = 0x01;
 export const kPqP2More = 0x00;
 export const kPqP2Last = 0x01;
-/** Chunk size of the public key and signature answers (`ledger-app/src/pq/pq_root.c:43`). */
+/** Chunk size of the public key and signature answers (`ledger-app/src/pq/pq_root.c:44`). */
 export const kPqChunk = 250;
 /** Largest signing data the device signs with ML-DSA, prefix and key included (`ledger-app/src/apdu/global.h:71`). */
 export const kPqMaxMessage = 2048;
@@ -39,7 +39,7 @@ export const kMaxRawTx = 10000;
 /** Hardened BIP32 index bit. */
 export const kHardened = 0x80000000;
 
-/** Status words the app sends (`ledger-app/src/pq/pq_root.c:47-53`, `ledger-app/src/apdu/entry.c:37`, `:67`). */
+/** Status words the app sends (`ledger-app/src/pq/pq_root.c:48-54`, `ledger-app/src/apdu/entry.c:37`, `:67`). */
 export const kSw = {
   ok: 0x9000,
   denied: 0x6985,
