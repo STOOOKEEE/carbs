@@ -18,7 +18,6 @@ export const ui = {
   pending: element("demo-pending", HTMLElement),
   staxMessage: element("demo-stax-message", HTMLElement),
   rootKey: element("demo-root-key", HTMLElement),
-  sessionKeyClaim: element("demo-session-key-claim", HTMLElement),
   layers: {
     device: {
       box: element("demo-layer-device", HTMLElement),

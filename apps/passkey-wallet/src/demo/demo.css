@@ -74,8 +74,10 @@ p {
   color: var(--color-ink-muted);
 }
 
+/* Capped: the root-key claim in the title matters more on stage than the node URL. */
 .status {
   flex: 0 1 auto;
+  max-width: 22%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -340,9 +342,10 @@ p {
   color: var(--color-ink-muted);
 }
 
+/* Sized to the column: "6.00003 / 20 XRP" must fit about 360px at 1440. */
 .spent {
   font-family: var(--font-display);
-  font-size: 46px;
+  font-size: clamp(28px, 2.5vw, 46px);
   font-weight: 600;
   white-space: nowrap;
 }

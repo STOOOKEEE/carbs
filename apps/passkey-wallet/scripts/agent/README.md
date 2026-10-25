@@ -51,7 +51,7 @@ For comparison, `--classical-session-key` (or `AGENT_SESSION_KEY=secp256k1`) giv
 secp256k1 session key instead (33-byte key, ~72-byte signature). The agent prints
 `session key: ML-DSA-44 (post-quantum)` or `session key: secp256k1 (classical, for comparison)`
 at start; the demo page shows a _session key ML-DSA-44_ (or _secp256k1_) badge under the Agent
-ID, and adds _session key ML-DSA-44_ to its header only for an ML-DSA-44 key.
+ID.
 
 ## The 3-minute run sheet
 
