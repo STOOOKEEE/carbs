@@ -80,10 +80,29 @@ add_executable(test_tx
   include/os.h
 )
 
+# carbs: the ML-DSA-44 path (src/pq/pq_root.c) with the real entry.c and
+# global.c; include_pq holds the test doubles of the SDK headers it needs.
+add_executable(test_pq_root
+  src/test_pq_root.c
+  src/cx.c
+)
+target_include_directories(test_pq_root PRIVATE
+  include_pq
+  ../src/transaction
+  ../src/ui/other
+)
+target_compile_definitions(test_pq_root PRIVATE
+  HAVE_PQ_ROOT
+  HAVE_NBGL
+  TESTCASES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../tests/standalone/testcases"
+)
+
 target_link_libraries(test_printers PRIVATE cmocka crypto ssl xrp)
 target_link_libraries(test_swap PRIVATE cmocka crypto ssl xrp)
 target_link_libraries(test_tx PRIVATE cmocka crypto ssl xrp)
+target_link_libraries(test_pq_root PRIVATE cmocka crypto ssl xrp)
 
 add_test(test_printers test_printers)
 add_test(test_swap test_swap)
 add_test(test_tx test_tx)
+add_test(test_pq_root test_pq_root)

@@ -78,6 +78,10 @@ typedef struct pqContext_t {
     uint8_t public_key[MLDSA44_PUBLICKEYBYTES];
     uint8_t secret_key[MLDSA44_SECRETKEYBYTES];
     bool public_key_ready;
+    /* Set while the review of message is on screen; it lives in tmp_ctx, so an
+     * instruction change (entry.c) cancels the review. */
+    bool reviewing;
+    uint8_t review_hash[32];  // SHA-256 of message[0..message_length] when shown
 } pqContext_t;
 #endif
 

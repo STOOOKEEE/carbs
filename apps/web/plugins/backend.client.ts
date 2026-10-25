@@ -7,11 +7,13 @@ import {
   BACKEND_STATUS_KEY,
   DEMO_KEY,
   DEVICE_PROMPT_KEY,
+  DEVICE_SELECTION_KEY,
   LIVE_EXPOSURE_KEY,
   LIVE_MIGRATION_KEY,
   MIGRATION_KEY,
   NETWORK_KEY,
 } from "~/lib/context";
+import { watchLedgerDisconnects } from "~/lib/live/device-selection";
 import { browserPasskeySource } from "~/lib/wallets/passkey";
 
 // Builds the context once per page load, chooses the backend (the simulation, or the live node
@@ -42,6 +44,10 @@ export default defineNuxtPlugin(async (nuxtApp) => {
   nuxtApp.vueApp.provide(LIVE_EXPOSURE_KEY, ctx.liveExposure);
   nuxtApp.vueApp.provide(LIVE_MIGRATION_KEY, ctx.liveMigration);
   nuxtApp.vueApp.provide(BACKEND_STATUS_KEY, status);
+  nuxtApp.vueApp.provide(DEVICE_SELECTION_KEY, ctx.deviceSelection);
+  // A real Stax's session is closed when it is unplugged or the page goes away.
+  const hid: unknown = Reflect.get(window.navigator, "hid");
+  watchLedgerDisconnects(ctx.deviceSelection, window, hid instanceof EventTarget ? hid : null);
   void ctx.demo.tick();
   // The simulated ledger closes on its own, at the pace of the real one; a live node is polled.
   window.setInterval(() => {
