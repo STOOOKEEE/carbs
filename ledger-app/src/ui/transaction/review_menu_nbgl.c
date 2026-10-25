@@ -46,13 +46,23 @@ static nbgl_layoutTagValue_t* getPair(uint8_t index) {
     return &pair;
 }
 
+static bool request_cancelled;
+
+void review_menu_request_cancelled(void) { request_cancelled = true; }
+
 static void reviewChoice(bool confirm) {
+    request_cancelled = false;
+    approval_menu_callback(confirm ? OPTION_SIGN : OPTION_REJECT);
+    if (request_cancelled) {
+        // carbs: the callback found its request gone and did nothing
+        request_cancelled = false;
+        nbgl_useCaseStatus("Request cancelled", false, display_idle_menu);
+        return;
+    }
     if (confirm) {
-        approval_menu_callback(OPTION_SIGN);
         nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_SIGNED,
                                  display_idle_menu);
     } else {
-        approval_menu_callback(OPTION_REJECT);
         nbgl_useCaseReviewStatus(STATUS_TYPE_TRANSACTION_REJECTED,
                                  display_idle_menu);
     }

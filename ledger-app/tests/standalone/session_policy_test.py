@@ -301,13 +301,17 @@ def _refuse(backend: BackendInterface, xrp: XRPClient, tx: Path) -> None:
 
 
 def _sign_reviewed(
-    backend: BackendInterface, xrp: XRPClient, scenario_navigator: NavigateWithScenario, tx_path: Path
+    backend: BackendInterface,
+    xrp: XRPClient,
+    scenario_navigator: NavigateWithScenario,
+    tx_path: Path,
+    snapshot_suffix: str = "",
 ) -> None:
     tx = tx_path.read_bytes()
     backend.wait_for_home_screen()
     with xrp.sign(DEFAULT_BIP32_PATH + tx):
         scenario_navigator.review_approve(
-            test_name=f"33-session-policy/{tx_path.stem}",
+            test_name=f"33-session-policy/{tx_path.stem}{snapshot_suffix}",
             custom_screen_text="^Hold to sign$" if backend.device.touchable else "^Sign transaction?",
         )
     reply = xrp.get_async_response()
@@ -320,12 +324,13 @@ def test_session_profiles_policy_off(
 ) -> None:
     """The real app's openings (game: mode C, 5 XRP, 0.1 XRP per payment, 300
     transactions; trading: OfferCreate and OfferCancel, 200 transactions), with
-    the policy off as on a fresh install: clear-signed, "Max transactions" and
-    "Profile" shown, the same screens as with the policy on."""
+    the policy off as on a fresh install: clear-signed with "Max transactions",
+    and no "Profile" row, since no profile limit was checked (their own
+    snapshots, not those of the policy-on run)."""
     xrp = XRPClient(backend, navigator)
     assert _get_policy(backend) == _policy_bytes(0, 0)
-    _sign_reviewed(backend, xrp, scenario_navigator, PROFILE_GAME)
-    _sign_reviewed(backend, xrp, scenario_navigator, PROFILE_TRADING)
+    _sign_reviewed(backend, xrp, scenario_navigator, PROFILE_GAME, "-policy-off")
+    _sign_reviewed(backend, xrp, scenario_navigator, PROFILE_TRADING, "-policy-off")
 
 
 def test_session_profiles(

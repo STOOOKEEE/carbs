@@ -22,6 +22,9 @@
 
 #include "sign_transaction.h"
 #include "swap.h"
+#ifdef HAVE_PQ_ROOT
+#include "pq_root.h"
+#endif
 
 tmpCtx_t tmp_ctx;
 signState_e sign_state;
@@ -30,6 +33,10 @@ approvalStrings_t approval_strings;
 void reset_transaction_context() {
     explicit_bzero(&parse_context, sizeof(parseContext_t));
     explicit_bzero(&tmp_ctx, sizeof(tmp_ctx));
+#ifdef HAVE_PQ_ROOT
+    // carbs: an ML-DSA review on screen is cancelled with the context
+    pq_cancel_review();
+#endif
 
     sign_state = IDLE;
 

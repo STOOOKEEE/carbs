@@ -327,8 +327,39 @@ static bool check_group(const session_policy_t *policy,
     return session_policy_check(policy, &request, verdict);
 }
 
+// Removes the "Profile" row (xrp_parse.c, append_review_rows) from the review.
+static void drop_profile_row(parseResult_t *result) {
+    uint8_t kept = 0;
+    for (uint8_t i = 0; i < result->num_fields; i++) {
+        const field_t *field = &result->fields[i];
+        if (field->data_type == STI_VL && field->id == XRP_VL_SESSION_PROFILE) {
+            continue;
+        }
+        if (kept != i) {
+            result->fields[kept] = result->fields[i];
+        }
+        kept++;
+    }
+    for (uint8_t i = kept; i < result->num_fields; i++) {
+        memset(&result->fields[i], 0, sizeof(result->fields[i]));
+    }
+    result->num_fields = kept;
+}
+
+static bool check_transaction(const session_policy_t *policy, session_policy_verdict_t *verdict);
+
 bool session_policy_check_transaction(const session_policy_t *policy,
                                       session_policy_verdict_t *verdict) {
+    bool allowed = check_transaction(policy, verdict);
+    // The row says the session was checked against that profile: it stays
+    // only when the policy is on and did so.
+    if (!allowed || !policy->enabled || !verdict->has_profile) {
+        drop_profile_row(&parse_context.result);
+    }
+    return allowed;
+}
+
+static bool check_transaction(const session_policy_t *policy, session_policy_verdict_t *verdict) {
     verdict->violation = SESSION_POLICY_OK;
     verdict->group = BATCH_OUTER_GROUP;
     verdict->has_profile = false;

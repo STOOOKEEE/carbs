@@ -28,7 +28,7 @@
 #include "io.h"
 #include "sign_transaction.h"
 #ifdef HAVE_PQ_ROOT
-#include "../pq/pq_root.h"
+#include "pq_root.h"
 #endif
 
 static unsigned char last_ins = 0;

@@ -139,7 +139,9 @@ void session_request_read(const parseResult_t *result, uint8_t group, session_re
 
 // Checks every SigningSessionSet of the transaction in parse_context: the
 // transaction itself or the inner transactions of a Batch. Returns true when
-// all fit.
+// all fit. The review keeps its "Profile" row only when the policy is on and
+// the session fits the profile it names; otherwise the row is removed from
+// parse_context.result.
 bool session_policy_check_transaction(const session_policy_t *policy,
                                       session_policy_verdict_t *verdict);
 

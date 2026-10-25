@@ -30,34 +30,30 @@
 #include <io.h>
 #include <os_seed.h>
 #include <lcx_mldsa.h>
+#include <status_words.h>
 
-#include "../apdu/global.h"
-#include "../apdu/messages/sign_transaction.h"
-#include "../globals.h"
-#include "../policy/session_policy.h"
-#include "../ui/other/blind_signing.h"
-#include "../ui/other/session_policy_refusal.h"
-#include "../ui/transaction/review_menu.h"
-#include "../xrp/signing_session.h"
-#include "../xrp/xrp_parse.h"
+#include "global.h"
+#include "sign_transaction.h"
+#include "globals.h"
+#include "session_policy.h"
+#include "blind_signing.h"
+#include "session_policy_refusal.h"
+#include "review_menu.h"
+#include "signing_session.h"
+#include "xrp_parse.h"
 
 /* Internal SDK header (lib_cxng/src, on the include path, see the Makefile):
  * MLDSA_internal_keygen, the deterministic key generation. */
 #include <cx_mldsa_internal.h>
 
-#define PQ_CHUNK         250U
-#define PQ (&tmp_ctx.pq_context)
+#define PQ_CHUNK     250U
+#define PQ           (&tmp_ctx.pq_context)
+#define PQ_HASH_SIZE 32U
 /* os_derive_bip32_with_seed_no_throw() takes a 64-byte output buffer
  * (raw_privkey[static 64]); in HDW_SLIP21 mode it fills only the first 32. */
 #define PQ_OS_KEY_BUFFER 64U
-#define SW_WRONG_DATA    0x6A80
-#define SW_OK            0x9000
-#define SW_DENY          0x6985
-#define SW_WRONG_LENGTH  0x6700
-#define SW_WRONG_P1P2    0x6B00
-#define SW_NO_SIGNATURE  0x6982
-#define SW_INTERNAL      0x6F00
-#define PQ_HASH_SIZE     32U
+/* No signature to read (INS 0x12 before a signature, or after a new request). */
+#define SW_NO_SIGNATURE SWO_SECURITY_CONDITION_NOT_SATISFIED
 /* Same answer as the classical path (sign_transaction.c, handle_packet_content). */
 #define SW_SESSION_BLIND_REFUSED (0x6800 | SESSION_BLIND_SIGN_REFUSED)
 
@@ -68,6 +64,12 @@ static const char PQ_SLIP21_LABEL[] __attribute__((aligned(4))) = "\0carbs ML-DS
 /* The signature stays outside tmp_ctx (which is zeroed when the instruction changes). */
 static uint8_t pq_signature[MLDSA44_SIGBYTES];
 static size_t pq_signature_length;
+/* Set while the review of PQ->message is on screen. It lives outside tmp_ctx on
+ * purpose: after an instruction change tmp_ctx is the new instruction's memory
+ * (the classical INS_SIGN buffers raw bytes over all of it), so nothing read
+ * there may decide to sign. reset_transaction_context() clears it
+ * (pq_cancel_review), which is how an instruction change cancels the review. */
+static bool pq_review_pending;
 /* XRPL single-signature prefix (HashPrefix::txSign): "STX\0". */
 static const uint8_t PQ_SIGNING_PREFIX[] = {0x53, 0x54, 0x58, 0x00};
 
@@ -107,13 +109,24 @@ static bool derive_keypair(void) {
     return ok;
 }
 
+
 static int send_chunk(const uint8_t *data, size_t total, uint8_t index) {
     size_t offset = (size_t) index * PQ_CHUNK;
     if (offset >= total) {
-        return io_send_sw(SW_WRONG_P1P2);
+        return io_send_sw(SWO_WRONG_P1_P2);
     }
     size_t length = (total - offset < PQ_CHUNK) ? total - offset : PQ_CHUNK;
-    return io_send_response_pointer(data + offset, length, SW_OK);
+    return io_send_response_pointer(data + offset, length, SWO_SUCCESS);
+}
+
+/* INS 0x12 then answers 0x6982 until a new signature is made. */
+static void drop_signature(void) {
+    explicit_bzero(pq_signature, sizeof(pq_signature));
+    pq_signature_length = 0;
+}
+
+void pq_cancel_review(void) {
+    pq_review_pending = false;
 }
 
 int handle_pq_get_public_key(uint8_t chunk_index) {
@@ -122,7 +135,7 @@ int handle_pq_get_public_key(uint8_t chunk_index) {
         explicit_bzero(PQ->secret_key, sizeof(PQ->secret_key));
     }
     if (!PQ->public_key_ready) {
-        return io_send_sw(SW_INTERNAL);
+        return io_send_sw(SWO_UNKNOWN);
     }
     return send_chunk(PQ->public_key, sizeof(PQ->public_key), chunk_index);
 }
@@ -138,28 +151,31 @@ static bool hash_message(uint8_t hash[PQ_HASH_SIZE]) {
                             PQ_HASH_SIZE) == CX_OK;
 }
 
-/* Called by the review screen (which also shows the signed / rejected status). */
+/* Called by the review screen (which then shows the signed / rejected status). */
 static void on_review_result(unsigned int option) {
-    if (!PQ->reviewing) {
-        /* The host switched instruction during the review: entry.c reset the
-         * context and that request is gone. Sign nothing, answer nothing, as
-         * sign_transaction() does outside PENDING_REVIEW. */
-        PQ->message_length = 0;
+    if (!pq_review_pending) {
+        /* The host switched instruction during the review: the request is
+         * gone and tmp_ctx now belongs to the new instruction. Read nothing,
+         * write nothing, answer nothing; the status page says the request was
+         * cancelled instead of "signed". */
+        review_menu_request_cancelled();
         return;
     }
-    PQ->reviewing = false;
+    pq_review_pending = false;
     uint8_t hash[PQ_HASH_SIZE];
     bool unchanged = hash_message(hash) && memcmp(hash, PQ->review_hash, PQ_HASH_SIZE) == 0;
     explicit_bzero(PQ->review_hash, sizeof(PQ->review_hash));
     if (option != OPTION_SIGN) {
         PQ->message_length = 0;
-        io_send_sw(SW_DENY);
+        drop_signature();
+        io_send_sw(SWO_CONDITIONS_NOT_SATISFIED);
         return;
     }
     if (!unchanged) {
         /* Not the bytes the user reviewed: refuse rather than sign them. */
         PQ->message_length = 0;
-        io_send_sw(SW_WRONG_DATA);
+        drop_signature();
+        io_send_sw(SWO_INCORRECT_DATA);
         return;
     }
     size_t signature_length = 0;
@@ -178,14 +194,14 @@ static void on_review_result(unsigned int option) {
     }
     explicit_bzero(PQ->secret_key, sizeof(PQ->secret_key));
     PQ->message_length = 0;
-    if (error != CX_OK) {
-        pq_signature_length = 0;
-        io_send_sw(SW_INTERNAL);
+    if (error != CX_OK || signature_length == 0 || signature_length > sizeof(pq_signature)) {
+        drop_signature();
+        io_send_sw(SWO_UNKNOWN);
         return;
     }
     pq_signature_length = signature_length;
     uint8_t length_be[2] = {(uint8_t) (signature_length >> 8), (uint8_t) signature_length};
-    io_send_response_pointer(length_be, sizeof(length_be), SW_OK);
+    io_send_response_pointer(length_be, sizeof(length_be), SWO_SUCCESS);
 }
 
 /* The host sends the full signing data: "STX\0" then the serialized transaction.
@@ -195,7 +211,7 @@ static int review_signing_data(void) {
     if (PQ->message_length <= sizeof(PQ_SIGNING_PREFIX) ||
         memcmp(PQ->message, PQ_SIGNING_PREFIX, sizeof(PQ_SIGNING_PREFIX)) != 0) {
         PQ->message_length = 0;
-        return io_send_sw(SW_WRONG_DATA);
+        return io_send_sw(SWO_INCORRECT_DATA);
     }
     explicit_bzero(&parse_context, sizeof(parse_context));
     parse_context.data = PQ->message + sizeof(PQ_SIGNING_PREFIX);
@@ -203,7 +219,7 @@ static int review_signing_data(void) {
     int result = parse_tx(&parse_context);
     if (result != 0 && result != BLIND_SIGN_REQUIRED && result != SESSION_BLIND_SIGN_REFUSED) {
         PQ->message_length = 0;
-        return io_send_sw(SW_WRONG_DATA);
+        return io_send_sw(SWO_INCORRECT_DATA);
     }
     /* As review_transaction() (transaction.c): the policy is checked before
      * any review or refusal; the refusal screen answers 0x6986 and resets
@@ -233,9 +249,9 @@ static int review_signing_data(void) {
      * refuses every chunk, and the approval checks this hash. */
     if (!hash_message(PQ->review_hash)) {
         PQ->message_length = 0;
-        return io_send_sw(SW_INTERNAL);
+        return io_send_sw(SWO_UNKNOWN);
     }
-    PQ->reviewing = true;
+    pq_review_pending = true;
     if (result == 0) {
         display_review_menu(&parse_context.result, on_review_result);
     } else {
@@ -245,26 +261,31 @@ static int review_signing_data(void) {
 }
 
 int handle_pq_sign(uint8_t p1, uint8_t p2, const uint8_t *data, size_t length) {
-    if (PQ->reviewing) {
+    if (pq_review_pending) {
         /* A review is on screen: same answer as the classical path in
          * PENDING_REVIEW (sign_transaction.c, handle_sign). */
-        return io_send_sw(SW_WRONG_DATA);
+        return io_send_sw(SWO_INCORRECT_DATA);
     }
+    /* Any new request, accepted or not, makes the previous signature unreadable. */
+    drop_signature();
     if (p1 > 1 || p2 > 1) {
-        return io_send_sw(SW_WRONG_P1P2);
+        return io_send_sw(SWO_WRONG_P1_P2);
     }
     if (p1 == 0) {
         PQ->message_length = 0;
-        pq_signature_length = 0;
+    } else if (PQ->message_length == 0) {
+        /* A next chunk without a first one, as the classical path refuses
+         * a subsequent packet (sign_transaction.c, handle_subsequent_packet). */
+        return io_send_sw(SWO_INCORRECT_DATA);
     }
     if (PQ->message_length + length > sizeof(PQ->message)) {
         PQ->message_length = 0;
-        return io_send_sw(SW_WRONG_LENGTH);
+        return io_send_sw(SWO_WRONG_LENGTH);
     }
     memcpy(PQ->message + PQ->message_length, data, length);
     PQ->message_length += length;
     if (p2 == 0) {
-        return io_send_sw(SW_OK);
+        return io_send_sw(SWO_SUCCESS);
     }
     return review_signing_data();
 }

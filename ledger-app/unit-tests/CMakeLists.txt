@@ -95,8 +95,10 @@ add_executable(test_pq_root
 )
 target_include_directories(test_pq_root PRIVATE
   include_pq
+  ../src/pq
   ../src/transaction
   ../src/ui/other
+  ../src/ui/transaction
 )
 target_compile_definitions(test_pq_root PRIVATE
   HAVE_PQ_ROOT

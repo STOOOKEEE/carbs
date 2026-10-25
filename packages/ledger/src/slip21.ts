@@ -1,6 +1,6 @@
 /**
  * The device's ML-DSA-44 key derivation, reproduced for vectors and the simulated device
- * (`ledger-app/src/pq/pq_root.c:4-11`, `:64-108`):
+ * (`ledger-app/src/pq/pq_root.c:4-11`, `:60-110`):
  *   seed = BIP39(mnemonic)                          (PBKDF2-HMAC-SHA512, 2048 rounds, salt "mnemonic")
  *   m    = HMAC-SHA512("Symmetric key seed", seed)   (SLIP-21 master node)
  *   node = HMAC-SHA512(m[0..32], 0x00 ‖ "carbs ML-DSA-44")

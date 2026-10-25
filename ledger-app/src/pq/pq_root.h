@@ -22,4 +22,7 @@ int handle_pq_sign(uint8_t p1, uint8_t p2, const uint8_t *data, size_t length);
 /** P1 = chunk index. Returns 250-byte chunks of the last signature. */
 int handle_pq_get_signature(uint8_t chunk_index);
 
+/** Ends a pending review: its approval then signs nothing. Called by reset_transaction_context(). */
+void pq_cancel_review(void);
+
 #endif
