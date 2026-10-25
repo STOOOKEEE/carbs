@@ -4,6 +4,8 @@
 # Only with --unittest-jobs=6, passing when run alone: SignatureVerification (1 failure, the timing
 # assertion at rippled/src/test/app/STTXSigning_test.cpp:73),
 # ValidatorSite (1, "database is locked") and ValidatorSiteV2 (did not complete). Not listed below.
+# Seen once more under --unittest-jobs=6 on develop at 0bcb324, passing alone: ServerInfo (2, the port
+# protocol checks at rippled/src/test/rpc/ServerInfo_test.cpp:139 and :150; that file is unchanged since main).
 AMMBinned	1	-	unhandled exception: Number: divide by 0
 AMMBinned	20	rippled/src/test/app/AMMBinned_test.cpp:1029	Got tecINVARIANT_FAILED; Expected tesSUCCESS
 AMMBinned	2	rippled/src/test/app/AMMBinned_test.cpp:1038	Got tecPATH_DRY; Expected tesSUCCESS
