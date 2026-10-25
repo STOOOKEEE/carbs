@@ -6,6 +6,9 @@
 # ValidatorSite (1, "database is locked") and ValidatorSiteV2 (did not complete). Not listed below.
 # Seen once more under --unittest-jobs=6 on develop at 0bcb324, passing alone: ServerInfo (2, the port
 # protocol checks at rippled/src/test/rpc/ServerInfo_test.cpp:139 and :150; that file is unchanged since main).
+# Host-dependent since 2026-10-25, also alone and with a binary built before 0bcb324 (which passed it):
+# SHAMapStore (19, rippled/src/test/app/SHAMapStore_test.cpp:1443 and :1620-1642, online_delete health
+# check; the test and SHAMapStoreImp are unchanged since the import). See docs/DEVLOG.md, 2026-10-25.
 AMMBinned	1	-	unhandled exception: Number: divide by 0
 AMMBinned	20	rippled/src/test/app/AMMBinned_test.cpp:1029	Got tecINVARIANT_FAILED; Expected tesSUCCESS
 AMMBinned	2	rippled/src/test/app/AMMBinned_test.cpp:1038	Got tecPATH_DRY; Expected tesSUCCESS

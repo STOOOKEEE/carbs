@@ -12,9 +12,12 @@
 #include <xrpl/protocol/STLedgerEntry.h>
 #include <xrpl/protocol/STTx.h>
 #include <xrpl/protocol/TER.h>
+#include <xrpl/protocol/TxFlags.h>
 #include <xrpl/protocol/XRPAmount.h>
 #include <xrpl/tx/SigningSession.h>
 #include <xrpl/tx/Transactor.h>
+
+#include <cstdint>
 
 namespace xrpl {
 
@@ -22,6 +25,14 @@ bool
 SigningSessionDelete::checkExtraFeatures(PreflightContext const& ctx)
 {
     return ctx.rules.enabled(featurePermissionDelegationV1_1);
+}
+
+std::uint32_t
+SigningSessionDelete::getFlagsMask(PreflightContext const&)
+{
+    // No flag of its own: every bit is refused but the universal flags
+    // (tfFullyCanonicalSig, and tfInnerBatchTxn on a Batch inner transaction).
+    return tfUniversalMask;
 }
 
 NotTEC

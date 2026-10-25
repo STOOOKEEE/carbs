@@ -246,13 +246,22 @@ class SigningSessions_test : public beast::unit_test::Suite
         env.close();
 
         // tfAllTransactions is the only flag of SigningSessionSet, and
-        // SigningSessionDelete has none.
+        // SigningSessionDelete has none: every bit but the universal flags is
+        // refused before any state is read.
         env(session::set(alice, key, 60),
             Txflags(tfAllTransactions | 0x00020000),
             Ter(temINVALID_FLAG));
         env(session::set(alice, key, 60), Txflags(tfAllTransactions));
-        env(session::del(alice, key), Txflags(tfAllTransactions), Ter(temINVALID_FLAG));
+        for (int bit = 0; bit < 32; ++bit)
+        {
+            std::uint32_t const flag = 1u << bit;
+            if ((flag & tfUniversal) != 0)
+                continue;
+            env(session::del(alice, key), Txflags(flag), Ter(temINVALID_FLAG));
+        }
         BEAST_EXPECT(sessionEntry(env, alice, key));
+        env(session::del(alice, key), Txflags(tfFullyCanonicalSig));
+        BEAST_EXPECT(!sessionEntry(env, alice, key));
     }
 
     void

@@ -158,11 +158,12 @@ All codes were checked free on 2026-10-24 on both `XRPLF/rippled:alphanet` @ `68
 | Item | Value |
 |---|---|
 | Amendment | `XRPL_FEATURE(SigningSessions, Supported::Yes, VoteBehavior::DefaultNo)` (**`Supported::Yes`**, the normal state of a feature we ship); requires `PermissionDelegationV1_1` via `checkExtraFeatures` |
-| Fields | `SessionKey` ACCOUNT 34 · `SessionCap` AMOUNT 47 · `SessionSpent` AMOUNT 48 · `SessionDuration` UINT32 114. Reused: `Expiration`, `Permissions` (ARRAY 29 / OBJECT 15 / UINT32 52 for `PermissionValue`) |
+| Fields | `SessionKey` ACCOUNT 34 · `SessionCap` AMOUNT 47 · `SessionSpent` AMOUNT 48 · `SessionDuration` UINT32 114 · `SessionMaxPerTx` AMOUNT 49 · `SessionWitness` ACCOUNT 35 · `SessionMaxTxCount` UINT32 115 · `SessionTxCount` UINT32 116 · `WitnessSignature` OBJECT 43 (common, not signing, `{SigningPubKey, TxnSignature}`). Reused: `Expiration`, `Permissions` (ARRAY 29 / OBJECT 15 / UINT32 52 for `PermissionValue`), `Owner` |
 | Ledger entry | `ltSIGNING_SESSION = 0x009A`; keylet namespace `'z'` (`0x007A`) |
 | Transactions | `SigningSessionSet = 130`, `SigningSessionDelete = 131`, **both non-delegable**; `ttSIGNING_SESSION_SET`, `ttSIGNING_SESSION_DELETE` |
-| Result codes (append at the **end** of `TEFcodes`, after `tefFIREWALL_BLOCK`) | `tefSESSION_EXPIRED`, `tefSESSION_LIMIT`, `tefSESSION_TX_NOT_ALLOWED` |
-| Flag | `tfAllTransactions = 0x00010000` (on `SigningSessionSet`), mirrored as `lsfAllTransactions` on the entry |
+| Result codes (append at the **end** of `TEFcodes`, after `tefFIREWALL_BLOCK`) | `tefSESSION_EXPIRED` (-172), `tefSESSION_LIMIT` (-171), `tefSESSION_TX_NOT_ALLOWED` (-170), `tefSESSION_NO_WITNESS` (-169) |
+| Hash prefix | `HashPrefix::WitnessTxSign` = `WTS\0`, signed by the witness over the transaction's signing fields |
+| Flag | `tfAllTransactions = 0x00010000` (on `SigningSessionSet`), mirrored as `lsfAllTransactions` on the entry. `SigningSessionDelete` has no flag of its own |
 | Invariant | `ValidSigningSession` |
 | RPC | `ledger_entry` type `signing_session`; `account_objects` type `signing_session` |
 
@@ -179,10 +180,14 @@ Object ID: `SHA512Half(0x007A ‖ Account ‖ SessionKey)` (two 20-byte AccountI
 | `Permissions` | mode P | 1..`kPermissionMaxSize` (10) XLS-75 permission values |
 | `SessionCap` | mode C | positive XRP amount, total cost of the session, fees included |
 | `SessionSpent` | mode C | `0` at creation, only increases |
+| `SessionMaxPerTx` | no, mode C only | positive XRP amount ≤ `SessionCap`: the most one payment may send (fee not included) |
+| `SessionWitness` | no | an existing third account (neither `Account` nor `SessionKey`) that co-signs every session-signed transaction but the own close |
+| `SessionMaxTxCount` | no, any mode | `1 ≤ n ≤ kMaxSessionTxCount (100 000)`: the most transactions the session may sign |
+| `SessionTxCount` | with `SessionMaxTxCount` | `0` at creation, one more per session-signed transaction applied (`tes` or `tec`), the own close excepted |
 | `Flags` | yes | `lsfAllTransactions = 0x00010000` in mode A |
 | `OwnerNode`, `PreviousTxnID`, `PreviousTxnLgrSeq` | yes | standard |
 
-Exactly one of {`Permissions`, `lsfAllTransactions`, `SessionCap`} is set. Registered in the owner's directory; one owner reserve. An expired entry stays, unusable, until deleted. `AccountDelete` **must** delete the account's sessions (they are not obligations): add an entry for the type in `nonObligationDeleter` (`AccountDelete.cpp`, around line 205), otherwise `tecHAS_OBLIGATIONS`.
+Exactly one of {`Permissions`, `lsfAllTransactions`, `SessionCap`} is set; every field but `SessionSpent` and `SessionTxCount` is fixed at creation. Registered in the owner's directory; one owner reserve, never reserve-sponsored (`SigningSessionSet` is not in `isReserveSponsorAllowed`, so a reserve sponsor is `temINVALID_FLAG`). An expired entry stays, unusable, until deleted. `AccountDelete` **must** delete the account's sessions (they are not obligations): add an entry for the type in `nonObligationDeleter` (`AccountDelete.cpp`, around line 205), otherwise `tecHAS_OBLIGATIONS`.
 
 ### 6.3 Transactions
 
@@ -195,10 +200,13 @@ Exactly one of {`Permissions`, `lsfAllTransactions`, `SessionCap`} is set. Regis
 | `Permissions` | mode P | 1..10 values, duplicates rejected |
 | `SessionCap` | mode C | native XRP, positive |
 | `tfAllTransactions` | mode A | flag `0x00010000` |
+| `SessionMaxPerTx` | no | mode C only; native XRP, positive, ≤ `SessionCap` |
+| `SessionWitness` | no | AccountID of the witness |
+| `SessionMaxTxCount` | no | any mode; `1 ≤ n ≤ kMaxSessionTxCount` |
 
-Preflight (stateless, `tem`): unknown flag bits (`tfSigningSessionSetMask`, and no flag at all for `SigningSessionDelete`) → `temINVALID_FLAG`; not exactly one mode → `temMALFORMED`; `SessionKey == Account` → `temMALFORMED`; duration 0 or > max → `temBAD_EXPIRATION`; `Permissions` empty / too large → `temARRAY_EMPTY` / `temARRAY_TOO_LARGE`; duplicate value, non-delegable value, or a type in the exclusion list → `temMALFORMED`; `SessionCap` not XRP or not positive → `temBAD_AMOUNT`.
-Preclaim / doApply: `SessionKey` equals the account's `RegularKey`, one of its passkey AccountIDs, or its beneficiary key → `tecNO_PERMISSION` (such a key already has full authority); a session already exists for (`Account`, `SessionKey`) → `tecDUPLICATE`; reserve → `tecINSUFFICIENT_RESERVE`.
-Effect: create the entry (`Expiration = parentCloseTime + SessionDuration`; `SessionSpent = 0` in mode C), insert in the owner directory, increase owner count. Use the sponsor-aware reserve helpers like `DelegateSet.cpp` (`checkReserve`, `increaseOwnerCount`). No update: delete and reopen.
+Preflight (stateless, `tem`): flag bits outside `tfSigningSessionSetMask` → `temINVALID_FLAG`; not exactly one mode → `temMALFORMED`; `SessionKey == Account` → `temMALFORMED`; duration 0 or > max → `temBAD_EXPIRATION`; `Permissions` empty / too large → `temARRAY_EMPTY` / `temARRAY_TOO_LARGE`; duplicate value, non-delegable value, or a type (transaction-level or granular) a mode-A session could not sign → `temMALFORMED`; `SessionCap` not XRP or not positive → `temBAD_AMOUNT`; `SessionMaxPerTx` without `SessionCap` → `temMALFORMED`, not XRP, not positive or above `SessionCap` → `temBAD_AMOUNT`; `SessionMaxTxCount` 0 or > `kMaxSessionTxCount` → `temMALFORMED`; `SessionWitness` equal to `Account` or `SessionKey` → `temMALFORMED`.
+Preclaim / doApply: `SessionKey` equals the account's `RegularKey`, one of its passkey AccountIDs, or its beneficiary key → `tecNO_PERMISSION` (such a key already has full authority); a session already exists for (`Account`, `SessionKey`) → `tecDUPLICATE`; `SessionWitness` names no account → `tecNO_TARGET`; reserve → `tecINSUFFICIENT_RESERVE`.
+Effect: create the entry (`Expiration = parentCloseTime + SessionDuration`; `SessionSpent = 0` in mode C; `SessionTxCount = 0` with `SessionMaxTxCount`), insert in the owner directory, increase owner count. Use the sponsor-aware reserve helpers like `DelegateSet.cpp` (`checkReserve`, `increaseOwnerCount`). No update: delete and reopen.
 
 **`SigningSessionDelete`** (not delegable)
 
@@ -207,7 +215,7 @@ Effect: create the entry (`Expiration = parentCloseTime + SessionDuration`; `Ses
 | `SessionKey` | yes | session to delete |
 | `Owner` | no | owner when the submitter is not the owner |
 
-Without `Owner`: signed by any full-authority key **or by the session key itself** (the "own close"). With `Owner` (≠ `Account`): any account may delete once the session is **expired**, else `tecNO_PERMISSION`. Missing entry → `tecNO_ENTRY`; `Owner == Account` → `temMALFORMED`.
+No flag of its own: `getFlagsMask` returns `tfUniversalMask`, so every bit but the universal flags (`tfFullyCanonicalSig`, and `tfInnerBatchTxn` on a Batch inner transaction) is `temINVALID_FLAG`. Without `Owner`: signed by any full-authority key **or by the session key itself** (the "own close"). With `Owner` (≠ `Account`): any account may delete once the session is **expired**, else `tecNO_PERMISSION`. Missing entry → `tecNO_ENTRY`; `Owner == Account` → `temMALFORMED`.
 
 ### 6.4 The session-signed predicate
 
@@ -217,7 +225,9 @@ A transaction is **session-signed** iff **all** hold:
 - a `SigningSession` exists for (`Account`, `AccountID(SigningPubKey)`);
 - it carries no `CounterpartySignature` (a session key used as a counterparty signer follows the existing rules and is rejected).
 
-The predicate first tests `rules.enabled(featureSigningSessions)` (no ledger read on every transaction before activation) and that `SigningPubKey` is a valid public key type (secp256k1, Ed25519, P-256 or ML-DSA-44; an ML-DSA-44 session key needs nothing more, §6.14, D14). One function, `isSessionSigned(view, tx)`, serves **authorization, accounting and the invariant** so that they cannot disagree. A session-signed transaction is authorized **only** by its session: master, `RegularKey`, passkey and beneficiary rules are not consulted. Consequence: a key that later also becomes `RegularKey` stays bounded until its session is deleted (least privilege); creating a session for a key that already has full authority is forbidden (§6.3). Two shapes follow the existing rules: sponsored transactions and a Batch inner-account signature (`Batch::checkBatchSign` calls `Transactor::checkSign`). Wallets should not make a session key a `RegularKey`.
+The predicate first tests `rules.enabled(featureSigningSessions)` (no ledger read on every transaction before activation) and that `SigningPubKey` is a valid public key type (secp256k1, Ed25519, P-256 or ML-DSA-44; an ML-DSA-44 session key needs nothing more, §6.14, D14). One function, `signingSessionOf(view, tx)` (and `isSessionSigned`), serves **authorization, accounting, the transaction queue and the invariant** so that they cannot disagree; the invariant and the queue also use its shape test without the existence check (`sessionKeyletOf`). A session-signed transaction is authorized **only** by its session: master, `RegularKey`, passkey and beneficiary rules are not consulted. Consequence: a key that later also becomes `RegularKey` stays bounded until its session is deleted (least privilege); creating a session for a key that already has full authority is forbidden (§6.3). Two shapes follow the existing rules: sponsored transactions and a Batch inner-account signature (`Batch::checkBatchSign` calls `Transactor::checkSign`). Wallets should not make a session key a `RegularKey`.
+
+**Batch.** A session key can neither sign nor co-sign a `Batch` (suite `SigningSessionsBatch`). As the outer signer: `Batch` overrides `checkSign`, so `invokeCheckSession<T>` refuses it before any mode rule with `tefSESSION_TX_NOT_ALLOWED`, in every mode. As a `BatchSigner`: `Batch::checkBatchSign` runs the ordinary signature check of the account, which never consults sessions: `tefBAD_AUTH`, although the same key may sign the same payment on its own. A session-signed transaction carrying `tfInnerBatchTxn` is not session-signed (the predicate excludes it); without a parent Batch it is refused (`temINVALID_INNER_BATCH` in preflight, and `submit`'s local checks). The owner may open and revoke sessions inside a Batch it signs: that is why `SigningSessionDelete` keeps `tfInnerBatchTxn` in its flag mask.
 
 ### 6.5 Authorization hook
 
@@ -240,36 +250,44 @@ invokePreclaim:
 
 1. **Eligibility** → `tefSESSION_TX_NOT_ALLOWED`
    - always eligible: `SigningSessionDelete` without `Owner` whose `SessionKey` is the signer (own close);
-   - every other session-signed transaction uses `Sequence`, never `TicketSequence`: the tickets of the account stay for the owner (who can revoke by ticket while the key holds the sequence) and for multi-signed transactions (the rule of ADR 0010 for a session without a ticket range);
+   - a type that overrides `checkSign` (`Batch`, `LoanSet`) is never eligible, whatever the mode;
+   - every other session-signed transaction uses `Sequence`, never `TicketSequence`: the tickets of the account stay for the owner (who can revoke by ticket while the key holds the sequence) and for multi-signed transactions (the rule of ADR 0010 for a session without a ticket range). The own close may use a ticket;
    - mode P: same sequence as `Transactor::checkPermission` / `invokeCheckPermission<T>` with the session entry instead of the delegate entry: `checkTxPermission(sle, tx)`, then `getGranularPermission` + `Permission::checkGranularSandbox`, then `T::checkGranularSemantics`; the type must also not be in `kSessionExcluded` (checked at use). **Map every `terNO_DELEGATE_PERMISSION` or other `ter` answer to `tefSESSION_TX_NOT_ALLOWED`**: a retriable `ter` would keep a rejected tx in the node's retry loop;
    - mode A: the type is delegable and not in `kSessionExcluded`;
    - mode C: a `Payment` whose `Flags` carry nothing but `tfFullyCanonicalSig`, whose type-specific fields are only `Destination`, `DestinationTag`, `Amount`, with `Amount` in XRP. This is a **closed whitelist**: flags such as `tfSponsorCreatedAccount` lock reserves outside the cap; `SendMax`, `Paths`, `DeliverMin`, partial payments move value the cap does not see.
 2. **`LastLedgerSequence` present and near** → `tefSESSION_TX_NOT_ALLOWED`: `LastLedgerSequence ≤ ledgerSeq + kSessionMaxLedgerWindow (256)`. A held-and-retried rejected tx must not land under a later session opened with the same key.
 3. **Expiry** → `tefSESSION_EXPIRED`: `parentCloseTime < Expiration`, except for the own close.
 4. **Fee ceiling** → `tefSESSION_LIMIT`, all modes: `Fee ≤ calculateBaseFee(view, tx) + kSessionFeeMultiple × view.fees().base`; for the own close, `Fee ≤ calculateBaseFee(view, tx)` (no margin: it escapes the expiry, the cap and the witness and is never counted, so past the cap it costs one base fee at most). The first term keeps types whose required fee is the owner-reserve increment (AMM creation, `LedgerStateFix`) usable; the second bounds what a session can overpay on top of it, so a failed (`tec`) transaction cannot burn more than the required fee plus a small margin. `calculateBaseFee` returns an `Expected` whose error is a `TER`: convert it to `NotTEC` explicitly.
-5. **Cap** → `tefSESSION_LIMIT`, mode C, every session-signed tx except the own close: `Fee + Amount ≤ SessionCap − SessionSpent` (`Amount` only for a `Payment`).
+5. **Cap** → `tefSESSION_LIMIT`, mode C, every session-signed tx except the own close: `Fee + Amount ≤ SessionCap − SessionSpent` (`Amount` only for a `Payment`), and `Amount ≤ SessionMaxPerTx` when the session has one.
+6. **Transaction count** → `tefSESSION_LIMIT`, any mode, except the own close: `SessionTxCount < SessionMaxTxCount` when the session has one.
+7. **Witness** → `tefSESSION_NO_WITNESS`, any mode, except the own close, when the session has a `SessionWitness`: the transaction carries a `WitnessSignature` whose `SigningPubKey` is a key of the witness account (its master key if not disabled, or its `RegularKey`). The signature itself is verified with the transaction's in `STTx::checkSign` (`checkValidity`): one key (an empty `SigningPubKey` is refused), prefix `WTS\0` over the transaction's signing fields. `WitnessSignature` is not a signing field, so the session key's signature does not cover it, and the witness signs the same fields as the session key, its `SigningPubKey` included. A `WitnessSignature` on any transaction is `temDISABLED` in `preflight1` without `SigningSessions`, so no node verifies one before the amendment.
 
-**Replacing `T::checkSign` also drops two checks of `Transactor::checkSign` that must be redone**: rejection of pseudo-accounts (`Transactor.cpp` ~962-972) and the unknown-key-type check (~1021). The hook also refuses (`tefSESSION_TX_NOT_ALLOWED`, own close included) a P-256 session key unless `Passkey` is enabled and an ML-DSA-44 one unless `Quantum` is: the opening names the key by its AccountID only, so the type is first known at use. The cryptographic verification of the signature itself stays in `STTx::checkSign` / `checkValidity` (preflight). `LoanSet` and `Batch` override `checkSign` and are non-delegable today: case 9b asserts that no session-eligible type overrides `checkSign`.
+Before rule 1 the hook refuses a pseudo-account with `tefBAD_AUTH`, then a session key whose type belongs to an amendment that is not enabled, with `tefSESSION_TX_NOT_ALLOWED`, own close included: a P-256 key unless `Passkey` is enabled, an ML-DSA-44 one unless `Quantum` is (the opening names the key by its AccountID only, so the type is first known at use). **Replacing `T::checkSign` drops two checks of `Transactor::checkSign` that are redone**: the rejection of pseudo-accounts (that first step) and the unknown key type (part of the predicate). The cryptographic verification of the signature itself stays in `STTx::checkSign` / `checkValidity` (preflight). Case 9b also asserts that no session-eligible type overrides `checkSign`.
 
-### 6.6 Accounting (mode C)
+**Transaction queue.** A session-signed transaction never displaces a queued transaction of the same account and `SeqProxy` that its key did not sign (`sessionDisplacesOther`, `rippled/src/xrpld/app/misc/detail/TxQ.cpp`): through the queue it is `telCAN_NOT_QUEUE_FEE` whatever its fee, and the direct apply to the open ledger is skipped when it would replace such a transaction (the queue then refuses it). The owner's close waiting in the queue cannot be outbid by the key it revokes. `SigningSessionDelete` is a queue blocker (`ConsequencesFactoryType::Blocker`, like `SetRegularKey`): it is queued only alone in its account's queue, so no session transaction waits behind a close that would void it; a close paying the open ledger's fee still applies at once. `SigningSessionSet` stays `Normal`. The queue runs `preclaim` again when it applies a transaction, so a queued session transaction whose session expired, was deleted or ran out of cap or count is dropped without a fee (case 22).
 
-One helper `chargeSession(result, fee)` inside `Transactor::operator()` (`Transactor.cpp`, ~line 1689):
-- exactly **two call sites** in `operator()`: (1) just before the first `checkInvariants` (~line 1776), after the `canApply` / `processPersistentChanges` block whose `reset(fee)` (~line 1632) every `tec` traverses when `tapRETRY` is absent; (2) right after the second `reset(fee)` (~line 1782), before the `ProtocolOnly` re-check. Never inside `processPersistentChanges` (that would charge twice); line 1431 is only the definition of `reset`; a `reset` erases view state;
-- adds `fee` to `SessionSpent` for every outcome that claims the fee, plus `Amount` on `tesSUCCESS`;
+### 6.6 Accounting (mode C and `SessionMaxTxCount`)
+
+One helper `chargeSession(result, fee)` inside `Transactor::operator()`:
+- exactly **two call sites** in `operator()`: (1) just before the first `checkInvariants`, after the `canApply` / `processPersistentChanges` block whose `reset(fee)` every `tec` traverses when `tapRETRY` is absent; (2) right after the second `reset(fee)`, before the `ProtocolOnly` re-check. Never inside `processPersistentChanges` (that would charge twice); a `reset` erases view state;
+- with `SessionCap`: adds `fee` to `SessionSpent` for every outcome that claims the fee, plus `Amount` on `tesSUCCESS` of a `Payment`;
+- with `SessionMaxTxCount`, in any mode: adds one to `SessionTxCount` for every outcome that claims the fee, `tes` and `tec` alike;
 - the own close is exempt **by shape** (`SigningSessionDelete`, no `Owner`, `SessionKey` equals the signer) whatever its result, including a `tec` that leaves the session in place; tolerates a session entry that no longer exists;
-- cannot live in `apply()`: a `tec` returned by `preclaim` (for example `tecNO_DST_INSUF_XRP` from `Payment`) never reaches `apply()`, and a `tec` result discards `doApply` changes. `preFeeBalance_` (Transactor.cpp:924) is the model for balance capture.
+- cannot live in `apply()`: a `tec` returned by `preclaim` (for example `tecNO_DST_INSUF_XRP` from `Payment`) never reaches `apply()`, and a `tec` result discards `doApply` changes. `preFeeBalance_` is the model for balance capture.
+
+Since the own close pays at most its base fee (§6.5 rule 4), a mode-C account never loses more than `SessionCap` plus one base fee to a session.
 
 The predicate and the session keylet are computed at the **top** of `operator()`, before `apply()`, because after `doApply` an own close has already erased the entry.
 
 ### 6.7 Invariant `ValidSigningSession`
 
-Add to the `InvariantChecks` tuple (`include/xrpl/tx/invariants/InvariantCheck.h`, ~line 522) so it also runs in the `ProtocolOnly` pass after a `reset`. `finalize` only sees the final view, so capture everything in `visitEntry`: session entries before/after, touched account roots, and touched signer-list, passkey-list, delegate, beneficiary and firewall entries. The signer is derived from `SigningPubKey`; the session counts as pre-existing if visited with a `before` state or not visited and still existing (sound because §6.3 forbids creating a session for the signer's own key).
+Add to the `InvariantChecks` tuple (`include/xrpl/tx/invariants/InvariantCheck.h`) so it also runs in the `ProtocolOnly` pass after a `reset`. `finalize` only sees the final view, so capture everything in `visitEntry`: session entries before/after, touched account roots, and touched signer-list, passkey-list, delegate, beneficiary and firewall entries, and whether a sponsorship, subscription, credential or DID entry was created. The signer is derived from `SigningPubKey`; the session counts as pre-existing if visited with a `before` state or not visited and still existing (sound because §6.3 forbids creating a session for the signer's own key).
 
 1. Only `SigningSessionSet` creates and only `SigningSessionDelete` / `AccountDelete` remove a session; the owner count changes by exactly one.
-2. `Account`, `SessionKey`, `Expiration`, `Permissions`, `SessionCap` and the mode flag never change; exactly one mode set; `Expiration` within `kMaxSessionDuration` of the parent close time at creation.
-3. `SessionSpent` only increases, never above `SessionCap`, only in a session-signed transaction (the own close is exempt from rules 3 and 4 whatever its result).
+2. `Account`, `SessionKey`, `Expiration`, `Permissions`, `SessionCap`, `SessionMaxPerTx`, `SessionMaxTxCount`, `SessionWitness` and the mode flag never change; exactly one mode set; `SessionSpent` only with `SessionCap` and `0` at creation; `SessionTxCount` exactly with `SessionMaxTxCount` (within `1..kMaxSessionTxCount`) and `0` at creation; `Expiration` within `kMaxSessionDuration` of the parent close time at creation.
+3. `SessionSpent` only increases, never above `SessionCap`, only in a session-signed transaction (the own close is exempt from rules 3 and 4 whatever its result). `SessionTxCount` never appears or disappears, increases by exactly one in each transaction its session signs and keeps (the own close excepted) and by zero otherwise, never exceeds `SessionMaxTxCount`; a session-signed transaction that keeps a counting session must count.
 4. For a mode-C session-signed tx other than the own close: it has the shape of a session cap payment, and the increase of `SessionSpent` minus the fee is at most `SessionMaxPerTx` when the session has one. When it does not delete the session: XRP decrease of `Account` ≤ increase of `SessionSpent` (fee included); the owner count does not increase (consuming a ticket may lower it by one); the sponsoring count does not change. This ties the counter to the **real outflow**, not to declared fields.
-5. A session-signed tx never modifies `RegularKey`, the master-disable flag, the signer list, the passkey list, the delegate entries, the beneficiary entry, the firewall entry, or another session of `Account`, and creates no sponsorship, subscription, credential or DID entry.
+5. A session-signed tx never modifies `RegularKey`, the master-disable flag, the signer list, the passkey list, the delegate entries, the beneficiary entry, the firewall entry, or another session of `Account`, and creates no sponsorship, subscription, credential or DID entry (the excluded types of §6.8).
 
 ### 6.8 Exclusion list and enumeration test
 
@@ -287,6 +305,7 @@ Modes A and P bound **when** the key can sign, not what the signed transactions 
 | `kPermissionMaxSize` | 10 (existing) | same as `DelegateSet` |
 | `kSessionFeeMultiple` | 1000 | multiple of the base fee unit (`view.fees().base`) allowed **on top of** the required base fee; the first escalated fee level is already 500× base, so under heavy load session txs are held back and the owner uses a full-authority key |
 | `kSessionMaxLedgerWindow` | 256 | |
+| `kMaxSessionTxCount` | 100 000 | upper bound of `SessionMaxTxCount` |
 | `kSessionExcluded` | see §6.8 | |
 
 Named constants live in one place per language (`include/xrpl/protocol/...` in C++; `packages/core/src/constants.ts` in TypeScript).
@@ -309,7 +328,7 @@ Named constants live in one place per language (`include/xrpl/protocol/...` in C
 | RPC | `src/xrpld/rpc/handlers/ledger/LedgerEntry.cpp` | `parsePasskeyList` |
 | Generated code | `cmake/codegen` → `protocol_autogen`, **only our types** (a previous attempt produced a 26 000-line diff, 21 000 of it unrelated regeneration) | |
 
-**Registration to not forget**: `transResults` strings for the three `tef` codes (`src/libxrpl/protocol/TER.cpp`), the `jss` name `signing_session` and the RPC parser entry, `ltSIGNING_SESSION` in `ledger_entries.macro` with its keylet, and one shared header for `isSessionSigned` used by `applySteps`, `Transactor` and the invariant. `invokeCheckSession<T>(PreclaimContext const&)` returns **`NotTEC`** (never `tec`).
+**Registration to not forget**: `transResults` strings for the four `tef` codes (`src/libxrpl/protocol/TER.cpp`), the `jss` name `signing_session` and the RPC parser entry, `ltSIGNING_SESSION` in `ledger_entries.macro` with its keylet, `WitnessSignature` in `InnerObjectFormats.cpp` and the common fields, and one shared header (`include/xrpl/tx/SigningSession.h`) for the predicate used by `applySteps`, `Transactor`, `TxQ` and the invariant. `invokeCheckSession<T>(PreclaimContext const&, Keylet const&)` returns **`NotTEC`** (never `tec`).
 
 Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, fields, entry, transactions, result codes) in the first batch, before the first full build.
 
@@ -319,7 +338,7 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 
 ### 6.12 Standalone node (`infra/`)
 
-- `infra/standalone.cfg` with `[features]`: `Passkey`, `Quantum`, `SigningSessions`, `BatchV1_1`, `PermissionDelegationV1_1` and `fixPasskeyChallenge` (P5, §6.14; check whether `fixBatchV1_2` is needed, **UNVERIFIED**). `feature` must list them; `server_definitions` must expose our types. Ports: a **public (non-admin)** WebSocket for the app and a separate **admin** port reserved for the ledger closer (`ledger_accept`); the app is never wired to the admin port.
+- `infra/standalone.cfg` with an `[amendments]` list (the genesis ledger's; `[features]` only sets the rules of unit tests) holding every amendment this build supports and does not veto, among them `Passkey`, `Quantum`, `SigningSessions`, `BatchV1_1`, `PermissionDelegationV1_1`, `fixPasskeyChallenge` (P5, §6.14) and `fixP256StrictDer` (§6.14). `feature` must list them; `server_definitions` must expose our types. Ports: a **public (non-admin)** WebSocket for the app and a separate **admin** port reserved for the ledger closer (`ledger_accept`); the app is never wired to the admin port.
 - Ledger close: one process (a small `infra/closer.ts`) calls `ledger_accept` every 1-3 s. Session expiry is measured on the ledger's `parentCloseTime`: in standalone time only advances when a ledger closes.
 - Genesis seed from an environment variable, never committed. Public (non-admin) WebSocket for the app.
 - `infra/Dockerfile` for the node (published image is stretch).
@@ -328,14 +347,18 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 
 | Situation | Code | Fee |
 |---|---|---|
-| Unknown flag bits | `temINVALID_FLAG` | no |
-| No / two modes, key = account, bad duration, bad permissions, bad cap | `temMALFORMED` / `temBAD_EXPIRATION` / `temARRAY_*` / `temBAD_AMOUNT` | no |
+| Flag bits outside the type's mask (`SigningSessionDelete`: any bit but the universal flags) | `temINVALID_FLAG` | no |
+| No / two modes, key = account, bad duration, bad permissions, bad cap, `SessionMaxPerTx` without a cap, `SessionMaxTxCount` out of range, witness = account or key | `temMALFORMED` / `temBAD_EXPIRATION` / `temARRAY_*` / `temBAD_AMOUNT` | no |
+| `WitnessSignature` without the amendment | `temDISABLED` | no |
 | Key already has full authority | `tecNO_PERMISSION` | yes |
 | Duplicate session | `tecDUPLICATE` | yes |
+| `SessionWitness` names no account | `tecNO_TARGET` | yes |
 | Reserve | `tecINSUFFICIENT_RESERVE` | yes |
-| Type or shape not allowed, missing / far `LastLedgerSequence`, session tx signed by a session | `tefSESSION_TX_NOT_ALLOWED` | no (not included) |
+| Type or shape not allowed, `TicketSequence` (except own close), missing / far `LastLedgerSequence`, session tx signed by a session, outer `Batch` signed by a session key, session key of a type whose amendment (`Passkey`, `Quantum`) is off | `tefSESSION_TX_NOT_ALLOWED` | no (not included) |
 | After `Expiration` (except own close) | `tefSESSION_EXPIRED` | no |
-| Fee over ceiling, or over remaining cap (mode C) | `tefSESSION_LIMIT` | no |
+| Fee over ceiling, over remaining cap or over `SessionMaxPerTx` (mode C), `SessionTxCount` at `SessionMaxTxCount` | `tefSESSION_LIMIT` | no |
+| Missing or foreign `WitnessSignature` when the session has a witness (except own close) | `tefSESSION_NO_WITNESS` | no |
+| Session-signed tx would displace a queued tx of another key | `telCAN_NOT_QUEUE_FEE` | no |
 | Stranger closes a live session | `tecNO_PERMISSION` | yes |
 | Missing session on close | `tecNO_ENTRY` | yes |
 | Session key of another account | `tefBAD_AUTH` | no |
@@ -349,6 +372,8 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 
 **Passkey in alphanet** (`featurePasskey`, Denis Angell): P-256 public key = 65 bytes `0xF6 ‖ X ‖ Y` (`PublicKey.cpp:252`); `ltPASSKEY_LIST` (one per account); `PasskeyListSet` (114 on XRPLF, 118 on Transia); `PasskeySignature {PasskeyID, AuthenticatorData, ClientDataJSON, Signature}` is a common **unsigned** field; the WebAuthn `challenge` is base64url of **all signed data** (`STTx.cpp:449-499`); raw ECDSA over SHA-256 of the signed data is also accepted (SHA-256 + DER, **no low-S rule**); a passkey has **full authority** (`Transactor.cpp` ~1141-1160). On XRPLF `KeyType` values are `Dilithium = 2`, `P256 = 3` (reversed on Transia): never hard-code the enum. The WebAuthn path is taken only when the key is P-256 **and** `PasskeySignature` is present; otherwise raw P-256 `verify()`. No upstream test signs a transaction by WebAuthn.
 
+**Our node: `fixP256StrictDer`** (`Supported::Yes`, `DefaultNo`, #87, enabled in `infra/standalone.cfg`). Once enabled, a P-256 signature must be strict DER (sequence length equal to the signature's, minimal integers, nothing after S) with `0 < R < n` and `0 < S ≤ n/2`, on every path a P-256 key signs: single, WebAuthn, multi-signer, `BatchSigner`. The public AlphaNet does not have it. The node's own P-256 signer produces low-S signatures in every case.
+
 **P5 (defect, confirmed by the N1 test and fixed on our node)**: in `STTx.cpp` (the old comparison, kept without the fix, is now at `rippled/src/libxrpl/protocol/STTx.cpp:495-497`, the fix at `:485-494`) the challenge check compares `base64urlDecode(...)` (a `std::string`) to `uint8_t` signing data with `std::equal`; where `char` is signed (x86-64, macOS arm64) any byte ≥ `0x80` makes the comparison fail, and every challenge contains `0xF6` (the `SigningPubKey` prefix). So WebAuthn assertions may always fail on those platforms. **Plan (N1)**: write the regression test first (challenge containing a byte ≥ `0x80`) on our own node; if it fails before any change, fix by comparing two `Slice`s in a **separate `fix:` commit**; if it passes, record that in DEVLOG. Either way P5 goes in the presentation (D7). K2 on the public AlphaNet may fail depending on the validators' platform; that does not prove passkeys do not work. **Result (N1):** the test failed on the unchanged tree, where `char` is signed (SIMULATED: a software WebAuthn authenticator, `docs/DEVLOG.md` "N1"); the fix compares two `Slice`s behind the amendment `fixPasskeyChallenge` (`Supported::Yes`, `DefaultNo`, #13), which the standalone node enables (§6.12). The public AlphaNet does not have it.
 
 **P6 (defect, VERIFIED on the public AlphaNet, 10-24): a passkey list can be neither replaced nor removed.** `SetPasskeyList::doApply` always creates a new `ltPASSKEY_LIST` entry and inserts it, with no check for an existing one in `preclaim`, and no transaction deletes the list. A second `PasskeyListSet` on the same account fails with `tefEXCEPTION` (first `8AC8B117A6553BDB7D33BC86150A5A1FAC8BFB190B81DD9FB7CCB81ADB45484A` `tesSUCCESS`, second `A3E31459618DB5BB463F3708B26D660087599847D15F168192C79862E4C12D3A` `tefEXCEPTION`; the list keeps the first key only). Consequences: no rotation of a passkey (its P-256 public key is on the ledger from registration, so rotation is the only way to limit quantum exposure), **no revocation of a lost or stolen device**, which keeps **full authority** on the account; every passkey of an account must be in its first and only `PasskeyListSet` (see L6). A `Batch` does not help: each inner `PasskeyListSet` hits the same insert. Fix, if the team decides to carry it (D7 says presentation only): in `doApply`, replace the `Passkeys` array of an existing entry instead of inserting, and allow removal (an empty list, or a delete transaction, updating the owner count); in a separate `fix:` commit with its test, like P5. **Decision needed (Sofiane)**: carry the fix in our node for W2, or keep it for the presentation only.
@@ -359,11 +384,11 @@ Recompiling after any `.macro` edit is heavy: make all macro edits (amendment, f
 |---|---|---|
 | Session key of a Mac account (P-256, WebCrypto non-extractible) | 65 bytes `0xF6 ‖ X ‖ Y`; `SessionKey` = `RIPEMD160(SHA256(pubkey))` | ECDSA-SHA256 over `encodeForSigning(tx)` (prefix `STX\0`), WebCrypto `r‖s` → **low-S** → **strict DER** → `TxnSignature` |
 | Session key of a Ledger account (ML-DSA-44, generated in the client by `@noble/post-quantum` 0.7.1, D13) | 1 312 bytes, no prefix; `SessionKey` = `RIPEMD160(SHA256(pubkey))` over the 1 312 bytes | 2 420 bytes; **pure** ML-DSA-44, empty context, randomized, over `encodeForSigning(tx)` (prefix `STX\0`) → `TxnSignature` |
-| Passkey | same 65-byte format; `SigningPubKey` = passkey key | `navigator.credentials.get` with `challenge` = signed data; also **normalize `PasskeySignature.Signature` to low-S, strict DER** (not in the signed data, and the node accepts high-S today) |
+| Passkey | same 65-byte format; `SigningPubKey` = passkey key | `navigator.credentials.get` with `challenge` = signed data; also **normalize `PasskeySignature.Signature` to low-S, strict DER** (not in the signed data; required once `fixP256StrictDer` is enabled, accepted high-S without it) |
 | ML-DSA-44 root key (on the device) | **1 312 bytes, no prefix** | 2 420 bytes; **pure** ML-DSA, empty context, randomized; the node runs `crypto_sign_verify(sig, m = full signing data, ctx empty)`, i.e. `M' = 0x00 ‖ 0x00 ‖ M`. Account derivation from an XRPL seed is non-standard (no `k ‖ l` domain): irrelevant, the device derives its key with SLIP-21 (§7.7) and the client generates session keys from a random seed |
 | secp256k1 / Ed25519 | standard | standard |
 
-`Quantum` / ML-DSA keys need no amendment gating (the symbol `featureQuantum` is referenced nowhere in code). `ForceQuantum` does not exist on alphanet and was withdrawn by its author; we do not build it.
+`Quantum` / ML-DSA keys need no amendment gating for ordinary signatures; the only use of `featureQuantum` in the tree is the session key-type check of §6.5 (an ML-DSA-44 session key cannot sign while `Quantum` is off, nor a P-256 one while `Passkey` is off). `ForceQuantum` does not exist on alphanet and was withdrawn by its author; we do not build it.
 
 **ML-DSA-44 session keys (D14).** The amendment accepts them with no code specific to their key type: every step it relies on is generic in the imported tree (cited at `develop` `695e6df`, whose `rippled/` is the import plus the P5 fix and the jtx WebAuthn helper, #12 and #13).
 
@@ -415,9 +440,13 @@ TDD: every task starts with the failing test. Assertions name the exact result c
 | 19 | `AccountDelete` with sessions present deletes them |
 | 20 | Session key types: P-256 (raw, low-S, strict DER), Ed25519, secp256k1, ML-DSA-44 (1 312-byte key, 2 420-byte signature). ML-DSA-44 is MVP (D14): a Ledger account opens a session signed by its ML-DSA-44 `RegularKey`, an ML-DSA-44 session key signs, the own close by an ML-DSA-44 session key, and the refusals of §6.14 with their codes (another account `tefBAD_AUTH`; a corrupted signature or a 1 312-byte value that is not a key refused by the signature check, `invalidTransaction`; `SessionKey` = the ML-DSA-44 `RegularKey` `tecNO_PERMISSION`; an opening signed by the disabled master `tefMASTER_DISABLED`) |
 | 21 | Invariants: each rule of §6.7 has a test that mutates the view to violate it and expects the invariant failure result of the pass (`tecINVARIANT_FAILED`; `tefINVARIANT_FAILED` when the reset pass fails too), modelled on `InvariantsBeneficiary_test` |
-| 22 | TxQ: a queued session-signed payment whose session expires or is deleted is dropped |
+| 22 | TxQ: a queued session-signed payment whose session expires or is deleted is dropped; the owner's queued close is displaced by a session-signed payment neither at twice the base fee nor at the ceiling |
 | 23 | Accounting paths: `tecNO_DST_INSUF_XRP` (from preclaim), a `tec` from `doApply`, and the `tecINVARIANT_FAILED` reset path each leave `SessionSpent` equal to the fee (or fee + amount on success), invariant satisfied |
 | 24 | `ledger_entry` (by account+key and by index) and `account_objects`; sponsorship decision (§6.10) taken in N2; `nonObligationDeleter` entry; pseudo-accounts rejected |
+| 25 | `SessionMaxPerTx`: without a cap `temMALFORMED`; 0, negative, IOU or above the cap `temBAD_AMOUNT`; one drop above it `tefSESSION_LIMIT` with no fee; exactly at it `tesSUCCESS` |
+| 26 | `SessionWitness`: the account or the key `temMALFORMED`; a missing account `tecNO_TARGET`; no co-signature or one by another account `tefSESSION_NO_WITNESS` with no fee; co-signed by the witness's master key, then by its `RegularKey`: `tesSUCCESS`; by its master key once disabled: `tefSESSION_NO_WITNESS`; the own close needs none; `WitnessSignature` on any transaction without the amendment `temDISABLED` |
+| 27 | `SessionMaxTxCount`: 0 and `kMax + 1` `temMALFORMED`; `tes` and `tec` count in every mode; at the bound `tefSESSION_LIMIT` with no fee; the own close still passes |
+| 28 | Batch (suite `SigningSessionsBatch`): the owner opens, pays and revokes sessions inside a Batch; a session key as outer signer `tefSESSION_TX_NOT_ALLOWED`, as `BatchSigner` `tefBAD_AUTH`; a session-signed transaction with `tfInnerBatchTxn` refused |
 
 Upstream suites `Delegate`, `PasskeyListSet`, `AccountDelete`, `PassKey` green before and after, without any test removed. A moved delegable-type counter is re-pinned with justification in the commit (the Transia base already fails it: 73 vs 67 expected).
 
@@ -554,7 +583,7 @@ See §5.1. No `as any`; named constants; Node code uses `import xrpl from "xrpl"
 | `keys/mldsa.ts` | Ledger-account session key: a fresh ML-DSA-44 key per session with `@noble/post-quantum` 0.7.1 (kept in memory only), public key 1 312 B, account id `RIPEMD160(SHA256(pk))`, `sign(encodeForSigning(tx))`; also verifies the device's signatures as a cross-check |
 | `session.ts` | `buildSessionSet({account, mode, durationSec, permissions?, capDrops?, sessionKey})`, `buildSessionDelete(...)`, always sets `LastLedgerSequence` |
 | `node.ts` | JSON-RPC / WebSocket client (non-admin), `submit`, `account_info`, `ledger_entry` `signing_session`; surfaces the node's exact result code |
-| `errors.ts` | decoded `tef` / `tec` / `tem` with the node's code string, never a simulated message; knows the three new `tefSESSION_*` codes (UI text + the rule that produced them) |
+| `errors.ts` | decoded `tef` / `tec` / `tem` with the node's code string, never a simulated message; knows the four new `tefSESSION_*` codes (UI text + the rule that produced them) |
 
 A single command runs the whole flow against a real node (acceptance of W1).
 
@@ -612,7 +641,7 @@ Edge cases are tests, not prose: pseudo-accounts, tickets, a regular key shared 
 2. A proof transaction (a harmless `AccountSet` with no change, or a `TicketCreate`) **signed by the ML-DSA key**. If it is not accepted, stop.
 3. `AccountSet` with `asfDisableMaster`, **signed by the master key** (only the master key can set it: `tecNEED_MASTER_KEY` otherwise).
 
-**Safety rules.** Step 3 is refused unless (a) step 2 was accepted, (b) the ML-DSA key is proven recoverable (derived twice from the seed on the device, including after reinstalling the app) or a post-quantum backup exists (for example a signer list), because losing the key after step 3 locks the account for good, and (c) the other authorities of rule 3 above were reviewed. The migration runs only on a network whose build accepts ML-DSA keys, checked **by trying on a throwaway account (spike K3), not by an amendment name** (`featureQuantum` is referenced nowhere in the code); elsewhere it reports readiness and stops. Tests use fresh accounts only.
+**Safety rules.** Step 3 is refused unless (a) step 2 was accepted, (b) the ML-DSA key is proven recoverable (derived twice from the seed on the device, including after reinstalling the app) or a post-quantum backup exists (for example a signer list), because losing the key after step 3 locks the account for good, and (c) the other authorities of rule 3 above were reviewed. The migration runs only on a network whose build accepts ML-DSA keys, checked **by trying on a throwaway account (spike K3), not by an amendment name** (`featureQuantum` gates only ML-DSA-44 session keys, §6.5, not ML-DSA signatures); elsewhere it reports readiness and stops. Tests use fresh accounts only.
 
 **Screen "Quantum"** (`apps/web`): paste an address, see the report with the first-exposure transaction of each key, then **Migrate with the Ledger** (three clear-signed steps on the Stax) on the AlphaNet. Mainnet is read-only.
 
@@ -622,7 +651,7 @@ Edge cases are tests, not prose: pseudo-accounts, tickets, a regular key shared 
 
 **A Device Management Kit adapter for `xrpl-connect`** (XRPL Commons). Their Ledger adapter (`packages/adapters/ledger`) uses the legacy ledgerjs stack (`@ledgerhq/hw-app-xrp`, `hw-transport-webhid` and `webusb`), plain `signTransaction`, no preview. A new package `packages/adapters/ledger-dmk` implements `WalletAdapter` on `@ledgerhq/device-management-kit`, `device-signer-kit-xrp` and `device-transport-kit-web-hid`; keeps the legacy adapter untouched; adds `previewSignature(tx)` (`clear`, `blind` or `refused`, from the app version and a table of clear-signed types) and session opening when the node advertises `SigningSessions`. Process (their CONTRIBUTING and `docs/guide/adapter-integration.md`): open an issue first, **fork** the repository, Node 20.19+/22.18+/24.11+, pnpm 10.18.3, Vite+ (`pnpm exec vp install`, `vp run test`, `vp check`), scoped conventional commits (`feat(adapter-ledger-dmk): ...`). **UNVERIFIED**: the exact `WalletAdapter` interface and event contract (read `packages/core` and the Xaman reference adapter first), and whether the maintainers prefer a replacement or a sibling package.
 
-**`@carbs/sessions`** (`packages/core`): the library of §8.2, installable, with typed errors including the three `tefSESSION_*` codes.
+**`@carbs/sessions`** (`packages/core`): the library of §8.2, installable, with typed errors including the four `tefSESSION_*` codes.
 
 **A sessions template for `create-xrp`** (scaffold-xrp generates a Next.js or Nuxt app with `xrpl-connect`; it is a generator, not a repository to fork): a Session page next to the payment form. Contribution path: `packages/create-xrp` of `XRPL-Commons/scaffold-xrp`. The front of carbs itself starts from the generated Nuxt template ([ADR 0007](docs/adr/0007-front-from-create-xrp.md)); WebAuthn, WebHID and WebCrypto are client-only (`ssr: false`).
 
@@ -833,6 +862,11 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 | `SessionCap` | AMOUNT 47 |
 | `SessionSpent` | AMOUNT 48 |
 | `SessionDuration` | UINT32 114 |
+| `SessionMaxPerTx` | AMOUNT 49 |
+| `SessionWitness` | ACCOUNT 35 |
+| `SessionMaxTxCount` / `SessionTxCount` | UINT32 115 / 116 |
+| `WitnessSignature` | OBJECT 43, signed with prefix `WTS\0` |
+| `tefSESSION_EXPIRED` / `_LIMIT` / `_TX_NOT_ALLOWED` / `_NO_WITNESS` | -172 / -171 / -170 / -169 |
 | `ltSIGNING_SESSION` | `0x009A` |
 | keylet namespace | `'z'` = `0x007A` |
 | `SigningSessionSet` / `SigningSessionDelete` | 130 / 131 |
@@ -840,6 +874,7 @@ Keep PRs small and brief (reviewers value brevity). rippled merges PRs with **sq
 | `kMaxSessionDuration` | 600 s |
 | `kSessionFeeMultiple` | 1000 |
 | `kSessionMaxLedgerWindow` | 256 |
+| `kMaxSessionTxCount` | 100 000 |
 | `kPermissionMaxSize` | 10 |
 | P-256 public key | 65 bytes `0xF6 ‖ X ‖ Y` |
 | ML-DSA-44 | public key 1 312 B (no prefix), signature 2 420 B, secret key 2 560 B |
