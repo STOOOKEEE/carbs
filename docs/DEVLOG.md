@@ -501,6 +501,15 @@ Final review gate, round 2 (an independent reviewer, model Opus, read-only, on `
 
 **Bugs & fix.** The first witness test disabled the witness's master key with its regular key: `tecNEED_MASTER_KEY`; only the master key may set `asfDisableMaster`.
 
+## 2026-10-24: audit 24.10, section A (client and web nits)
+
+- **`signWithSessionKey` needs the current ledger.** `currentLedger` was optional, and without it the `LastLedgerSequence` window (`kSessionMaxLedgerWindow`) was not checked although the node refuses a transaction outside it. It is now required, and a missing or non-integer value is refused at run time too (for JavaScript callers). The one caller outside the tests (`packages/core/spikes/k1-local.ts`) already passed it.
+- **Exposure report of a session key.** A key that signed for the account and is none of its standing authorities was reported as "not one of its current authorities"; for the key of a live signing session that is wrong. The reason now says that such a key, while its session lives, holds an authority bounded by that session (mode, cap, expiry). Only the text changed; the finding is still reported and not counted.
+- **A vacuous assertion in `packages/ledger/src/ledger.test.ts`** compared the ML-DSA seed with itself. It now recomputes SLIP-0021 by hand with `@noble/hashes` (master node from `"Symmetric key seed"`, child for `0x00 ‖ "carbs ML-DSA-44"`, last 32 bytes) and compares; a mutant taking the first 32 bytes fails it.
+- **CSP `form-action 'self'`** (it does not fall back to `default-src`): in the header, the meta fallback, `vercel.json` and `docs/DEPLOY.md`.
+- **Wording.** The Ledger profile of the Account screen said "Every own-authority transaction is signed on the device" also on the simulation; it now says "signed by the simulated Stax (software keys, no device involved)" when the device is simulated. The Mac profile never claimed device signing, and `apps/web/pages/index.vue` makes no "signed on the device" claim (its headline is decision D16, left as it is).
+- **Tests:** each change has a test that failed before it (the session refusal, also as a type error; the exposure reason; the CSP directive; the Account wording) and passes after; `pnpm format:check`, `pnpm typecheck` and `pnpm test` pass. Nothing was run in a browser.
+
 ## 2026-10-24: audit 24.10, section A5 (`pnpm demo` and its faucet)
 
 - **The genesis seed reached every child process (audit finding A5, confirmed).** `scripts/src/demo.ts` spawned `xrpld`, the closer and the Nuxt dev server with `{ ...process.env, ...env }`, so each of them inherited `GENESIS_SEED`; none needs it, because the faucet that signs with it runs in the demo process. Children now get `childEnv(process.env, env)` (`scripts/src/child-env.ts`), which drops `GENESIS_SEED` even when a caller passes it again, and the demo removes it from its own environment once the signer is built.

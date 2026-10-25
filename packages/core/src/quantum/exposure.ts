@@ -35,7 +35,11 @@ export type AuthorityRole =
   | "beneficiary"
   | "delegate"
   | "signer-list"
-  /** A key that signed for the account and holds no authority now (a former regular key, a session key). */
+  /**
+   * A key that signed for the account and is none of its standing authorities: a former regular
+   * key, or a session key, which holds the authority of its session, and only that, while the
+   * session lives.
+   */
   | "former-key";
 
 /** The transaction that first revealed a key. */
@@ -696,8 +700,9 @@ export async function checkExposure(
     reasons.push("the account does not exist in the validated ledger of this node");
   }
 
-  // Keys that signed for the account but hold no authority now (a former regular key, a session
-  // key, a passkey that is no longer listed): reported, not counted.
+  // Keys that signed for the account but are none of its standing authorities (a former regular
+  // key, a session key, a passkey that is no longer listed): reported, not counted. A session key
+  // keeps the authority of its session until the session ends or expires, bounded by it.
   const known = new Set(findings.map((f) => f.address));
   for (const [keyAddress, reveal] of scan.keyReveals) {
     if (known.has(keyAddress) || keyAddress === address) continue;
@@ -711,7 +716,9 @@ export async function checkExposure(
       active: false,
       survivesDisableMaster: false,
       firstReveal: reveal,
-      reasons: ["a key that signed for this account and is not one of its current authorities"],
+      reasons: [
+        "a key that signed for this account and is not one of its standing authorities; if it is the key of a live signing session, it holds an authority bounded by that session (its mode, cap and expiry) until the session ends",
+      ],
     });
   }
 

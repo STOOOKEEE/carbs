@@ -25,6 +25,7 @@ export function buildCspDirectives(options: CspOptions): string[] {
     `connect-src ${[...new Set(connect)].join(" ")}`,
     "object-src 'none'",
     "base-uri 'none'",
+    "form-action 'self'",
     "frame-ancestors 'none'",
   ];
 }
