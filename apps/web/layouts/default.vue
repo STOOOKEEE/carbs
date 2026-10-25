@@ -66,7 +66,6 @@ useHead({ htmlAttrs: { "data-theme": computed(() => (ledgerMode.value ? "ledger"
             to="/"
             class="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight"
           >
-            <BrandMark />
             carbs
           </NuxtLink>
           <nav aria-label="Screens" class="order-last w-full sm:order-none sm:w-auto">
