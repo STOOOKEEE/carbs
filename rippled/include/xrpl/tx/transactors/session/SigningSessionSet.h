@@ -17,6 +17,9 @@ namespace xrpl {
 class SigningSessionSet : public Transactor
 {
 public:
+    // Not a blocker: an opening grants a new key authority and removes none,
+    // and the key cannot already have authority (FIANSO-SPEC 6.3), so no
+    // transaction already queued changes validity.
     static constexpr auto kConsequencesFactory = ConsequencesFactoryType::Normal;
 
     explicit SigningSessionSet(ApplyContext& ctx) : Transactor(ctx)

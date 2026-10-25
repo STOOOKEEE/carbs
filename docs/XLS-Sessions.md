@@ -179,7 +179,7 @@ Case 23 exercises each path on a real transaction:
 
 A leaked mode-C key can burn fees only until the cap stops it: the anti-drain loop test ends in `tefSESSION_LIMIT` after ten fee-burning payments.
 
-The transaction queue may admit several session transactions against the same `SessionSpent`. Each one is checked again when it is applied (`rippled/src/xrpld/app/misc/detail/TxQ.cpp:342`, `:632`), so the extra ones end in `tefSESSION_LIMIT`. A queued transaction whose session has expired, or has been deleted, is dropped without claiming a fee (case 22).
+The transaction queue may admit several session transactions against the same `SessionSpent`. Each one is checked again when it is applied (`rippled/src/xrpld/app/misc/detail/TxQ.cpp:342`, `:632`), so the extra ones end in `tefSESSION_LIMIT`. A queued transaction whose session has expired, or has been deleted, is dropped without claiming a fee (case 22). `SigningSessionDelete` is a queue blocker, like `SetRegularKey`: it is queued only alone in its account's queue, and nothing of the account queues behind it; a close that pays the open ledger's fee still applies at once. `SigningSessionSet` is not a blocker, since an opening removes no authority.
 
 ## 9. The `ValidSigningSession` invariant
 

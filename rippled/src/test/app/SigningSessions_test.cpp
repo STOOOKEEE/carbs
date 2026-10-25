@@ -19,6 +19,7 @@
 #include <test/jtx/pay.h>
 #include <test/jtx/regkey.h>
 #include <test/jtx/sendmax.h>
+#include <test/jtx/seq.h>
 #include <test/jtx/session.h>
 #include <test/jtx/sig.h>
 #include <test/jtx/sponsor.h>
@@ -1743,6 +1744,94 @@ class SigningSessions_test : public beast::unit_test::Suite
         BEAST_EXPECT(env.balance(alice) == before - deleteFee);
     }
 
+    // A queued SigningSessionDelete is a blocker, like SetRegularKey: once it
+    // applies, the transactions its session key signed lose their authority
+    // and would be dropped without claiming a fee, so nothing may queue behind
+    // it, and it does not queue behind other transactions of the account. A
+    // SigningSessionSet removes no authority (spec 6.3 refuses a session for
+    // a key that already has one), so it stays a normal transaction.
+    void
+    testQueueBlocker(FeatureBitset features)
+    {
+        testcase("transaction queue: the close is a blocker");
+        using namespace jtx;
+
+        Env env(*this, makeConfig({{Keys::kMinimumTxnInLedgerStandalone, "3"}}), features);
+        Account const alice{"alice"}, bob{"bob"}, carol{"carol"}, dave{"dave"};
+        Account const key1{"key1"}, key2{"key2"}, key3{"key3"};
+        env.fund(XRP(50000), noripple(alice, bob, carol, dave));
+        env.close();
+        env(session::set(alice, key1, 600), Txflags(tfAllTransactions));
+        env(session::set(alice, key2, 600), Txflags(tfAllTransactions));
+        env.close();
+
+        auto fillOpenLedger = [&] {
+            auto const metrics = env.app().getTxQ().getMetrics(*env.current());
+            std::array<Account const*, 3> const fillers{&bob, &carol, &dave};
+            for (std::size_t i = metrics.txInLedger; i <= metrics.txPerLedger; ++i)
+                env(noop(*fillers[i % fillers.size()]));
+        };
+        auto queuedFor = [&](Account const& account) {
+            return env.app().getTxQ().getAccountTxs(account.id()).size();
+        };
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+        // The node keeps a refused local transaction and tries it again on
+        // the next open ledgers; ending it with this ledger keeps it out of
+        // the balances below.
+        auto const thisLedger = [&] { return LastLedgerSeq(env.current()->seq()); };
+
+        // A queued close blocks the account's queue: a session-signed
+        // payment, and one signed by the master key, are refused.
+        fillOpenLedger();
+        auto seq = env.seq(alice);
+        env(session::del(alice, key1), Ter(terQUEUED));
+        env(pay(alice, bob, XRP(1)),
+            Sig(key1),
+            Seq(seq + 1),
+            thisLedger(),
+            Ter(telCAN_NOT_QUEUE_BLOCKED));
+        env(pay(alice, bob, XRP(1)), Seq(seq + 1), thisLedger(), Ter(telCAN_NOT_QUEUE_BLOCKED));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(!sessionEntry(env, alice, key1));
+
+        // A close, the own close included, does not queue behind another
+        // transaction of the account.
+        fillOpenLedger();
+        seq = env.seq(alice);
+        env(pay(alice, bob, XRP(1)), Sig(key2), lls(), Ter(terQUEUED));
+        env(session::del(alice, key2), Seq(seq + 1), thisLedger(), Ter(telCAN_NOT_QUEUE_BLOCKS));
+        env(session::del(alice, key2),
+            Sig(key2),
+            Seq(seq + 1),
+            thisLedger(),
+            Ter(telCAN_NOT_QUEUE_BLOCKS));
+        BEAST_EXPECT(queuedFor(alice) == 1);
+        // The owner can still revoke at once: a close at the account's
+        // sequence that pays the open ledger's fee is applied directly, as a
+        // SetRegularKey is, and the queued payment it overtakes is dropped.
+        auto const before = env.balance(alice);
+        env(session::del(alice, key2), Seq(seq), Fee(XRP(1)));
+        BEAST_EXPECT(!sessionEntry(env, alice, key2));
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(env.balance(alice) == before - XRP(1));
+
+        // A queued opening is not a blocker.
+        fillOpenLedger();
+        seq = env.seq(alice);
+        env(session::set(alice, key3, 600), Txflags(tfAllTransactions), Ter(terQUEUED));
+        env(pay(alice, bob, XRP(1)), Seq(seq + 1), Ter(terQUEUED));
+        BEAST_EXPECT(queuedFor(alice) == 2);
+        env.close();
+        env.close();
+        BEAST_EXPECT(queuedFor(alice) == 0);
+        BEAST_EXPECT(sessionEntry(env, alice, key3));
+    }
+
     // Case 24: a session cannot sign for a pseudo-account (the refusal of
     // Transactor::checkSign that the session path redoes). The state is
     // written into the open ledger: a pseudo-account never opens a session.
@@ -2003,6 +2092,7 @@ public:
         testModeCAntiDrain(all);
         testFirewall(all);
         testQueue(all);
+        testQueueBlocker(all);
         testPseudoAccount(all);
         testFeeSponsoredOpen(all);
         testRegularKeyAndLastLedger(all);
