@@ -4,8 +4,10 @@
 #include <test/jtx/acctdelete.h>
 #include <test/jtx/amount.h>
 #include <test/jtx/batch.h>
+#include <test/jtx/credentials.h>
 #include <test/jtx/delegate.h>
 #include <test/jtx/delivermin.h>
+#include <test/jtx/did.h>
 #include <test/jtx/envconfig.h>
 #include <test/jtx/fee.h>
 #include <test/jtx/flags.h>
@@ -599,6 +601,8 @@ class SigningSessions_test : public beast::unit_test::Suite
               "PasskeyListSet",
               "SubscriptionSet",
               "SponsorshipSet",
+              "CredentialCreate",
+              "DIDSet",
               // Granular permissions of a non-delegable type.
               "AccountDomainSet",
               "AccountTransferRateSet"})
@@ -721,6 +725,59 @@ class SigningSessions_test : public beast::unit_test::Suite
             Sig(key),
             lls(),
             Ter(tefSESSION_TX_NOT_ALLOWED));
+        // Decision D4: a credential issued to a third party and a DID outlive
+        // the session and grant rights no amount fixed at signing bounds.
+        env(credentials::create(bob, alice, "KYC"),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(did::setValid(alice), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
+        env.close();
+        BEAST_EXPECT(!env.le(credentials::keylet(bob, alice, "KYC")));
+        BEAST_EXPECT(!env.le(keylet::did(alice.id())));
+    }
+
+    // Decision D4, mode P: a session cannot list CredentialCreate or DIDSet
+    // (testPermissions), and the exclusion is checked again at use, so a
+    // session entry that lists them anyway still cannot sign them. Such an
+    // entry is written into the open ledger.
+    void
+    testModePExcludedAtUse(FeatureBitset features)
+    {
+        testcase("mode P exclusions at use");
+        using namespace jtx;
+
+        Env env{*this, features};
+        Account const alice{"alice"}, bob{"bob"}, key{"key"};
+        env.fund(XRP(10000), alice, bob);
+        env.close();
+        env(session::set(alice, key, 600), session::Permissions({"Payment"}));
+        env.close();
+
+        env.app().getOpenLedger().modify([&](OpenView& view, beast::Journal) {
+            auto const sle = view.read(sessionKeylet(alice, key));
+            if (!sle)
+                return false;
+            auto replacement = std::make_shared<SLE>(*sle);
+            STArray permissions(sfPermissions, 3);
+            for (auto const type : {ttPAYMENT, ttCREDENTIAL_CREATE, ttDID_SET})
+            {
+                STObject permission = STObject::makeInnerObject(sfPermission);
+                permission.setFieldU32(sfPermissionValue, type + 1);
+                permissions.push_back(std::move(permission));
+            }
+            replacement->setFieldArray(sfPermissions, permissions);
+            view.rawReplace(replacement);
+            return true;
+        });
+        auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+
+        env(pay(alice, bob, XRP(1)), Sig(key), lls());
+        env(credentials::create(bob, alice, "KYC"),
+            Sig(key),
+            lls(),
+            Ter(tefSESSION_TX_NOT_ALLOWED));
+        env(did::setValid(alice), Sig(key), lls(), Ter(tefSESSION_TX_NOT_ALLOWED));
     }
 
     // Case 10: the session signs strictly before Expiration, measured on the
@@ -1529,11 +1586,9 @@ class SigningSessions_test : public beast::unit_test::Suite
             "ConfidentialMPTSend",
             "CouponClaim",
             "CredentialAccept",
-            "CredentialCreate",
             "CredentialDelete",
             "DepositPreauth",
             "DIDDelete",
-            "DIDSet",
             "EscrowCancel",
             "EscrowCreate",
             "EscrowFinish",
@@ -1990,6 +2045,7 @@ public:
         testPermissions(all);
         testCap(all);
         testModeA(all);
+        testModePExcludedAtUse(all);
         testExpiry(all);
         testRuleOrder(all);
         testFeeCeiling(all);
