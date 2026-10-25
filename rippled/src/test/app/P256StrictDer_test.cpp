@@ -243,6 +243,54 @@ class P256StrictDer_test : public beast::unit_test::Suite
             env, jt, {edited(jt, inSigner(flipS)), edited(jt, inSigner(appendByte))}, bob, strict);
     }
 
+    // A PasskeySignature next to a key that is not P-256, or next to a
+    // multi-signature, is ignored by the signature check: before the fix,
+    // anyone can add one to a signed transaction and give it a new ID.
+    void
+    testPasskeySignatureWithoutP256(FeatureBitset features, bool strict)
+    {
+        testcase(
+            std::string("PasskeySignature without a P-256 key, ") + (strict ? "with" : "without") +
+            " the fix");
+        using namespace test::jtx;
+
+        Env env{*this, envconfig(), strict ? features : features - fixP256StrictDer};
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const carol{"carol"};
+        Account const passkey{"passkey", KeyType::P256};
+        env.fund(XRP(1000), alice, bob, carol);
+        env.close();
+        env(passkeyListSet(bob, passkey, kPasskeyId));
+        env(signers(bob, 1, {{carol, 1}}));
+        env.close();
+
+        // Any well-formed PasskeySignature: one bob's passkey made.
+        auto const passkeySigned =
+            env.jt(pay(bob, alice, XRP(1)), WebAuthnSig(passkey, kPasskeyId));
+        auto const passkeySignature = passkeySigned.jv[sfPasskeySignature.jsonName];
+        auto const withPasskeySignature = [&](json::Value& jv) {
+            jv[sfPasskeySignature.jsonName] = passkeySignature;
+        };
+
+        auto const single = env.jt(pay(alice, bob, XRP(10)));
+        auto const multi = env.jt(pay(bob, alice, XRP(10)), Msig(carol), Fee(XRP(1)));
+        auto& router = env.app().getHashRouter();
+        auto const rules = env.current()->rules();
+        for (auto const* jt : {&single, &multi})
+        {
+            auto const variant = edited(*jt, withPasskeySignature);
+            if (!BEAST_EXPECT(jt->stx && variant.stx))
+                return;
+            BEAST_EXPECT(variant.stx->getTransactionID() != jt->stx->getTransactionID());
+            BEAST_EXPECT(!isSignatureVerdictCacheable(*variant.stx, rules) == !strict);
+            BEAST_EXPECT(
+                checkValidity(router, *variant.stx, rules).first ==
+                (strict ? Validity::SigBad : Validity::Valid));
+            BEAST_EXPECT(checkValidity(router, *jt->stx, rules).first == Validity::Valid);
+        }
+    }
+
     // No verdict on a P-256 signature crosses the activation, in either
     // direction; a secp256k1 signature is cached as before.
     void
@@ -293,6 +341,7 @@ public:
             testSingleSign(all, strict);
             testWebAuthn(all, strict);
             testMultiSign(all, strict);
+            testPasskeySignatureWithoutP256(all, strict);
         }
         testCacheAcrossTheFix(all);
     }

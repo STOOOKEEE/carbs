@@ -235,10 +235,11 @@ bool
 isSignatureVerdictCacheable(STTx const& tx, Rules const& rules)
 {
     // fixP256StrictDer refuses P-256 signatures that verified before it (not
-    // strict DER, or a high S), wherever a P-256 key signs. Until it is
-    // enabled, no verdict on such a transaction is kept, so none crosses the
-    // activation.
-    if (!rules.enabled(fixP256StrictDer) && hasP256Key(tx))
+    // strict DER, or a high S), wherever a P-256 key signs, and a
+    // PasskeySignature that no P-256 key uses. Until it is enabled, no
+    // verdict on such a transaction is kept, so none crosses the activation.
+    if (!rules.enabled(fixP256StrictDer) &&
+        (hasP256Key(tx) || tx.isFieldPresent(sfPasskeySignature)))
         return false;
 
     // Only the WebAuthn branch of signature verification changes with

@@ -73,7 +73,8 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity);
  * (a P-256 SigningPubKey with sfPasskeySignature) verifies depends on the
  * platform, and the amendment changes the verdict. Until fixP256StrictDer is
  * enabled, a P-256 signature anywhere in the transaction is parsed laxly, and
- * the amendment refuses some that verified. checkValidity then keeps no
+ * a PasskeySignature no P-256 key uses is ignored; the amendment refuses some
+ * of these transactions that verified. checkValidity then keeps no
  * verdict on such a transaction, and its callers do not mark it BAD.
  */
 bool

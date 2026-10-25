@@ -551,6 +551,13 @@ verifySigObject(
         if (!keyType)
             return false;
 
+        // A PasskeySignature next to a key that is not P-256 is not checked,
+        // so before fixP256StrictDer anyone could add one to a signed
+        // transaction and give it a new ID.
+        if (strictP256Der && *keyType != KeyType::P256 &&
+            sigObject.isFieldPresent(sfPasskeySignature))
+            return false;
+
         if (*keyType == KeyType::P256 && sigObject.isFieldPresent(sfPasskeySignature))
         {
             auto const& passkeySig =
@@ -629,6 +636,10 @@ multiSignHelper(
     // being present would indicate that the transaction is signed both ways.
     if (sigObject.isFieldPresent(sfTxnSignature))
         return std::unexpected("Cannot both single- and multi-sign.");
+
+    // Nor a PasskeySignature, which nothing here checks (fixP256StrictDer).
+    if (strictP256Der && sigObject.isFieldPresent(sfPasskeySignature))
+        return std::unexpected("Cannot both multi-sign and sign with a passkey.");
 
     STArray const& signers{sigObject.getFieldArray(sfSigners)};
 
