@@ -31,6 +31,8 @@
 #include "globals.h"
 #include "handle_swap_sign_transaction.h"
 #include "readers.h"
+#include "session_policy.h"
+#include "session_policy_refusal.h"
 #include "swap.h"
 #include "transaction_types.h"
 #include "xrp_helpers.h"
@@ -200,7 +202,12 @@ void review_transaction(parseResult_t* transaction, action_t on_approve,
             finalize_exchange_sign_transaction(false);
         }
     } else {
-        if (blind_sign) {
+        // carbs: the session policy is checked before any review is shown
+        session_policy_t policy = N_storage.session_policy;
+        session_policy_verdict_t verdict;
+        if (!session_policy_check_transaction(&policy, &verdict)) {
+            ui_session_policy_refusal(&verdict);
+        } else if (blind_sign) {
             if (N_storage.allow_blind_sign == BlindSignDisabled) {
                 ui_error_blind_signing();
             } else {

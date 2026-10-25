@@ -36,11 +36,14 @@ uint8_t get_priority_score(field_t* field) {
         return 0;
     }
 
-    // The session key is what a session review is about: keep it next to the
-    // account (Account is serialized before it, and the sort is stable).
+    // The session key is what a session review is about: keep it, and the
+    // Agent ID row appended for it, next to the account (Account is
+    // serialized before the key, the row is appended last, and the sort is
+    // stable).
     if (field->data_type == STI_ACCOUNT &&
         (field->id == XRP_ACCOUNT_ACCOUNT ||
-         field->id == XRP_ACCOUNT_SESSION_KEY)) {
+         field->id == XRP_ACCOUNT_SESSION_KEY ||
+         field->id == XRP_ACCOUNT_AGENT_ID)) {
         return 1;
     }
 

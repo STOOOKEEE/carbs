@@ -269,6 +269,8 @@ const char* resolve_field_name(field_t* field) {
                 return "Session key";
             case XRP_ACCOUNT_SESSION_WITNESS:
                 return "Witness";
+            case XRP_ACCOUNT_AGENT_ID:
+                return "Agent ID";
         }
     }
 

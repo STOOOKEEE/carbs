@@ -29,11 +29,11 @@ The signing data is `STX\0 ‖ signing fields`, with `SigningPubKey` = the 1 312
 
 ### 1.3 Status words
 
-`0x9000` success · `0x6985` rejected by the user, or blind signing needed while disabled in the settings · `0x6700` too long · `0x6A80` bad data (missing prefix, parse failure on the ML-DSA path, an `0x11` chunk while a review is on screen, or reviewed bytes that changed) · `0x6A81` bad BIP32 path · `0x6B00` bad P1/P2 or chunk index · `0x6982` no signature to read · `0x6F00` internal error (key derivation or signing failed) · `0x6D00` unknown instruction · `0x6E00` unknown class · `0x68xx` parse error on the classical path (`0x6800 | code`, `ledger-app/src/apdu/messages/sign_transaction.c:246-249`). Sources: `ledger-app/src/pq/pq_root.c:48-54`, `ledger-app/src/apdu/entry.c:37`, `:67`. The client raises `DeviceError` with the status word.
+`0x9000` success · `0x6985` rejected by the user, or blind signing needed while disabled in the settings · `0x6700` too long · `0x6A80` bad data (missing prefix, parse failure on the ML-DSA path including a refused session transaction, an `0x11` chunk while a review is on screen, or reviewed bytes that changed) · `0x6A81` bad BIP32 path · `0x6B00` bad P1/P2 or chunk index · `0x6982` no signature to read · `0x6F00` internal error (key derivation or signing failed) · `0x6D00` unknown instruction · `0x6E00` unknown class · `0x6815` session transaction refused because it cannot be clear-signed (section 6) · `0x68xx` parse error on the classical path (`0x6800 | code`, `ledger-app/src/apdu/messages/sign_transaction.c:246-249`). Sources: `ledger-app/src/pq/pq_root.c:48-54`, `ledger-app/src/apdu/entry.c:37`, `:67`. The client raises `DeviceError` with the status word.
 
 ## 2. Screen lines
 
-The client predicts the review (`reviewLines(tx, defs)` in `packages/ledger/src/screen.ts`). Order: `Transaction Type`, `Account`, `Session key` (when present), then every shown field in serialization order, then the synthetic rows of `SigningSessionSet`: `Allows; XRP payments only, fees included` in mode C, then `Note` (`ledger-app/src/xrp/signing_session.h:34-46`, `ledger-app/src/xrp/xrp_parse.c:671-692`). A signed field that claims the id of either synthetic row is refused (`ledger-app/src/xrp/xrp_parse.c:633-639`; vectors `10-spoofed-note`, `13-spoofed-scope`). The note says only what the node refuses to every session, whatever its mode: a new key or signer (`SetRegularKey` and `SignerListSet` are not delegable, `rippled/include/xrpl/protocol/detail/transactions.macro:124`, `:173`; `PasskeyListSet` is excluded, `rippled/include/xrpl/tx/SigningSession.h:22-26`); in mode P a granular account permission (for example `AccountDomainSet`, `rippled/include/xrpl/protocol/detail/permissions.macro:29`) can still change the account, so the note does not claim more. The lines below are the device track's frozen vectors (`ledger-app/tests/standalone/testcases/*.txt`); `packages/ledger` reproduces each of them line for line in a test.
+The client predicts the review (`reviewLines(tx, defs)` in `packages/ledger/src/screen.ts`). Order: `Transaction Type`, `Account`, `Session key` and `Agent ID` (when present, section 6), then every shown field in serialization order, then the synthetic rows of `SigningSessionSet`: `Allows; XRP payments only, fees included` in mode C, then `Note` (`ledger-app/src/xrp/signing_session.h`, `ledger-app/src/xrp/xrp_parse.c`, `append_review_rows`). A signed field that claims the id of any synthetic row is refused (`ledger-app/src/xrp/xrp_parse.c`, `post_process_field`; vectors `10-spoofed-note`, `13-spoofed-scope`, `34-session-agent-id/04-spoofed-agent-id`). The note says only what the node refuses to every session, whatever its mode: a new key or signer (`SetRegularKey` and `SignerListSet` are not delegable, `rippled/include/xrpl/protocol/detail/transactions.macro:124`, `:173`; `PasskeyListSet` is excluded, `rippled/include/xrpl/tx/SigningSession.h:22-26`); in mode P a granular account permission (for example `AccountDomainSet`, `rippled/include/xrpl/protocol/detail/permissions.macro:29`) can still change the account, so the note does not claim more. The lines below are the device track's frozen vectors (`ledger-app/tests/standalone/testcases/*.txt`); `packages/ledger` reproduces each of them line for line in a test.
 
 `SigningSessionSet`, mode A (`30-signing-session-set/01-mode-all`):
 
@@ -41,6 +41,7 @@ The client predicts the review (`reviewLines(tx, defs)` in `packages/ledger/src/
 Transaction Type; Open session
 Account;          rPV7gv7mxunHkt5wHniAmZZsiTH9CDdVZK
 Session key;      rEmnmhwxmkDkj9jKiibNuXxP25VYHJ5Euy
+Agent ID;         A1E8-094F
 Network ID;       24100
 Allows;           All transactions
 Valid for;        10 minutes
@@ -48,9 +49,9 @@ Fee;              XRP 0.000012
 Note;             Cannot change keys or signers
 ```
 
-Mode P lists `Allows [1]` … `Allows [10]` (one permission each, by name, after `Fee`; `02-mode-permissions`, `04-ten-permissions`); mode C shows `Max spend; XRP 20` after `Fee`, and `Allows; XRP payments only, fees included` before the `Note` (`03-mode-cap`, `05-short-duration`, `12-cap-per-tx-and-witness`): the node lets a capped session sign a direct XRP payment and nothing else, and counts the fee against the cap. Durations: `10 minutes`, `5 minutes`, `1 minute`, `1 min 30 s`, `45 s` (`05-short-duration`). An unknown permission value, an unknown flag and a forged `Note` field make the app ask for blind signing or refuse (`06-` to `11-`). The client predicts `blind` for any `Flags` bit other than `tfFullyCanonicalSig` (hidden, as `is_flag_hidden` does) and, on `SigningSessionSet`, `tfAllTransactions` (shown as `Allows; All transactions`, also with `tfFullyCanonicalSig` set: `0x80010000`); for a permission value outside the app's name table (`ledger-app/src/xrp/session_permissions.c`, mirrored and checked in `packages/ledger`); and for more than 10 permissions. Tested on `07-unknown-flag` and `11-eleven-permissions` from their bytes, and on `06-unknown-permission` from a decoded form, because the codec cannot decode the value 999999 at all. Not predicted: `08-duplicate-flags` decodes to one `Flags` field, so the client predicts `clear` where the app goes blind; `09-truncated` and `10-spoofed-note` do not decode, so the simulated device refuses them rather than predicting a review.
+Mode P lists `Allows [1]` … `Allows [10]` (one permission each, by name, after `Fee`; `02-mode-permissions`, `04-ten-permissions`); mode C shows `Max spend; XRP 20` after `Fee`, then `Max per payment` (`SessionMaxPerTx`) and, after the amounts, `Witness` (`SessionWitness`) when present, and `Allows; XRP payments only, fees included` before the `Note` (`03-mode-cap`, `05-short-duration`, `12-cap-per-tx-and-witness`, `34-session-agent-id/01-agent-id`): the node lets a capped session sign a direct XRP payment and nothing else, and counts the fee against the cap. Durations: `10 minutes`, `5 minutes`, `1 minute`, `1 min 30 s`, `45 s` (`05-short-duration`). An unknown permission value, an unknown flag, an unknown field and a forged `Note`, `Allows` or `Agent ID` field make the app refuse (`06-` to `11-`, `13-spoofed-scope`, `34-session-agent-id/02-` to `04-`); the client's prediction for those is `refused`, never `blind` (section 6).
 
-`SigningSessionDelete` (`31-signing-session-delete/01-own-close`, `02-expired-by-third-party`): `Transaction Type; Close session`, `Account`, `Session key`, `Fee`, and `Owner` when a third party closes an expired session.
+`SigningSessionDelete` (`31-signing-session-delete/01-own-close`, `02-expired-by-third-party`): `Transaction Type; Close session`, `Account`, `Session key`, `Agent ID`, `Fee`, and `Owner` when a third party closes an expired session.
 
 `SetRegularKey` (`02-set-regular-key/01-basic`), step 1 of the migration:
 
@@ -101,3 +102,45 @@ Non-signing fields (`TxnSignature`, `Signers`, `PasskeySignature`) are never par
 3. On the Stax: confirm the review lines of section 2 for `SigningSessionSet` (the three modes), `SigningSessionDelete`, `SetRegularKey` and `AccountSet asfDisableMaster`, and photograph them.
 4. Sign the three migration steps of spike K3 on the device (W7) on a fresh AlphaNet account, then a `SigningSessionSet` signed by the device's ML-DSA key once a node with the amendment exists (W3).
 5. Measure the largest session and migration transactions against the 2 048-byte ML-DSA limit (K4, FIANSO-SPEC.md section 16 row 3).
+
+## 6. Agent ID and session refusal
+
+**Agent ID.** Every review of a `SigningSessionSet` or `SigningSessionDelete` (top level or inner transaction of a `Batch`) shows, right after `Session key`, a line `Agent ID; XXXX-XXXX`: the first 4 bytes of the `SessionKey` AccountID, in uppercase hex, as two groups of 4 characters joined by `-`. The AccountID bytes are the 20 bytes of the decoded r-address (base58 with the XRPL alphabet, without the `0x00` version byte and the 4-byte checksum), the same 20 bytes the transaction carries. The agent shows the same identifier for its session key, so the user can match the device screen to the agent. Example: `rEmnmhwxmkDkj9jKiibNuXxP25VYHJ5Euy` → AccountID `A1E8094FE22C…` → `A1E8-094F`. Host side (`decodeAccountID` of `ripple-address-codec`, `bytesToHex` of `packages/core/src/bytes.ts`):
+
+```ts
+const agentId = (address: string): string =>
+  bytesToHex(decodeAccountID(address).subarray(0, 4)).toUpperCase().replace(/^(.{4})/, "$1-");
+```
+
+The line is the app's own (`XRP_ACCOUNT_AGENT_ID`, `ledger-app/src/xrp/signing_session.h`): a signed field claiming its id is refused, like the synthetic `Note`.
+
+**Never blind-signed.** A session transaction the app cannot clear-sign (an unknown field, too many fields, an unknown permission value or flag, or a `Batch` holding one that would go blind) is refused even when the blind-signing setting is on: the device shows `Session transactions are never blind-signed` and answers `0x6815` on the classical path, `0x6A80` on the ML-DSA path (`ledger-app/src/xrp/xrp_parse.c`, `parse_tx`; `ledger-app/src/apdu/messages/sign_transaction.c`). A `Batch` is checked as far as its parsing went: an inner transaction after the point where parsing stopped is not known to the app.
+
+## 7. Session policy
+
+The user's own limits on the signing sessions the device agrees to open, stored in the device NVM (`session_policy_t` in `internal_storage_t`, `ledger-app/src/policy/session_policy.h`, `ledger-app/src/globals.h`). It is **edited only from the device settings**; the host can read it, never write it. Fresh install: all zero, policy off, nothing changes.
+
+**Settings** (`ledger-app/src/ui/main/session_policy_menu.c`), after the `Blind signing` page:
+
+| Setting (switch)   | Sub-text                          | Meaning when on                   |
+| ------------------ | --------------------------------- | --------------------------------- |
+| `Session policy`   | `Check sessions before review`    | the policy is checked             |
+| `All transactions` | `Allow sessions for any type`     | mode A (`tfAllTransactions`) allowed |
+| `Permissions`      | `Allow sessions with permissions` | mode P (`Permissions`) allowed    |
+| `Witness`          | `Require a session witness`       | `SessionWitness` must be present  |
+
+Then three limits, each a bar whose tap moves to the next preset: `Max spend: …` (no limit, XRP 10, 50, 100, 500), `Max per payment: …` (no limit, XRP 1, 5, 10, 50), `Max duration: …` (no limit, 1, 3, 5, 10 min).
+
+**Check.** On the classical path (`0x04`), when the policy is on, every `SigningSessionSet` (the transaction itself, or each inner transaction of a `Batch`) is checked before any review (`review_transaction`, `ledger-app/src/transaction/transaction.c`). Refused: mode A when not allowed; mode P (no flag, no `SessionCap`) when not allowed; `SessionCap` not XRP or above `Max spend`; under a `SessionCap`, `SessionMaxPerTx` missing, not XRP or above `Max per payment` (when that limit is set); `SessionDuration` missing or above `Max duration`; no `SessionWitness` when required. A limit at "no limit" is not checked. The device shows `Blocked by your session policy` with the reason (for example `Max spend XRP 500 is above XRP 50`, prefixed `Transaction n: ` for an inner transaction of a `Batch`), buttons `Back to home` / `Session policy settings` (Nano: `Blocked by your session policy` only), and answers **`0x6986`** at once. The ML-DSA path (`0x11`) does not check the policy yet.
+
+**`INS 0x08`: get session policy.** `P1 = P2 = 0x00` (else `0x6B00`), no data. Answer, 22 bytes, `0x9000` (`session_policy_serialize`, `ledger-app/src/policy/session_policy.c`; `ledger-app/src/apdu/messages/get_session_policy.c`):
+
+| Offset | Size | Field                                                                                   |
+| ------ | ---- | --------------------------------------------------------------------------------------- |
+| 0      | 1    | format version, `0x01`                                                                   |
+| 1      | 1    | flags: `0x01` policy on, `0x02` mode A allowed, `0x04` mode P allowed, `0x08` witness required |
+| 2      | 8    | max `SessionCap`, drops, big-endian; `0` = no limit                                      |
+| 10     | 8    | max `SessionMaxPerTx`, drops, big-endian; `0` = no limit                                 |
+| 18     | 4    | max `SessionDuration`, seconds, big-endian; `0` = no limit                               |
+
+Fresh install: `01` followed by 21 zero bytes.

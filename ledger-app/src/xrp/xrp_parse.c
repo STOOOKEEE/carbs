@@ -820,6 +820,11 @@ err_t post_process_field(parseContext_t* context, field_t* field) {
                 err.err = INVALID_STATE;
                 return err;
             }
+            // The "Agent ID" row is the app's own, like the "Note" row.
+            if (field->id == XRP_ACCOUNT_AGENT_ID) {
+                err.err = INVALID_STATE;
+                return err;
+            }
             break;
 
         default:
@@ -844,6 +849,29 @@ static err_t append_review_row(parseContext_t* context, uint8_t group,
     }
 
     return err;
+}
+
+// The SessionKey of one transaction of the review: the top level, or one
+// inner transaction of a Batch. NULL when it has none.
+static field_t* find_session_key(parseContext_t* context, uint8_t group) {
+    for (uint8_t i = 0; i < context->result.num_fields; ++i) {
+        field_t* field = &context->result.fields[i];
+        if (field->data_type != STI_ACCOUNT ||
+            field->id != XRP_ACCOUNT_SESSION_KEY) {
+            continue;
+        }
+        bool in_group =
+            group == BATCH_OUTER_GROUP
+                ? field->array_info.type == ARRAY_NONE &&
+                      field->object_depth == 0
+                : batch_inner_tx(context, field) ==
+                      &context->batch.inner[group - 1];
+        if (in_group) {
+            return field;
+        }
+    }
+
+    return NULL;
 }
 
 // Rows the app adds to the review of one transaction.
@@ -872,6 +900,20 @@ static err_t append_review_rows(parseContext_t* context,
         field->id = XRP_VL_SESSION_SCOPE;
         field->data.ptr = (uint8_t*)SESSION_SCOPE_CAP_TEXT;
         field->length = sizeof(SESSION_SCOPE_CAP_TEXT) - 1;
+    }
+
+    // The session key's short identifier, which the agent shows too
+    // (signing_session.h); sort_fields() puts it right after the key.
+    if (is_session_transaction(transaction_type)) {
+        field_t* session_key = find_session_key(context, group);
+        if (session_key != NULL) {
+            xrp_account_t* key = session_key->data.account;
+            CHECK(append_review_row(context, group, &field));
+            field->data_type = STI_ACCOUNT;
+            field->id = XRP_ACCOUNT_AGENT_ID;
+            field->data.account = key;
+            field->length = XRP_ACCOUNT_SIZE;
+        }
     }
 
     // A session review ends with what the session key can never do
@@ -1089,8 +1131,36 @@ static void keep_outer_batch_fields(parseContext_t* context) {
     result->num_fields = kept;
 }
 
+// A session transaction is clear-signed or refused, never blind-signed,
+// whatever the setting says: the session key it creates or closes is the
+// whole point of the review. That holds for one inside a Batch too (as far
+// as parsing went: an inner transaction after the point where it stopped is
+// not known).
+static bool involves_session(parseContext_t* context) {
+    if (is_session_transaction(context->transaction_type)) {
+        return true;
+    }
+    if (context->transaction_type != TRANSACTION_BATCH) {
+        return false;
+    }
+    for (uint8_t i = 0; i < context->batch.inner_count; ++i) {
+        if (is_session_transaction(context->batch.inner[i].transaction_type)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Results meaning "parsed, but the review cannot show all of it".
+static bool cannot_be_shown(int err) {
+    return err == BLIND_SIGN_REQUIRED || err == NOT_ENOUGH_SPACE;
+}
+
 int parse_tx(parseContext_t* context) {
     err_t err = parse_tx_internal(context);
+    if (cannot_be_shown(err.err) && involves_session(context)) {
+        return SESSION_BLIND_SIGN_REFUSED;
+    }
     if (err.err == BLIND_SIGN_REQUIRED &&
         context->transaction_type == TRANSACTION_BATCH) {
         keep_outer_batch_fields(context);

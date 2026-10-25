@@ -164,6 +164,12 @@ int handle_sign(uint8_t p1, uint8_t p2, uint8_t* work_buffer,
 
 int handle_get_app_configuration(void) { return io_send_sw(SW_OK); }
 
+int handle_get_session_policy(uint8_t p1, uint8_t p2) {
+    (void)p1;
+    (void)p2;
+    return io_send_sw(SW_OK);
+}
+
 /* As reject_transaction() in sign_transaction.c (outside a swap): it answers
  * 0x6985 only in PENDING_REVIEW, and always resets the context. */
 void reject_transaction(void) {
@@ -520,7 +526,9 @@ static void test_review_lock_ends_with_the_review(void** state) {
 /* ------------------------------------------------- the blind-signing setting
  */
 
-#define BLIND_SESSION "30-signing-session-set/06-unknown-permission.raw"
+/* Not a session transaction: those are never offered for blind signing
+ * (parse_tx() refuses them), whatever the setting says. */
+#define BLIND_TX "blind-sign/03-nftoken-accept-offer.raw"
 
 /* Blind signing disabled in the settings: the app must not offer to sign a
  * transaction it cannot show, exactly as review_transaction() (transaction.c)
@@ -529,7 +537,7 @@ static void test_blind_signing_disabled_refuses(void** state) {
     (void)state;
     test_storage.allow_blind_sign = BlindSignDisabled;
     message_t message;
-    load_signing_data(BLIND_SESSION, &message);
+    load_signing_data(BLIND_TX, &message);
 
     assert_int_equal(send_signing_data(&message, 250), SW_DENY);
     assert_int_equal(blind_error_screens, 1);
@@ -548,7 +556,7 @@ static void test_blind_signing_disabled_refuses(void** state) {
 static void test_blind_signing_enabled_reviews(void** state) {
     (void)state;
     message_t message;
-    load_signing_data(BLIND_SESSION, &message);
+    load_signing_data(BLIND_TX, &message);
 
     assert_int_equal(send_signing_data(&message, 250), NO_SW);
     assert_int_equal(blind_review_screens, 1);

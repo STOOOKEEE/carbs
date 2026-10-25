@@ -6,12 +6,15 @@ Fee; XRP 0.00005
 Tx 1/3; Close session
 Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
 Session key;   rEmnmhwxmkDk    j9jKiibNuXx     P25VYHJ5Euy   
+Agent ID; A1E8-094F
 Network ID; 24100
 Tx 2/3; Close session
 Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
 Session key;   rHH1wGruhP1Z    SzJvvxYeimW     LmXGG8WULED   
+Agent ID; B2B2-8A01
 Network ID; 24100
 Tx 3/3; Close session
 Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
 Session key;   rHH1fLR86zy5    uZjZXT8iEa4     CHK145ksjAK   
+Agent ID; B2B2-7F3B
 Network ID; 24100

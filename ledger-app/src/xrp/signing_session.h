@@ -10,6 +10,9 @@
 #ifndef LEDGER_APP_XRP_SIGNING_SESSION_H
 #define LEDGER_APP_XRP_SIGNING_SESSION_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 // Transaction types (6.1)
 #define TRANSACTION_SIGNING_SESSION_SET    130
 #define TRANSACTION_SIGNING_SESSION_DELETE 131
@@ -44,5 +47,22 @@
 // (rippled Transactor.cpp, mode C and rule 5). Refused like the Note id.
 #define XRP_VL_SESSION_SCOPE   0xFC
 #define SESSION_SCOPE_CAP_TEXT "XRP payments only, fees included"
+
+// Not a real XRPL field code: the synthetic "Agent ID" row the app appends
+// after the session key, refused in signed data like the "Note" row. Its
+// value is the first 4 bytes of the SessionKey AccountID in uppercase hex,
+// grouped "XXXX-XXXX", so the agent can show the same short identifier
+// (docs/device-contract.md).
+#define XRP_ACCOUNT_AGENT_ID 0xFC
+
+// Parse result of a session transaction that cannot be clear-signed: it is
+// refused, never offered for blind signing, whatever the setting says.
+// Follows BLIND_SIGN_REQUIRED (20); the classical path answers 0x6815.
+#define SESSION_BLIND_SIGN_REFUSED 21
+
+static inline bool is_session_transaction(uint16_t transaction_type) {
+    return transaction_type == TRANSACTION_SIGNING_SESSION_SET ||
+           transaction_type == TRANSACTION_SIGNING_SESSION_DELETE;
+}
 
 #endif  // LEDGER_APP_XRP_SIGNING_SESSION_H

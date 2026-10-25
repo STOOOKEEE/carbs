@@ -315,6 +315,19 @@ def test_sign_valid_tx(
     ):
         if raw_tx_path.endswith(f"32-batch/{name}"):
             pytest.skip(f"skip Batch tx that must not clear-sign: '{Path(raw_tx_path).stem}'")
+    # carbs: session vectors refused even with blind signing on; their own
+    # test is session_agent_id_test.py.
+    for name in (
+        "02-unknown-field-refused.raw",
+        "03-batch-session-refused.raw",
+        "04-spoofed-agent-id.raw",
+    ):
+        if raw_tx_path.endswith(f"34-session-agent-id/{name}"):
+            pytest.skip(f"skip refused session tx: '{Path(raw_tx_path).stem}'")
+    # carbs: session policy vectors, signed or refused under a policy set in
+    # session_policy_test.py
+    if "/33-session-policy/" in raw_tx_path:
+        pytest.skip(f"skip session policy tx: '{Path(raw_tx_path).stem}'")
 
     xrp = XRPClient(backend, navigator)
 

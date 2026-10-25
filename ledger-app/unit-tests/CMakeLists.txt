@@ -20,6 +20,7 @@ include_directories(
   ../src/xrp
   ../src/apdu/messages
   ../src/apdu
+  ../src/policy
 )
 
 add_library(xrp
@@ -56,6 +57,8 @@ add_library(xrp
   ../src/xrp/xrp_helpers.h
   ../src/xrp/xrp_parse.c
   ../src/xrp/xrp_parse.h
+  ../src/policy/session_policy.c
+  ../src/policy/session_policy.h
 )
 
 add_executable(test_printers
@@ -99,12 +102,22 @@ target_compile_definitions(test_pq_root PRIVATE
   TESTCASES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../tests/standalone/testcases"
 )
 
+add_executable(test_policy
+  src/test_policy.c
+  src/cx.c
+  include/bolos_target.h
+  include/cx.h
+  include/os.h
+)
+
 target_link_libraries(test_printers PRIVATE cmocka crypto ssl xrp)
 target_link_libraries(test_swap PRIVATE cmocka crypto ssl xrp)
 target_link_libraries(test_tx PRIVATE cmocka crypto ssl xrp)
 target_link_libraries(test_pq_root PRIVATE cmocka crypto ssl xrp)
+target_link_libraries(test_policy PRIVATE cmocka crypto ssl xrp)
 
 add_test(test_printers test_printers)
 add_test(test_swap test_swap)
 add_test(test_tx test_tx)
 add_test(test_pq_root test_pq_root)
+add_test(test_policy test_policy)

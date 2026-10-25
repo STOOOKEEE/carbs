@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "constants.h"
+#include "session_policy.h"
 
 #define BLIND_SIGN_REQUIRED 20
 
@@ -20,6 +21,7 @@ enum BlindSign {
 typedef struct internal_storage_t {
     uint8_t allow_blind_sign;
     uint8_t initialized;
+    session_policy_t session_policy;  // carbs: all zero (off) on install
 } internal_storage_t;
 
 extern const internal_storage_t N_storage_real;

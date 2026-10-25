@@ -22,6 +22,7 @@
 #include "idle_menu.h"
 #include "nbgl_use_case.h"
 #include "os.h"
+#include "session_policy_menu.h"
 #include "ui.h"
 
 //  -----------------------------------------------------------
@@ -50,9 +51,10 @@ enum {
 
 static void settings_controls_callback(int token, uint8_t index, int page);
 
-// settings menu definition
-#define SETTING_CONTENTS_NB 1
-static const nbgl_content_t contents[SETTING_CONTENTS_NB] = {
+// settings menu definition: blind signing, then the session policy pages
+#define SESSION_POLICY_CONTENT_IDX 1
+#define SETTING_CONTENTS_NB (SESSION_POLICY_CONTENT_IDX + SESSION_POLICY_CONTENTS_NB)
+static nbgl_content_t contents[SETTING_CONTENTS_NB] = {
     {.type = SWITCHES_LIST,
      .content.switchesList.nbSwitches = NB_SETTINGS_SWITCHES,
      .content.switchesList.switches = G_switches,
@@ -93,6 +95,7 @@ void set_switches_states(void) {
     } else {
         G_switches[BLIND_SIGNING_IDX].initState = ON_STATE;
     }
+    session_policy_menu_prepare(&contents[SESSION_POLICY_CONTENT_IDX]);
 }
 
 static void on_quit_clbk(void) { os_sched_exit(-1); }
@@ -105,9 +108,11 @@ void display_idle_menu(void) {
                                 on_quit_clbk);
 }
 
-void display_settings_menu(void) {
+void display_settings_menu(void) { display_settings_page(0); }
+
+void display_settings_page(uint8_t page) {
     set_switches_states();
-    nbgl_useCaseHomeAndSettings(APPNAME, &ICON_APP_HOME, NULL, 0,
+    nbgl_useCaseHomeAndSettings(APPNAME, &ICON_APP_HOME, NULL, page,
                                 &settingContents, &infoList, NULL,
                                 on_quit_clbk);
 }

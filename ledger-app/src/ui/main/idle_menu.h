@@ -20,5 +20,11 @@
 void display_idle_menu();
 
 #ifdef HAVE_NBGL
+#include <stdint.h>
+
+// carbs: settings page of the session policy (page 0 is blind signing)
+#define SESSION_POLICY_SETTINGS_PAGE 1
+
 void display_settings_menu();
+void display_settings_page(uint8_t page);
 #endif

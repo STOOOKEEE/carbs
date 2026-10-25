@@ -1,0 +1,11 @@
+Transaction Type; Open session
+Account;   rPV7gv7mxunH    kt5wHniAmZZ     siTH9CDdVZK   
+Session key;   rHFqnKBYeky5    tuRySHP4EzK     oK5Xn2xZyYU   
+Agent ID; B88D-B176
+Network ID; 24100
+Valid for; 5 minutes
+Fee; XRP 0.000012
+Max spend; XRP 40
+Max per payment; XRP 10
+Witness;   rawnHFk1gPQe    EBC88cXbetX     Lqw3hnqk4pE   
+Note; Cannot change keys, signers or the account
