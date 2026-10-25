@@ -32,6 +32,8 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 - `ledger_entry`, `account_objects`: A `SigningSession` entry may carry `SessionMaxTxCount` (the most transactions the session may sign, in any mode) with `SessionTxCount` (how many it has signed, from 0). `SigningSessionSet` accepts an optional `SessionMaxTxCount` from 1 to 100000 (`temMALFORMED` otherwise).
 - `sign`: With `signature_target` set to `WitnessSignature`, the witness of a signing session signs the transaction into its `WitnessSignature` field.
 
+- `submit`: With the `PasskeyMLDSA` amendment (which needs `Passkey` and `Quantum`), `PasskeyListSet` accepts ML-DSA-44 public keys (1312 bytes, raw) next to P-256 ones, and a `PasskeySignature` next to an ML-DSA-44 `SigningPubKey` is verified as a WebAuthn assertion (COSE algorithm -48): `ClientDataJSON` of type `webauthn.get` whose challenge decodes to the signing data, byte for byte, and a 2420-byte pure ML-DSA-44 signature, empty context, over `AuthenticatorData` followed by the SHA-256 of `ClientDataJSON`. Such a signature authorizes only through a passkey list entry holding that key under the same `PasskeyID` (else `tefBAD_AUTH`, also for an ML-DSA-44 master key, `RegularKey` or session key signing through WebAuthn), and a `TxnSignature` next to it is refused with `invalidTransaction`. Before the amendment, an ML-DSA-44 key in `PasskeyListSet` is refused with `temMALFORMED`, and a transaction holding a `PasskeySignature` next to an ML-DSA-44 key is verified on each submission and its verdict is not cached. See `docs/XLS-PQ-Passkeys.md`.
+
 ### Changes
 
 - `submit`: A transaction carrying `WitnessSignature` while the `SigningSessions` amendment is disabled is refused with `temDISABLED`.

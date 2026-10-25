@@ -58,11 +58,14 @@ SetPasskeyList::preflight(PreflightContext const& ctx)
             return temMALFORMED;
         }
 
-        // Validate public key is a valid P256 key
+        // Validate public key is a valid P256 key, or under PasskeyMLDSA an
+        // ML-DSA-44 key (1312 bytes, typed by its size alone).
         auto const keyType = publicKeyType(makeSlice(pk));
-        if (!keyType || *keyType != KeyType::P256)
+        if (!keyType ||
+            (*keyType != KeyType::P256 &&
+             (*keyType != KeyType::Dilithium || !isPasskeyMLDSAEnabled(ctx.rules))))
         {
-            JLOG(ctx.j.debug()) << "SetPasskeyList: invalid P256 public key.";
+            JLOG(ctx.j.debug()) << "SetPasskeyList: invalid passkey public key.";
             return temMALFORMED;
         }
     }
