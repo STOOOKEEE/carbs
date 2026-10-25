@@ -582,6 +582,17 @@ protected:
         SLE::const_pointer sleAccount,
         beast::Journal const j);
 
+    // An ML-DSA-44 passkey signature (isMLDSAPasskeySigned) authorizes only
+    // when the passkey list of idAccount holds an entry with its
+    // SigningPubKey and its PasskeySignature's PasskeyID; tefBAD_AUTH
+    // otherwise.
+    static NotTEC
+    checkMLDSAPasskey(
+        ReadView const& view,
+        AccountID const& idAccount,
+        STObject const& sigObject,
+        beast::Journal const j);
+
     static NotTEC
     checkMultiSign(
         ReadView const& view,

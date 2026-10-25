@@ -6,7 +6,8 @@
  * the device's profiles, and checks the Stax rows against the client's prediction of the screen.
  *
  * The screen only links to the pages (navigation, not a request): nothing here talks to the
- * team's server or node, and the Content-Security-Policy does not list them.
+ * team's server or node. The Content-Security-Policy lists that server only for the faucet of
+ * the header's Team node (`lib/networks.ts`), not for these links.
  */
 
 import {

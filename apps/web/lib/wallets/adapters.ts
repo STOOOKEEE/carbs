@@ -51,6 +51,23 @@ export interface PasskeySource {
 
 type Listener = (data: unknown) => void;
 
+/**
+ * The network a wallet reports while the screens run on the simulation: no URL, since no node
+ * is contacted, and not the local node's id.
+ */
+export const SIMULATED_NETWORK: NetworkInfo = {
+  id: "simulated",
+  name: "Simulated node (SIMULATED)",
+  wss: "",
+};
+
+/** The network a wallet reports for the node in effect. */
+export function walletNetwork(host: Pick<WalletHost, "backend" | "network">): NetworkInfo {
+  if (host.backend.mode === "simulated") return { ...SIMULATED_NETWORK };
+  const network = host.network.selected();
+  return { id: network.id, name: network.name, wss: network.wss, rpc: network.rpc };
+}
+
 const CAPABILITIES: WalletCapabilities = { sign: true, signAndSubmit: true, signMessage: false };
 
 /** A transaction of the xrpl-connect shape as the JSON the node takes. */
@@ -156,14 +173,7 @@ abstract class CarbsAdapter implements WalletAdapter {
   }
 
   private networkInfo(): NetworkInfo {
-    const network = this.host.network.selected();
-    const simulated = this.host.backend.mode === "simulated";
-    return {
-      id: network.id,
-      name: simulated ? `${network.name} (SIMULATED)` : network.name,
-      wss: network.wss,
-      rpc: network.rpc,
-    };
+    return walletNetwork(this.host);
   }
 
   private accountInfo(): AccountInfo {
@@ -232,7 +242,7 @@ export class PasskeyMacAdapter extends CarbsAdapter {
   }
 }
 
-/** A throw-away account (SIMULATED). */
+/** A throw-away account: a master key in the page, on the node in effect (SIMULATED on the simulation). */
 export class DemoAccountAdapter extends CarbsAdapter {
   readonly id = "demo-account";
   readonly name = DEMO_ACCOUNT.name;

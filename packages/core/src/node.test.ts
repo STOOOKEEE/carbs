@@ -1,3 +1,4 @@
+import { createServer, type AddressInfo, type Socket } from "node:net";
 import { describe, expect, it } from "vitest";
 import {
   isIncluded,
@@ -284,6 +285,79 @@ describe("WebSocket client", () => {
         engineResultMessage: "fails local checks: Invalid signature.",
       });
       await expect(client.request("sign", {})).rejects.toThrow(NodeClientError);
+      client.close();
+    } finally {
+      Object.defineProperty(globalThis, "WebSocket", { value: original, configurable: true });
+    }
+  });
+});
+
+describe("WebSocket client, closing", () => {
+  /** Polls `done` until it holds (a few seconds at most). */
+  async function until(done: () => boolean): Promise<void> {
+    for (let i = 0; i < 200 && !done(); i += 1) await new Promise((r) => setTimeout(r, 10));
+    expect(done()).toBe(true);
+  }
+
+  it("closes a socket that is still connecting: the TCP connection ends and the request fails", async () => {
+    // A server that accepts the TCP connection and never answers the WebSocket handshake, as a
+    // node behind a stalled proxy would.
+    const connections: Socket[] = [];
+    let ended = 0;
+    const server = createServer((socket) => {
+      connections.push(socket);
+      socket.on("close", () => (ended += 1));
+      socket.on("data", () => undefined);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const client = new WebSocketClient(`ws://127.0.0.1:${port}`);
+      const pending = client.request("server_info", {});
+      await until(() => connections.length === 1);
+      client.close();
+      await expect(pending).rejects.toThrow(NodeClientError);
+      await until(() => ended === 1);
+    } finally {
+      for (const socket of connections) socket.destroy();
+      server.close();
+    }
+  });
+
+  it("closes a socket that opens after close() was called", async () => {
+    const sockets: LateSocket[] = [];
+    class LateSocket extends EventTarget {
+      static readonly OPEN = 1;
+      readyState = 0;
+      closed = 0;
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+      /** Like a socket whose close() did not stop the handshake in time. */
+      finishHandshake() {
+        this.readyState = 1;
+        this.dispatchEvent(new Event("open"));
+      }
+      send() {}
+      close() {
+        this.closed += 1;
+      }
+    }
+    const original = globalThis.WebSocket;
+    Object.defineProperty(globalThis, "WebSocket", { value: LateSocket, configurable: true });
+    try {
+      const client = new WebSocketClient("ws://node");
+      const pending = client.request("server_info", {});
+      client.close();
+      await expect(pending).rejects.toThrow("socket closed");
+      const socket = sockets[0];
+      expect(socket?.closed).toBe(1);
+      socket?.finishHandshake();
+      expect(socket?.closed).toBe(2);
+      // The client still works: the next request opens a new socket.
+      void client.request("server_info", {}).catch(() => undefined);
+      expect(sockets).toHaveLength(2);
       client.close();
     } finally {
       Object.defineProperty(globalThis, "WebSocket", { value: original, configurable: true });

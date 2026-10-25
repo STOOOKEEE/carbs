@@ -9,8 +9,10 @@ import type { NetworkStoreOptions } from "~/lib/network-store";
 import { createWalletAdapters } from "~/lib/wallets/adapters";
 import { createWalletsApi } from "~/lib/wallets/api";
 import { softwarePasskeySource } from "~/lib/wallets/passkey";
+import type { BackendStatus } from "~/lib/boot";
 import {
   BACKEND_KEY,
+  BACKEND_STATUS_KEY,
   DEMO_KEY,
   DEVICE_PROMPT_KEY,
   DEVICE_SELECTION_KEY,
@@ -37,12 +39,15 @@ export function mountScreen(
     props?: Record<string, unknown>;
     /** Provide this backend to the screens instead of the simulated one. */
     backend?: Backend;
+    /** What the page load found (default: the simulation, as asked). */
+    status?: BackendStatus;
   } = {},
 ) {
   const ctx: AppContext = createAppContext(options.network, {
     ...(options.clientFactory === undefined ? {} : { clientFactory: options.clientFactory }),
     ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
   });
+  if (options.status !== undefined) ctx.network.state.node = options.status.active;
   const adapters = createWalletAdapters(
     { backend: ctx.backend, demo: ctx.demo, network: ctx.network },
     softwarePasskeySource(),
@@ -69,6 +74,15 @@ export function mountScreen(
           app.provide(LIVE_EXPOSURE_KEY, ctx.liveExposure);
           app.provide(LIVE_MIGRATION_KEY, ctx.liveMigration);
           app.provide(WALLETS_KEY, wallets);
+          app.provide(
+            BACKEND_STATUS_KEY,
+            options.status ?? {
+              requested: "simulated",
+              active: "simulated",
+              error: null,
+              target: "",
+            },
+          );
         },
       ],
     },

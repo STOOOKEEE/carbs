@@ -69,12 +69,23 @@ base64urlEncode(Slice const& data)
 json::Value
 passkeyListSet(Account const& account, Account const& passkey, std::string const& passkeyId)
 {
+    return passkeyListSet(account, {{passkey, passkeyId}});
+}
+
+json::Value
+passkeyListSet(Account const& account, std::vector<std::pair<Account, std::string>> const& passkeys)
+{
     json::Value jv;
     jv[sfAccount.jsonName] = account.human();
     jv[sfTransactionType.jsonName] = jss::PasskeyListSet;
     jv[sfPasskeys.jsonName] = json::ValueType::Array;
-    jv[sfPasskeys.jsonName][0u][sfPasskey.jsonName][sfPasskeyID.jsonName] = passkeyId;
-    jv[sfPasskeys.jsonName][0u][sfPasskey.jsonName][sfPublicKey.jsonName] = strHex(passkey.pk());
+    json::UInt i = 0;
+    for (auto const& [passkey, passkeyId] : passkeys)
+    {
+        auto& entry = jv[sfPasskeys.jsonName][i++][sfPasskey.jsonName];
+        entry[sfPasskeyID.jsonName] = passkeyId;
+        entry[sfPublicKey.jsonName] = strHex(passkey.pk());
+    }
     return jv;
 }
 
@@ -94,8 +105,9 @@ webAuthnSign(
     std::string const& passkeyId,
     WebAuthnOptions const& options)
 {
-    if (publicKeyType(passkey.pk()) != KeyType::P256)
-        Throw<std::runtime_error>("webAuthnSign: the passkey must hold a P-256 key");
+    auto const keyType = publicKeyType(passkey.pk());
+    if (keyType != KeyType::P256 && keyType != KeyType::Dilithium)
+        Throw<std::runtime_error>("webAuthnSign: the passkey must hold a P-256 or ML-DSA-44 key");
 
     // SigningPubKey is part of the signed data, so it is set first. The
     // passkey signature replaces the regular one.
@@ -109,11 +121,13 @@ webAuthnSign(
         clientDataJSON += R"(,"challenge":")" + base64urlEncode(makeSlice(challenge)) + R"(")";
     clientDataJSON += R"(,"origin":")" + std::string(kOrigin) + R"(","crossOrigin":false})";
 
-    Blob const authData = authenticatorData();
+    Blob authData = authenticatorData();
 
     // What an authenticator signs: AuthenticatorData followed by the SHA-256
     // of ClientDataJSON. For a P-256 key, sign() hashes the message with
-    // SHA-256 before signing it, as WebAuthn's ES256 does.
+    // SHA-256 before signing it, as WebAuthn's ES256 does. For an ML-DSA-44
+    // key, sign() signs the message itself as pure ML-DSA-44 with an empty
+    // context, as COSE algorithm -48 does.
     auto const clientDataHash = sha256(makeSlice(clientDataJSON));
     Blob message(authData);
     message.insert(message.end(), clientDataHash.begin(), clientDataHash.end());
@@ -121,7 +135,14 @@ webAuthnSign(
     auto const sig = sign(passkey.pk(), passkey.sk(), makeSlice(message));
     Blob signature(sig.data(), sig.data() + sig.size());
     if (options.alterSignature)
-        signature.back() ^= 0x01;
+    {
+        if (keyType == KeyType::Dilithium)
+            signature.front() ^= 0x01;
+        else
+            signature.back() ^= 0x01;
+    }
+    if (options.alterAuthenticatorData)
+        authData.back() ^= 0x01;
 
     auto& passkeySignature = jv[sfPasskeySignature.jsonName];
     passkeySignature[sfPasskeyID.jsonName] = passkeyId;

@@ -1030,6 +1030,14 @@ Transactor::checkSign(
         return tefBAD_AUTH;  // FIXME: should be better error!
     }
 
+    // An ML-DSA-44 passkey (PasskeyMLDSA) authorizes only through the
+    // account's passkey list, and only under the PasskeyID registered with
+    // its key. PasskeySignature is not signed, so a PasskeyID nothing checks
+    // could be changed by anyone relaying the transaction, and its ID with
+    // it; bound to the list entry, it has exactly one accepted value.
+    if (isMLDSAPasskeySigned(sigObject, view.rules()))
+        return checkMLDSAPasskey(view, idAccount, sigObject, j);
+
     // Look up the account.
     auto const idSigner = calcAccountID(PublicKey(makeSlice(pkSigner)));
     auto const sleAccount = view.read(keylet::account(idAccount));
@@ -1046,6 +1054,29 @@ Transactor::checkSign(
     }
 
     return checkSingleSign(view, idSigner, idAccount, sleAccount, j);
+}
+
+NotTEC
+Transactor::checkMLDSAPasskey(
+    ReadView const& view,
+    AccountID const& idAccount,
+    STObject const& sigObject,
+    beast::Journal const j)
+{
+    auto const pkSigner = sigObject.getFieldVL(sfSigningPubKey);
+    auto const passkeyID = static_cast<STObject const&>(sigObject.peekAtField(sfPasskeySignature))
+                               .getFieldVL(sfPasskeyID);
+    if (auto const list = view.read(keylet::passkeyList(idAccount)))
+    {
+        for (auto const& passkey : list->getFieldArray(sfPasskeys))
+        {
+            if (passkey.getFieldVL(sfPublicKey) == pkSigner &&
+                passkey.getFieldVL(sfPasskeyID) == passkeyID)
+                return tesSUCCESS;
+        }
+    }
+    JLOG(j.trace()) << "checkMLDSAPasskey: no passkey list entry holds this key and PasskeyID";
+    return tefBAD_AUTH;
 }
 
 NotTEC
@@ -1070,6 +1101,11 @@ Transactor::checkSession(
     // Transactor::checkSign refuses pseudo-accounts, and this path replaces
     // it. Its other refusal, an unknown key type, is part of the predicate.
     if (isPseudoAccount(ctx.view, ctx.tx.getAccountID(sfAccount)))
+        return tefBAD_AUTH;
+
+    // An ML-DSA-44 passkey signature authorizes only through the passkey list
+    // (Transactor::checkSign), never as a session key's.
+    if (isMLDSAPasskeySigned(ctx.tx, ctx.view.rules()))
         return tefBAD_AUTH;
 
     // A session key of a type that may not sign under a session never signs,

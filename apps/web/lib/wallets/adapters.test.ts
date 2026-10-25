@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { WalletManager } from "xrpl-connect";
 import { describe, expect, it } from "vitest";
 import { createAppContext } from "../app-context";
-import { DeviceRejectedError } from "../ports";
+import { DeviceRejectedError, type Backend } from "../ports";
 import { accountIdOf } from "../sim/keys";
 import { verifyPasskeyAssertion } from "../sim/webauthn";
-import { createWalletAdapters } from "./adapters";
+import { createWalletAdapters, walletNetwork } from "./adapters";
 import { WALLET_DESCRIPTIONS } from "./catalog";
 import { softwarePasskeySource } from "./passkey";
 
@@ -67,6 +67,9 @@ describe("Demo account", () => {
     const account = await manager.connect("demo-account");
     expect(account.address).toBe(ctx.demo.state.address);
     expect(account.network.name).toContain("SIMULATED");
+    // Not the local node: no node is contacted on the simulation.
+    expect(account.network.id).toBe("simulated");
+    expect(account.network.wss).toBe("");
     expect(manager.connected).toBe(true);
     const result = await manager.signAndSubmit(payment(account.address) as never);
     expect(result["engine_result"]).toBe("tesSUCCESS");
@@ -83,6 +86,24 @@ describe("Demo account", () => {
     );
     await expect(manager.signMessage("hello")).rejects.toThrow();
     void account;
+  });
+});
+
+describe("the network a wallet reports", () => {
+  it("is the live node in effect, and a neutral one with no URL on the simulation", () => {
+    const ctx = createAppContext();
+    expect(walletNetwork(ctx)).toEqual({
+      id: "simulated",
+      name: "Simulated node (SIMULATED)",
+      wss: "",
+    });
+    ctx.network.state.node = "team";
+    const live = { backend: { ...ctx.backend, mode: "live" } as Backend, network: ctx.network };
+    expect(walletNetwork(live)).toMatchObject({
+      id: "team",
+      name: "Team node",
+      wss: "wss://debian-docker.tail8b5861.ts.net:9448",
+    });
   });
 });
 

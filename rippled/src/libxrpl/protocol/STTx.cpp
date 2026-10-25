@@ -191,8 +191,13 @@ STTx::getSignature(STObject const& sigObject)
 {
     try
     {
+        // A PasskeySignature is made with a P-256 key (ES256) or an ML-DSA-44
+        // key (COSE -48). Not gated on PasskeyMLDSA, which this function has
+        // no rules for: it is off the consensus path (Change::preflight reads
+        // it only when SigningPubKey is empty).
         auto const spk = sigObject.getFieldVL(sfSigningPubKey);
-        if (publicKeyType(makeSlice(spk)) == KeyType::P256 &&
+        auto const keyType = publicKeyType(makeSlice(spk));
+        if ((keyType == KeyType::P256 || keyType == KeyType::Dilithium) &&
             sigObject.isFieldPresent(sfPasskeySignature))
         {
             auto const& passkeySig =
@@ -272,8 +277,10 @@ STTx::checkSign(Rules const& rules, STObject const& sigObject, SignatureRole rol
         auto const prefix = signingPrefix(role, multiSigning, rules);
         bool const challengeAsBytes = rules.enabled(fixPasskeyChallenge);
         bool const strictP256Der = rules.enabled(fixP256StrictDer);
-        return multiSigning ? checkMultiSign(sigObject, prefix, challengeAsBytes, strictP256Der)
-                            : checkSingleSign(sigObject, prefix, challengeAsBytes, strictP256Der);
+        return multiSigning
+            ? checkMultiSign(sigObject, prefix, challengeAsBytes, strictP256Der)
+            : checkSingleSign(
+                  sigObject, prefix, challengeAsBytes, strictP256Der, isPasskeyMLDSAEnabled(rules));
     }
     catch (...)
     {
@@ -458,13 +465,17 @@ STTx::getMetaSQL(
         escapedMetaData);
 }
 
-/** Verify a P-256 passkey signature with WebAuthn challenge validation.
+/** Verify a passkey signature with WebAuthn challenge validation.
     Validates that the clientDataJSON challenge matches the expected signing
-    data, then verifies the ECDSA signature against the WebAuthn authenticator
-    data. Returns true if the signature is valid, false otherwise.
+    data, then verifies the signature over the WebAuthn authenticator data
+    followed by the SHA-256 of clientDataJSON: ECDSA-SHA256 for a P-256 key
+    (ES256), pure ML-DSA-44 with an empty context for an ML-DSA-44 key (COSE
+    -48, PasskeyMLDSA). Returns true if the signature is valid, false
+    otherwise.
 
-    challengeAsBytes is true once fixPasskeyChallenge is enabled: the challenge
-    is then compared with the signing data byte for byte.
+    challengeAsBytes is true once fixPasskeyChallenge is enabled, and always
+    for an ML-DSA-44 key: the challenge is then compared with the signing data
+    byte for byte.
 */
 static bool
 verifyPasskeySignature(
@@ -535,15 +546,17 @@ verifyPasskeySignature(
 }
 
 /** Verify a signature on a signing object.
-    Handles both standard signatures (sfTxnSignature) and P-256 passkey
-    signatures (sfPasskeySignature with WebAuthn challenge validation).
+    Handles both standard signatures (sfTxnSignature) and passkey signatures
+    (sfPasskeySignature with WebAuthn challenge validation): P-256, and
+    ML-DSA-44 when passkeyMLDSA is true (isPasskeyMLDSAEnabled).
 */
 static bool
 verifySigObject(
     STObject const& sigObject,
     Slice const& data,
     bool challengeAsBytes,
-    bool strictP256Der) noexcept
+    bool strictP256Der,
+    bool passkeyMLDSA) noexcept
 {
     try
     {
@@ -552,24 +565,28 @@ verifySigObject(
         if (!keyType)
             return false;
 
-        // A PasskeySignature next to a key that is not P-256 is not checked,
-        // so before fixP256StrictDer anyone could add one to a signed
-        // transaction and give it a new ID.
-        if (strictP256Der && *keyType != KeyType::P256 &&
-            sigObject.isFieldPresent(sfPasskeySignature))
+        bool const mldsaPasskey = passkeyMLDSA && *keyType == KeyType::Dilithium;
+        bool const passkeyKey = *keyType == KeyType::P256 || mldsaPasskey;
+
+        // A PasskeySignature next to a key that may not make one is not
+        // checked, so before fixP256StrictDer anyone could add one to a
+        // signed transaction and give it a new ID.
+        if (strictP256Der && !passkeyKey && sigObject.isFieldPresent(sfPasskeySignature))
             return false;
 
-        if (*keyType == KeyType::P256 && sigObject.isFieldPresent(sfPasskeySignature))
+        if (passkeyKey && sigObject.isFieldPresent(sfPasskeySignature))
         {
-            // The PasskeySignature alone is checked; with fixP256StrictDer a
-            // TxnSignature next to it, which would only change the ID, is
-            // refused.
+            // The PasskeySignature alone is checked. A TxnSignature next to
+            // it would only change the ID: refused with fixP256StrictDer,
+            // which an ML-DSA-44 passkey always has (isPasskeyMLDSAEnabled).
             if (strictP256Der && sigObject.isFieldPresent(sfTxnSignature))
                 return false;
             auto const& passkeySig =
                 static_cast<STObject const&>(sigObject.peekAtField(sfPasskeySignature));
+            // The ML-DSA-44 path is new: its challenge is compared as bytes
+            // whatever fixPasskeyChallenge says.
             return verifyPasskeySignature(
-                makeSlice(spk), passkeySig, data, challengeAsBytes, strictP256Der);
+                makeSlice(spk), passkeySig, data, challengeAsBytes || mldsaPasskey, strictP256Der);
         }
 
         Blob const signature = sigObject.getFieldVL(sfTxnSignature);
@@ -586,7 +603,8 @@ singleSignHelper(
     STObject const& sigObject,
     Slice const& data,
     bool challengeAsBytes,
-    bool strictP256Der)
+    bool strictP256Der,
+    bool passkeyMLDSA)
 {
     // We don't allow both a non-empty sfSigningPubKey and an sfSigners.
     // That would allow the transaction to be signed two ways.  So if both
@@ -594,7 +612,7 @@ singleSignHelper(
     if (sigObject.isFieldPresent(sfSigners))
         return std::unexpected("Cannot both single- and multi-sign.");
 
-    if (!verifySigObject(sigObject, data, challengeAsBytes, strictP256Der))
+    if (!verifySigObject(sigObject, data, challengeAsBytes, strictP256Der, passkeyMLDSA))
         return std::unexpected("Invalid signature.");
 
     return {};
@@ -605,10 +623,12 @@ STTx::checkSingleSign(
     STObject const& sigObject,
     HashPrefix prefix,
     bool challengeAsBytes,
-    bool strictP256Der) const
+    bool strictP256Der,
+    bool passkeyMLDSA) const
 {
     auto const data = getSigningData(*this, prefix);
-    return singleSignHelper(sigObject, makeSlice(data), challengeAsBytes, strictP256Der);
+    return singleSignHelper(
+        sigObject, makeSlice(data), challengeAsBytes, strictP256Der, passkeyMLDSA);
 }
 
 std::expected<void, std::string>
@@ -621,8 +641,9 @@ STTx::checkBatchSingleSign(
     Serializer msg;
     serializeBatch(msg, getAccountID(sfAccount), getSeqProxy().value(), getFlags(), txIds);
     finishMultiSigningData(batchSigner.getAccountID(sfAccount), msg);
-    // A BatchSigner has no sfPasskeySignature, so no challenge is compared.
-    return singleSignHelper(batchSigner, msg.slice(), false, strictP256Der);
+    // A BatchSigner has no sfPasskeySignature, so no challenge is compared
+    // and no passkey key type matters.
+    return singleSignHelper(batchSigner, msg.slice(), false, strictP256Der, false);
 }
 
 std::expected<void, std::string>
@@ -683,8 +704,10 @@ multiSignHelper(
         try
         {
             auto const msgSerializer = makeMsg(accountID);
-            validSig =
-                verifySigObject(signer, msgSerializer.slice(), challengeAsBytes, strictP256Der);
+            // A Signer has no sfPasskeySignature (InnerObjectFormats.cpp),
+            // so no passkey key type matters.
+            validSig = verifySigObject(
+                signer, msgSerializer.slice(), challengeAsBytes, strictP256Der, false);
         }
         catch (std::exception const& e)
         {
@@ -1063,6 +1086,20 @@ isPseudoTx(STObject const& tx)
     auto const tt = safeCast<TxType>(*t);
 
     return tt == ttAMENDMENT || tt == ttFEE || tt == ttUNL_MODIFY;
+}
+
+bool
+isPasskeyMLDSAEnabled(Rules const& rules)
+{
+    return rules.enabled(featurePasskeyMLDSA) && rules.enabled(featurePasskey) &&
+        rules.enabled(featureQuantum) && rules.enabled(fixP256StrictDer);
+}
+
+bool
+isMLDSAPasskeySigned(STObject const& sigObject, Rules const& rules)
+{
+    return sigObject.isFieldPresent(sfPasskeySignature) && isPasskeyMLDSAEnabled(rules) &&
+        publicKeyType(makeSlice(sigObject.getFieldVL(sfSigningPubKey))) == KeyType::Dilithium;
 }
 
 }  // namespace xrpl
