@@ -128,7 +128,9 @@ export function checkNodeUrl(raw: string, pageProtocol: string): UrlCheck {
 
 /** The origins (scheme, host, port) a network needs in `connect-src`. */
 export function networkOrigins(network: AppNetwork): string[] {
-  const origins = [network.wss, network.rpc, network.faucet, network.explorer]
+  // The app talks to the local node over its public WebSocket only; its HTTP port is the admin RPC.
+  const rpc = network.id === "local" ? null : network.rpc;
+  const origins = [network.wss, rpc, network.faucet, network.explorer]
     .filter((value): value is string => value !== null)
     .map((value) => new URL(value).origin);
   return [...new Set(origins)];

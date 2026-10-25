@@ -80,6 +80,8 @@ export interface CommonFields {
   Sequence?: number;
   LastLedgerSequence?: number;
   NetworkID?: number;
+  /** Flags the backend adds to every transaction (the simulation sets tfFullyCanonicalSig; a live node needs none). */
+  Flags?: number;
 }
 
 export type ResultFamily = "tes" | "tec" | "tef" | "tem" | "ter" | "tel";
