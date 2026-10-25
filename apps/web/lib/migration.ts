@@ -46,8 +46,13 @@ export interface MigrationState {
   authoritiesReviewed: boolean;
   /** Live run only: the seed of the SIMULATED device, shown so the person can save it. */
   recoverySeed: string | null;
-  /** Live run only: the person confirmed saving that seed. */
+  /**
+   * Live run only: on the simulated device, the person saved that seed; on a real Stax, the
+   * person reinstalled the XRP app before the ML-DSA-44 key is read again.
+   */
   recoveryConfirmed: boolean;
+  /** The run signs on a real Ledger Stax over USB (never for the simulated migration). */
+  realDevice: boolean;
   before: ExposureReport | null;
   after: ExposureReport | null;
   busy: boolean;
@@ -69,6 +74,7 @@ export function createMigration(backend: Backend) {
     authoritiesReviewed: false,
     recoverySeed: null,
     recoveryConfirmed: false,
+    realDevice: false,
     before: null,
     after: null,
     busy: false,

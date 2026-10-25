@@ -69,6 +69,7 @@ export function createWalletsApi(
           adapter.description,
           backend.mode === "simulated",
           authenticatorSimulated,
+          backend.device.mode === "simulated",
         ),
       });
     }
