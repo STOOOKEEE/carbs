@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BusyNote from "~/components/ui/BusyNote.vue";
+import LedgerDevicePicker from "~/components/ui/LedgerDevicePicker.vue";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import NeedAccount from "~/components/ui/NeedAccount.vue";
 import ResultView from "~/components/ui/ResultView.vue";
@@ -159,6 +160,12 @@ async function close(): Promise<void> {
             />
           </label>
 
+          <template v-if="backend.mode === 'live' && state.profile === 'ledger'">
+            <LedgerDevicePicker />
+            <p class="text-sm text-muted-foreground" data-testid="device-same-note">
+              Sign with the device this Ledger account was created on: another one holds other keys.
+            </p>
+          </template>
           <button
             class="btn btn-primary"
             type="submit"

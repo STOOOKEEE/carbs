@@ -78,6 +78,7 @@ export async function chooseBackend(
         client,
         network: () => ctx.network.networks().local,
         approver: () => (review) => ctx.prompt.approver(review),
+        device: ctx.deviceSelection,
         passkeys: options.passkeys,
         exposure: ctx.liveExposure,
         ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),

@@ -90,6 +90,29 @@ describe("checkExposure edge cases (section 8.7)", () => {
     expect(report.findings.find((f) => f.role === "master")?.firstReveal?.ledgerIndex).toBe(12);
   });
 
+  it("a session key that signed is reported as bounded by its session while the session lives, not as a key without authority", async () => {
+    const owner = keyPair();
+    const session = keyPair();
+    const report = await checkExposure(
+      owner.address,
+      node(
+        accountInfo(owner.address, {}),
+        accountTx(
+          owner.address,
+          [created(owner.address), signed(owner.address, session.publicKey, 20)],
+          range,
+        ),
+        noAuthorities(owner.address),
+      ),
+      defs,
+    );
+    const former = report.findings.find((f) => f.address === session.address);
+    expect(former?.role).toBe("former-key");
+    const reason = former?.reasons.join(" ") ?? "";
+    expect(reason).toMatch(/live signing session/);
+    expect(reason).toMatch(/bounded by that session/);
+  });
+
   it("a regular key shared by several accounts: revealed elsewhere is unknown here, revealed as its own master is exposed", async () => {
     const owner = keyPair();
     const shared = keyPair();

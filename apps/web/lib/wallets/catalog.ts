@@ -35,7 +35,8 @@ export const LEDGER_STAX: WalletDescription = {
   summary:
     "Post-quantum root. Every own-authority transaction is read and confirmed on the device, through the Device Management Kit.",
   simulatedWhenBackendSimulated: ["node"],
-  alwaysSimulated: ["device"],
+  // The device part follows the chosen device (`simulatedParts`): simulated double or real Stax.
+  alwaysSimulated: [],
 };
 
 export const PASSKEY_MAC: WalletDescription = {
@@ -74,16 +75,21 @@ export const WALLET_DESCRIPTIONS: readonly WalletDescription[] = [
 
 const PART_ORDER: readonly SimulatedPart[] = ["node", "device", "authenticator", "account"];
 
-/** The parts that are SIMULATED for `description`, given the backend mode. */
+/**
+ * The parts that are SIMULATED for `description`, given the backend mode, the passkey's
+ * authenticator and the device (the simulated double or a real Stax over USB).
+ */
 export function simulatedParts(
   description: WalletDescription,
   backendSimulated: boolean,
   authenticatorSimulated = false,
+  deviceSimulated = true,
 ): SimulatedPart[] {
   const parts = new Set<SimulatedPart>(description.alwaysSimulated);
   if (backendSimulated)
     for (const part of description.simulatedWhenBackendSimulated) parts.add(part);
   if (description.id === "passkey-mac" && authenticatorSimulated) parts.add("authenticator");
+  if (description.id === "ledger-stax" && deviceSimulated) parts.add("device");
   return PART_ORDER.filter((part) => parts.has(part));
 }
 

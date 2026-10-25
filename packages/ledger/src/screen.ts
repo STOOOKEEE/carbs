@@ -8,7 +8,7 @@
  * `SessionCap` is set), then `Note`.
  */
 
-import type { Definitions } from "@carbs/sessions";
+import { kPermissionMaxSize, type Definitions } from "@carbs/sessions";
 
 export interface ScreenLine {
   label: string;
@@ -28,6 +28,96 @@ const kTransactionNames: Record<string, string> = {
 export const kSessionNoteText = "Cannot change keys or signers";
 /** The mode C `Allows` row (`ledger-app/src/xrp/signing_session.h:45-46`). */
 export const kSessionCapScopeText = "XRP payments only, fees included";
+
+/**
+ * The permission names the app can show (`ledger-app/src/xrp/session_permissions.c`; a test reads
+ * that file and checks this list against it). Any other value makes the app ask for blind signing.
+ */
+export const kDevicePermissionNames: ReadonlySet<string> = new Set([
+  "Payment",
+  "EscrowCreate",
+  "EscrowFinish",
+  "EscrowCancel",
+  "OfferCreate",
+  "OfferCancel",
+  "TicketCreate",
+  "PaymentChannelCreate",
+  "PaymentChannelFund",
+  "PaymentChannelClaim",
+  "CheckCreate",
+  "CheckCash",
+  "CheckCancel",
+  "DepositPreauth",
+  "TrustSet",
+  "NFTokenMint",
+  "NFTokenBurn",
+  "NFTokenCreateOffer",
+  "NFTokenCancelOffer",
+  "NFTokenAcceptOffer",
+  "Clawback",
+  "AMMClawback",
+  "AMMCreate",
+  "AMMDeposit",
+  "AMMWithdraw",
+  "AMMVote",
+  "AMMBid",
+  "AMMDelete",
+  "XChainCreateClaimID",
+  "XChainCommit",
+  "XChainClaim",
+  "XChainAccountCreateCommit",
+  "XChainAddClaimAttestation",
+  "XChainAddAccountCreateAttestation",
+  "XChainModifyBridge",
+  "XChainCreateBridge",
+  "DIDSet",
+  "DIDDelete",
+  "OracleSet",
+  "OracleDelete",
+  "LedgerStateFix",
+  "MPTokenIssuanceCreate",
+  "MPTokenIssuanceDestroy",
+  "MPTokenIssuanceSet",
+  "MPTokenAuthorize",
+  "CredentialCreate",
+  "CredentialAccept",
+  "CredentialDelete",
+  "NFTokenModify",
+  "PermissionedDomainSet",
+  "PermissionedDomainDelete",
+  "ConfidentialMPTMergeInbox",
+  "ConfidentialMPTConvertBack",
+  "ConfidentialMPTSend",
+  "ConfidentialMPTClawback",
+  "SponsorshipSet",
+  "PaymentChannelClawback",
+  "CouponClaim",
+  "AMMBinCreate",
+  "AMMBinDestroy",
+  "AMMCollectFees",
+  "AMMPositionTransfer",
+  "PasskeyListSet",
+  "RepoCreate",
+  "RepoAccept",
+  "RepoCancel",
+  "RepoClose",
+  "RepoDefault",
+  "SubscriptionSet",
+  "SubscriptionCancel",
+  "SubscriptionClaim",
+  "TrustlineAuthorize",
+  "TrustlineFreeze",
+  "TrustlineUnfreeze",
+  "AccountDomainSet",
+  "AccountEmailHashSet",
+  "AccountMessageKeySet",
+  "AccountTransferRateSet",
+  "AccountTickSizeSet",
+  "PaymentMint",
+  "PaymentBurn",
+  "MPTokenIssuanceLock",
+  "MPTokenIssuanceUnlock",
+]);
 
 /** Fields the app never shows (`SigningPubKey` is hidden upstream; sequencing fields are not reviewed). */
 const kHidden = new Set([
@@ -131,18 +221,32 @@ export function reviewLines(tx: Record<string, unknown>, defs: Definitions): Rev
   for (const field of fields) {
     const raw = tx[field];
     if (field === "Flags") {
-      const all = defs.raw.TRANSACTION_FLAGS?.["SigningSessionSet"]?.["tfAllTransactions"];
-      if (type === "SigningSessionSet" && all !== undefined && Number(raw) === all) {
-        lines.push({ label: "Allows", value: "All transactions" });
-      } else if (Number(raw) !== 0) {
+      // The app hides tfFullyCanonicalSig and names only tfAllTransactions of a
+      // SigningSessionSet; any other bit makes it ask for blind signing (`ledger-app/src/xrp/flags.c`,
+      // `is_flag_hidden`, `has_unknown_flags`). This client names no other flag, so it predicts
+      // blind for any other bit of any type.
+      const flags = Number(raw) >>> 0;
+      const canonical = defs.raw.TRANSACTION_FLAGS?.["universal"]?.["tfFullyCanonicalSig"] ?? 0;
+      const all =
+        type === "SigningSessionSet"
+          ? (defs.raw.TRANSACTION_FLAGS?.["SigningSessionSet"]?.["tfAllTransactions"] ?? 0)
+          : 0;
+      if ((flags & ~canonical & ~all) !== 0) {
+        kind = "blind";
         lines.push({ label: "Flags", value: String(raw) });
+      } else if (all !== 0 && (flags & all) !== 0) {
+        lines.push({ label: "Allows", value: "All transactions" });
       }
       continue;
     }
     if (field === "Permissions" && Array.isArray(raw)) {
+      // More than a session holds is refused by the app; a value it cannot name goes blind.
+      if (raw.length > kPermissionMaxSize) kind = "blind";
       raw.forEach((wrapped: unknown, i) => {
         const permission = (wrapped as { Permission?: { PermissionValue?: unknown } }).Permission;
-        lines.push({ label: `Allows [${i + 1}]`, value: String(permission?.PermissionValue) });
+        const name = permission?.PermissionValue;
+        if (typeof name !== "string" || !kDevicePermissionNames.has(name)) kind = "blind";
+        lines.push({ label: `Allows [${i + 1}]`, value: String(name) });
       });
       continue;
     }
