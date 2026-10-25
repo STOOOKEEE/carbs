@@ -206,6 +206,7 @@ def dump_attestation(path, att, rp_id, credential_id, public_key):
     attestation_object = cbor.encode(
         {"fmt": att.fmt, "attStmt": att.att_stmt, "authData": bytes(att.auth_data)}
     )
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w") as out:
         json.dump(
             {

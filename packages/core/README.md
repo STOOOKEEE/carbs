@@ -93,4 +93,5 @@ Mutations of the alg check, the `rawId` check, the challenge comparison and the 
 **Not verified:**
 
 - the browser ceremony: whether a browser forwards `alg: -48` to a roaming authenticator, accepts the credential, and passes a 1.4 KB challenge;
-- the registration parser on real device bytes: the Stax credential used so far came from `mldsa_passkey_test.py` (python-fido2 parsed it), so the TypeScript `attestationObject`, CBOR and COSE code has only read software and synthetic registrations until the fixture above is recorded.
+
+The registration parser has read real device bytes: `src/keys/fixtures/stax-attestation.json` is a registration recorded on the Stax (`mldsa_passkey_test.py make --dump-attestation`; the device's `authData` unchanged, `fmt` and `attStmt` re-encoded by python-fido2), and `keys/pq-passkey.test.ts` parses it to the same 1,312-byte key and credential id that python-fido2 read.
