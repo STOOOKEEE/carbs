@@ -78,6 +78,8 @@ accounts.
 4. **Actions.** Six transaction types signed by the session key, with no prompt.
 5. **Attack.** Replay what a stolen key would try: change the keys, add a passkey, open a second
    session, burn fees, overspend the cap, sign after expiry.
+6. **Apps.** The stage demos below, one card each: the session it opens (mode, Stax profile,
+   limits), what the ledger and the Stax refuse, and a link that opens only on the team's network.
 
 **Locally, on the amendment node.** `pnpm demo` starts, on your machine, the standalone node built
 from `rippled/`, its ledger closer, a dev faucet and the web app on the live backend: the same
@@ -90,7 +92,8 @@ buys data from paid APIs on a mode C budget (a scripted compromised-agent step s
 prompt injection asks for, and the ledger refuses it with `tefSESSION_LIMIT`), an arcade of
 micro-bets, a grid market maker limited to offers, a pay-per-second stream and a ticket minting
 desk. They run with the node on the team's own network (`infra/compose.yaml`, HTTPS through
-Tailscale), not on a public host. Run sheet:
+Tailscale), not on a public host; the web app's **Apps** screen lists them and links to them. Run
+sheet:
 [`apps/passkey-wallet/scripts/agent/README.md`](./apps/passkey-wallet/scripts/agent/README.md).
 
 ## How it works
@@ -432,7 +435,7 @@ ledger-app/             LedgerHQ/app-xrp, imported unmodified, then clear signin
   src/policy/           the session policy and its profiles
 packages/core/          @carbs/sessions: definitions, encoding, session keys, node client, quantum exposure check
 packages/ledger/        @carbs/ledger: the device contract over the Device Management Kit, and a software double
-apps/web/               the web app: five screens, the wallet entry, a static build
+apps/web/               the web app: six screens (Apps links to the stage demos), the wallet entry, a static build
 apps/passkey-wallet/    the test wallet and the stage demos: agent, game, DEX, stream, mint
   scripts/agent/        the AI agent on a budget, the mock x402 merchant and the run sheet
 infra/                  the standalone node's configuration, the ledger closer, the compose stack

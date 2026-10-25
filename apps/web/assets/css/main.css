@@ -201,6 +201,37 @@
     border-color: var(--color-warn);
   }
 
+  /* A refusal by the device, before it signs (violet, as on the wallet's stage pages). */
+  .chip-device {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+
+  /* The rows of a Ledger Stax review, quoted outside the device (label, then value). */
+  .device-rows {
+    display: grid;
+    grid-template-columns: minmax(7rem, max-content) 1fr;
+    gap: var(--space-1) var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-device);
+    color: var(--color-device-ink);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+  }
+
+  .device-rows > div {
+    display: contents;
+  }
+
+  .device-rows dt {
+    opacity: 0.6;
+  }
+
+  .device-rows dd {
+    overflow-wrap: anywhere;
+  }
+
   /* The SIMULATED mark: striped so it cannot be mistaken for a status colour. */
   .sim-badge {
     display: inline-flex;
@@ -226,6 +257,29 @@
 
   .sim-frame {
     border: var(--border-width-fine) dashed var(--color-sim);
+  }
+
+  /* An address or a hash linked to a public explorer (new tab): accent underline and an arrow. */
+  .explorer-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent);
+    text-decoration-thickness: var(--border-width-fine);
+    text-underline-offset: 0.2em;
+    transition: color var(--motion-fast) var(--ease-out);
+  }
+
+  .explorer-link:hover {
+    color: var(--color-accent);
+  }
+
+  /* Not part of the link's text for assistive technology (empty alternative). */
+  .explorer-link::after {
+    display: inline-block;
+    margin-left: var(--space-1);
+    color: var(--color-accent);
+    content: "\2197";
+    content: "\2197" / "";
   }
 
   .fade-in {

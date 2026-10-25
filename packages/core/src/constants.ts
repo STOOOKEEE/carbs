@@ -84,7 +84,8 @@ export const kDisableMasterFlagName = "asfDisableMaster";
 export const kAlphaNetRpcUrl = "https://rpc.alphanet.xrpl.org";
 export const kAlphaNetFaucetUrl = "https://faucet.alphanet.xrpl.org/accounts";
 export const kAlphaNetNetworkId = 24100;
-export const kAlphaNetExplorerTxUrl = "https://alphanet.xrpl.org/transactions/";
+/** The XRPL Explorer in custom-network mode: the AlphaNet host itself serves no explorer. */
+export const kAlphaNetExplorerTxUrl = "https://custom.xrpl.org/alphanet.xrpl.org/transactions/";
 /** A public mainnet full-history server, used read-only by the exposure check. */
 export const kMainnetRpcUrl = "https://xrplcluster.com";
 /** Networks with an id above this must carry `NetworkID` in every transaction. */

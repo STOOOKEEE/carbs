@@ -16,6 +16,7 @@ const SCREENS = [
   { value: "session", label: "Session" },
   { value: "actions", label: "Actions" },
   { value: "attack", label: "Attack" },
+  { value: "apps", label: "Apps" },
   { value: "quantum", label: "Quantum" },
 ] as const;
 
@@ -124,6 +125,13 @@ useHead({ htmlAttrs: { "data-theme": computed(() => (ledgerMode.value ? "ledger"
 :root[data-theme="ledger"] .top-bar {
   background: rgb(10 7 20 / 55%);
   border-bottom-color: var(--color-line);
+}
+
+/* Below Tailwind's sm breakpoint the screens take the whole width: six fit a phone in small type. */
+@media (max-width: 639px) {
+  .top-bar .rubber-segment__item {
+    font-size: var(--text-xs);
+  }
 }
 
 .ledger-backdrop {

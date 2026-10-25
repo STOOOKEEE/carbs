@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BusyNote from "~/components/ui/BusyNote.vue";
 import { computed, ref } from "vue";
+import ExplorerLink from "~/components/ui/ExplorerLink.vue";
 import LedgerDevicePicker from "~/components/ui/LedgerDevicePicker.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
@@ -43,6 +44,9 @@ const PROFILES = computed<readonly { id: Profile; title: string; body: string; n
 );
 
 const masterLabel = computed(() => (state.info?.masterDisabled ? "disabled" : "enabled"));
+/** The account lives on the backend's node: its explorer, if it has one (the simulation has none). */
+const nodeNetwork = computed(() => backend.node.explorerNetwork());
+const simulated = computed(() => backend.mode === "simulated");
 
 async function create(profile: Profile): Promise<void> {
   await demo.createAccount(profile, { passkeyOnly: profile === "mac" && passkeyOnly.value });
@@ -106,7 +110,14 @@ async function create(profile: Profile): Promise<void> {
           </div>
           <dl v-if="state.info" class="kv">
             <dt>Address</dt>
-            <dd class="mono" data-testid="address">{{ state.address }}</dd>
+            <dd class="mono" data-testid="address">
+              <ExplorerLink
+                kind="account"
+                :value="state.address"
+                :network="nodeNetwork"
+                :simulated="simulated"
+              />
+            </dd>
             <dt>Profile</dt>
             <dd>
               {{ state.profile ? PROFILE_LABELS[state.profile] : ""
@@ -122,7 +133,15 @@ async function create(profile: Profile): Promise<void> {
             <dd data-testid="master">{{ masterLabel }}</dd>
             <dt>Regular key</dt>
             <dd class="mono">
-              {{ state.info.regularKey ? shortAddress(state.info.regularKey) : "none" }}
+              <ExplorerLink
+                v-if="state.info.regularKey"
+                kind="account"
+                :value="state.info.regularKey"
+                :network="nodeNetwork"
+                :simulated="simulated"
+                :text="shortAddress(state.info.regularKey)"
+              />
+              <template v-else>none</template>
             </dd>
             <dt>Passkeys</dt>
             <dd>{{ state.objects?.passkeys.length ?? 0 }}</dd>

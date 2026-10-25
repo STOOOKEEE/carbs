@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import ExplorerLink from "~/components/ui/ExplorerLink.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
 import { useBackend } from "~/lib/context";
 import { describeResult } from "~/lib/result-codes";
+import type { AppNetwork } from "~/lib/networks";
 import type { NodeResult } from "~/lib/ports";
 import { shortHex } from "~/lib/format";
 
 const props = defineProps<{
   result: NodeResult;
   simulated: boolean;
-  /** Overrides the link: a real transaction on a given explorer (`null`: none). */
-  explorerUrl?: string | null;
+  /** The network the transaction was sent to, when it is not the backend's node (`null`: none). */
+  network?: AppNetwork | null;
 }>();
 
 const backend = useBackend();
@@ -23,13 +25,13 @@ const tone = computed(() =>
       ? "chip-warn"
       : "chip-danger",
 );
-// A simulated hash exists on no explorer; a real one is linked on the selected network's.
-const explorerLink = computed(() => {
-  if (props.explorerUrl !== undefined) return props.explorerUrl;
-  // The link of the node the transaction was sent to, not of the network selected in the header.
-  return backend.mode === "live" && props.result.feeClaimed
-    ? backend.node.explorerUrl(props.result.hash)
-    : null;
+// A simulated hash exists on no explorer, nor does a transaction no validated ledger holds (a
+// refusal, or an answer that never validated). A real one is linked on the explorer of the node
+// it was sent to, not of the network selected in the header.
+const network = computed(() => {
+  if (props.simulated || !props.result.feeClaimed) return null;
+  if (props.network !== undefined) return props.network;
+  return backend.mode === "live" ? backend.node.explorerNetwork() : null;
 });
 </script>
 
@@ -48,16 +50,13 @@ const explorerLink = computed(() => {
     <p>{{ description.sentence }}</p>
     <p v-if="description.rule" class="text-muted-foreground">{{ description.rule }}</p>
     <p class="mono text-muted-foreground">
-      <a
-        v-if="explorerLink"
-        :href="explorerLink"
-        target="_blank"
-        rel="noreferrer"
-        class="underline"
-        data-testid="explorer-link"
-        >{{ shortHex(result.hash) }}</a
-      >
-      <template v-else>{{ shortHex(result.hash) }}</template>
+      <ExplorerLink
+        kind="tx"
+        :value="result.hash"
+        :network="network"
+        :simulated="simulated"
+        :text="shortHex(result.hash)"
+      />
     </p>
   </div>
 </template>

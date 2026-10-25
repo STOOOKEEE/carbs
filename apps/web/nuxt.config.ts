@@ -15,7 +15,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const localWss = (process.env.NUXT_PUBLIC_LOCAL_NODE_URL ?? "").trim() || DEFAULT_LOCAL_WSS;
 const localFaucet = (process.env.NUXT_PUBLIC_LOCAL_FAUCET_URL ?? "").trim() || DEFAULT_LOCAL_FAUCET;
 const networks = createNetworks({ wss: localWss, rpc: localRpcFor(localWss), faucet: localFaucet });
-// The policy lists the hosts of the configured networks and explorers, no bare scheme.
+// The policy lists the hosts of the configured networks' nodes and faucets, no bare scheme.
 const cspOptions = { connectOrigins: allConnectOrigins(networks), dev: !isProduction };
 const CONTENT_SECURITY_POLICY = buildCsp(cspOptions);
 const HEADERS = securityHeaders(buildCsp({ ...cspOptions, dev: false }));
@@ -60,6 +60,9 @@ export default defineNuxtConfig({
       localNodeUrl: "",
       // The dev faucet of the local node (started by `pnpm demo`).
       localFaucetUrl: "",
+      // The team's wallet server behind the Apps screen; "" is its tailnet host (lib/live-apps.ts).
+      // Only linked to, never fetched: it is not in connect-src.
+      appsUrl: "",
     },
   },
 
@@ -93,7 +96,8 @@ export default defineNuxtConfig({
 
   // Content-Security-Policy: scripts only from this origin, no inline script (the
   // server plugin externalize-inline-scripts moves Nuxt's runtime config into a file).
-  // Fonts and assets are self-hosted. connect-src allows the node and the explorers.
+  // Fonts and assets are self-hosted. connect-src allows the nodes and the faucets; the
+  // explorers are only linked to.
   routeRules: {
     "/**": {
       headers: { ...HEADERS, "Content-Security-Policy": CONTENT_SECURITY_POLICY },

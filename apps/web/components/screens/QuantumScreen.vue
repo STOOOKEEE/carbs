@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import ExplorerLink from "~/components/ui/ExplorerLink.vue";
 import LedgerDevicePicker from "~/components/ui/LedgerDevicePicker.vue";
+import LinkedText from "~/components/ui/LinkedText.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
@@ -13,7 +15,6 @@ import {
   useNetwork,
 } from "~/lib/context";
 import { shortHex } from "~/lib/format";
-import { explorerAccountUrl, explorerTxUrl } from "~/lib/networks";
 import type { ExposureReport, NetworkName } from "~/lib/ports";
 
 const backend = useBackend();
@@ -50,10 +51,12 @@ const staxMissing = computed(
   () => isLive.value && deviceSelection.choice === "usb" && !deviceSelection.connected,
 );
 const alphanet = computed(() => networkStore.networks().alphanet);
-
-function explorerFor(hash: string): string | null {
-  return isLive.value ? explorerTxUrl(alphanet.value, hash) : null;
-}
+/** The migration's account and transactions are on the AlphaNet when the run is live. */
+const migrationNetwork = computed(() => (isLive.value ? alphanet.value : null));
+/** The checked account lives on the network of the report: AlphaNet or mainnet. */
+const reportNetwork = computed(() =>
+  report.value === null ? null : networkStore.networks()[report.value.network],
+);
 
 const exposurePort = computed(() => (source.value === "live" ? liveExposure : backend.exposure));
 
@@ -176,7 +179,22 @@ async function useFixture(value: string): Promise<void> {
         </span>
         <SimBadge v-if="report.simulated" />
       </div>
-      <p class="text-sm text-muted-foreground" data-testid="coverage">{{ report.coverage }}</p>
+      <p class="mono" data-testid="report-address">
+        <ExplorerLink
+          kind="account"
+          :value="report.address"
+          :network="reportNetwork"
+          :simulated="report.simulated"
+          data-testid="report-account-link"
+        />
+      </p>
+      <p class="text-sm text-muted-foreground" data-testid="coverage">
+        <LinkedText
+          :text="report.coverage"
+          :network="reportNetwork"
+          :simulated="report.simulated"
+        />
+      </p>
       <ul class="space-y-3">
         <li
           v-for="(reason, index) in report.reasons"
@@ -184,19 +202,29 @@ async function useFixture(value: string): Promise<void> {
           class="text-sm"
           :data-testid="`reason-${reason.source}`"
         >
-          <span class="chip" :class="reason.exposed ? 'chip-danger' : 'chip-ok'">{{
+          <span class="chip mr-1" :class="reason.exposed ? 'chip-danger' : 'chip-ok'">{{
             reason.source
           }}</span>
-          {{ reason.text }}
+          <LinkedText :text="reason.text" :network="reportNetwork" :simulated="report.simulated" />
           <span v-if="reason.firstTxHash" class="mono block text-muted-foreground">
-            first revealed in {{ shortHex(reason.firstTxHash) }} at ledger {{ reason.firstLedger }}
+            first revealed in
+            <ExplorerLink
+              kind="tx"
+              :value="reason.firstTxHash"
+              :network="reportNetwork"
+              :simulated="report.simulated"
+              :text="shortHex(reason.firstTxHash)"
+            />
+            at ledger {{ reason.firstLedger }}
           </span>
         </li>
       </ul>
       <div v-if="report.survivingAuthorities.length" data-testid="surviving">
         <p class="eyebrow mb-1">Survive disabling the master key</p>
         <ul class="list-inside list-disc text-sm">
-          <li v-for="item in report.survivingAuthorities" :key="item">{{ item }}</li>
+          <li v-for="item in report.survivingAuthorities" :key="item">
+            <LinkedText :text="item" :network="reportNetwork" :simulated="report.simulated" />
+          </li>
         </ul>
       </div>
     </section>
@@ -236,16 +264,12 @@ async function useFixture(value: string): Promise<void> {
         </button>
         <template v-if="mstate.address">
           <p class="mono" data-testid="migration-address">
-            <a
-              v-if="isLive"
-              :href="explorerAccountUrl(alphanet, mstate.address) ?? undefined"
-              target="_blank"
-              rel="noreferrer"
-              class="underline"
-              data-testid="account-link"
-              >{{ mstate.address }}</a
-            >
-            <template v-else>{{ mstate.address }}</template>
+            <ExplorerLink
+              kind="account"
+              :value="mstate.address"
+              :network="migrationNetwork"
+              :simulated="!isLive"
+            />
           </p>
           <p v-if="mstate.before" class="text-sm">
             Before:
@@ -339,7 +363,7 @@ async function useFixture(value: string): Promise<void> {
                 v-if="step.result"
                 :result="step.result"
                 :simulated="!isLive"
-                :explorer-url="isLive ? explorerFor(step.result.hash) : undefined"
+                :network="migrationNetwork"
               />
             </li>
           </ol>

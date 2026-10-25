@@ -53,7 +53,9 @@ describe("network store", () => {
 
   it("links transactions to the explorer of the selected network", () => {
     const store = createNetworkStore({ storage: null });
-    expect(store.explorerTx("ABC")).toBe("https://alphanet.xrpl.org/transactions/ABC");
+    expect(store.explorerTx("ABC")).toBe(
+      "https://custom.xrpl.org/alphanet.xrpl.org/transactions/ABC",
+    );
     store.select("local");
     expect(store.explorerTx("ABC")).toBeNull();
   });

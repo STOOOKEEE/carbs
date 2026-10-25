@@ -1,6 +1,6 @@
 # apps/web
 
-The carbs web app: five screens (Account, Session, Actions, Attack, Quantum) over the signing sessions and the quantum exposure check (`FIANSO-SPEC.md` sections 8.5 and 8.7). Nuxt 3 (Vue 3, TypeScript strict), client-rendered (`ssr: false`), generated from the `create-xrp` template (see `UPSTREAM.md`; credit to XRPL Commons' scaffold-xrp).
+The carbs web app: five screens (Account, Session, Actions, Attack, Quantum) over the signing sessions and the quantum exposure check (`FIANSO-SPEC.md` sections 8.5 and 8.7), and a sixth, Apps, that links to the team's live apps. Nuxt 3 (Vue 3, TypeScript strict), client-rendered (`ssr: false`), generated from the `create-xrp` template (see `UPSTREAM.md`; credit to XRPL Commons' scaffold-xrp).
 
 ## Run it
 
@@ -24,6 +24,8 @@ The app runs on one of two backends behind the same small interfaces (`lib/ports
 | Wallet (master key, passkey, session keys) | `lib/sim/wallet.ts`: the software authenticator (real P-256, no prompt), keyed digests instead of signatures   | real keys: secp256k1 master, the browser's WebAuthn passkey (the software authenticator in tests), P-256 or ML-DSA-44 session keys                                                                                         |
 | Exposure check                             | `lib/sim/exposure.ts` over the simulated history                                                               | `checkExposure` of `@carbs/sessions` on the AlphaNet and mainnet (read-only), the Quantum screen's default                                                                                                                 |
 | Quantum migration                          | the simulated node and Stax                                                                                    | a fresh AlphaNet account, signed in the page, validated, with explorer links; on the chosen device (on a real Stax, step 3 needs the ML-DSA-44 key read again after reinstalling the XRP app)                              |
+
+The **Apps** screen shows no result of either backend: it links to the pages of the team's wallet server (`apps/passkey-wallet`), which run on the team's own node and network (`NUXT_PUBLIC_APPS_URL`, see `docs/DEPLOY.md`). Each card says the session the page opens, as its source sets it (`lib/live-apps.ts`, whose test reads those sources), what the ledger and the Stax refuse, and the rows of the Stax review. The links are navigation: nothing is fetched from that host and `connect-src` does not list it.
 
 `lib/sim/node.test.ts` checks the simulation against the cases of spec 6.15; it proves that the simulation follows the spec and nothing about rippled. The live backend was run against the standalone node in modes A, P and C (see `docs/DEVLOG.md`); the component tests run it against a test double of the node.
 
@@ -58,21 +60,23 @@ All of the look lives in **`assets/tokens.css`**. Nothing else in the app holds 
 | Shape         | `--radius-sm` to `--radius-lg`, `--radius-pill`, `--border-width`, `--border-width-fine`, `--shadow-panel`                                       | pill buttons, rounded cards, 2 px borders                                                                                                                               |
 | Motion        | `--motion-fast`, `--motion-base`, `--motion-slow`, `--ease-out`                                                                                  | all transitions; `prefers-reduced-motion` sets them to 0                                                                                                                |
 
-The reusable shapes (`.panel`, `.panel-stack`, `.btn`, `.chip`, `.sim-badge`, `.kv`, `.field`) are defined once in `assets/css/main.css` from those tokens. Three components are ported from React Bits to Vue on the framework-agnostic `motion` package: `RubberSegment` (the top bar), `ThoughtLine` (the working line while the page waits for the node, with the steps taken and the time it took) and `Silk` (the Ledger-mode background, WebGL2, still under `prefers-reduced-motion`).
+The reusable shapes (`.panel`, `.panel-stack`, `.btn`, `.chip`, `.sim-badge`, `.kv`, `.field`, `.device-rows`) are defined once in `assets/css/main.css` from those tokens. Three components are ported from React Bits to Vue on the framework-agnostic `motion` package: `RubberSegment` (the top bar), `ThoughtLine` (the working line while the page waits for the node, with the steps taken and the time it took) and `Silk` (the Ledger-mode background, WebGL2, still under `prefers-reduced-motion`).
 
 ## Layout
 
 ```text
 assets/tokens.css        design tokens (the look)
 assets/css/main.css      base styles and the few shared classes
-components/screens/      the five screens, one component each, with their tests
-components/ui/           SIMULATED badge, result view, device modal, headers
+components/screens/      the six screens, one component each, with their tests
+components/ui/           SIMULATED badge, result view, explorer links, device modal, headers
 lib/ports.ts             Node, Device, Wallet, Exposure interfaces
 lib/sim/                 the simulated implementations and their tests
 lib/demo.ts, migration.ts  the stores behind the screens (state is read back from the node)
-layouts/, pages/         Nuxt routing: /, /account, /session, /actions, /attack, /quantum
+lib/live-apps.ts         the Apps screen's catalogue of the team's live apps and the link to their server
+layouts/, pages/         Nuxt routing: /, /account, /session, /actions, /attack, /apps, /quantum
 lib/wallets/             the three wallet adapters, the passkey and the wallet entry's logic
 lib/networks.ts, csp.ts  AlphaNet, Local node, Mainnet (read-only); the CSP is built from them
+lib/explorer.ts          links to the explorer of the network an address or a hash lives on
 server/                  Nitro: moves the inline config script into a file (CSP script-src 'self')
 ```
 
