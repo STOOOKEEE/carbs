@@ -7,6 +7,7 @@ import { element, guarded } from "./dom.ts";
 import { accountInfo, loadDefinitions, read } from "./ledger.ts";
 import { refreshLedgerPanel, setupLedgerPanel } from "./ledger-panel.ts";
 import { explorerLink, log, logError } from "./log.ts";
+import { refreshMigrationPanel, setupMigrationPanel } from "./migration-panel.ts";
 import { NodeClient } from "./rpc.ts";
 import { refreshSessionPanel, setupSessionPanel } from "./session-panel.ts";
 import { type StoredWallet, clearWallet, loadWallet, saveWallet } from "./storage.ts";
@@ -78,6 +79,7 @@ async function refreshPasskeyWallet(): Promise<void> {
 async function refresh(): Promise<void> {
   await refreshPasskeyWallet();
   await refreshLedgerPanel(connection);
+  await refreshMigrationPanel(connection);
   await refreshSessionPanel(connection);
   await refreshAgentPanel(connection);
 }
@@ -148,6 +150,7 @@ ui.payForm.addEventListener("submit", (event) => {
 });
 
 setupLedgerPanel(() => connection, refresh);
+setupMigrationPanel(() => connection, refresh);
 setupSessionPanel(
   () => connection,
   () => wallet,

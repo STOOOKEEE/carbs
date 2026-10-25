@@ -23,6 +23,7 @@
 #define INS_GET_PUBLIC_KEY        0x02
 #define INS_SIGN                  0x04
 #define INS_GET_APP_CONFIGURATION 0x06
+#define INS_GET_SESSION_POLICY    0x08  // carbs: read-only, session_policy.h
 #define P1_CONFIRM                0x01
 #define P1_NON_CONFIRM            0x00
 #define P2_NO_CHAINCODE           0x00

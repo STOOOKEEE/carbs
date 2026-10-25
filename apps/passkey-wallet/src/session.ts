@@ -5,6 +5,7 @@ import type { XrplDefinitions } from "ripple-binary-codec";
 import { encodeForSigning } from "ripple-binary-codec";
 import { deriveKeypair, sign } from "ripple-keypairs";
 
+import { textMemos } from "./hex.ts";
 import type { TxJson } from "./ledger.ts";
 
 const DROPS_PER_XRP = 1_000_000;
@@ -43,7 +44,16 @@ export type SessionRules = (CapRules | AllTransactionsRules | PermissionRules) &
   durationSeconds: number;
   /** Account that must co-sign every session transaction. */
   witness?: string;
+  /** Most session-signed transactions the ledger accepts (SessionMaxTxCount); the own close is free. */
+  maxTxCount?: number;
+  /** Device profile the Stax applies to this opening (Memo carbs-profile, shown on the device). */
+  profile?: SessionProfile;
 };
+
+/** The Stax session profiles (ledger-app/src/policy, docs/device-contract.md). */
+export const SESSION_PROFILES = ["agent", "game", "trading", "streaming", "minting"] as const;
+export type SessionProfile = (typeof SESSION_PROFILES)[number];
+const PROFILE_MEMO_TYPE = "carbs-profile";
 
 function drops(xrp: number): string {
   return String(Math.round(xrp * DROPS_PER_XRP));
@@ -76,6 +86,8 @@ export function openSessionTx(owner: string, sessionKey: string, rules: SessionR
     SessionDuration: rules.durationSeconds,
     ...modeFields(rules),
     ...(rules.witness === undefined ? {} : { SessionWitness: rules.witness }),
+    ...(rules.maxTxCount === undefined ? {} : { SessionMaxTxCount: rules.maxTxCount }),
+    ...(rules.profile === undefined ? {} : { Memos: textMemos(PROFILE_MEMO_TYPE, rules.profile) }),
   };
 }
 

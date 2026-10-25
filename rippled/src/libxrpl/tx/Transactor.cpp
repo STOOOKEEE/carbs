@@ -1171,7 +1171,12 @@ Transactor::checkSession(
             return tefSESSION_LIMIT;
     }
 
-    // 6. The witness, except for the own close: its signature was verified
+    // 6. The transaction count, in any mode, except for the own close.
+    if (auto const maxTxCount = (*session)[~sfSessionMaxTxCount];
+        maxTxCount && !ownClose && (*session)[sfSessionTxCount] >= *maxTxCount)
+        return tefSESSION_LIMIT;
+
+    // 7. The witness, except for the own close: its signature was verified
     // with the transaction's (STTx::checkSign); here it must come from a key
     // of the session's witness.
     if (auto const witness = (*session)[~sfSessionWitness];
@@ -1187,17 +1192,30 @@ Transactor::chargeSession(TER result, XRPAmount fee)
     if (!sessionKeylet_ || sessionOwnClose_)
         return;
 
-    // Only a session with a cap counts; it may have been deleted.
+    // A session counts when it has a cap or a transaction count; it may have
+    // been deleted.
     auto const sle = view().peek(*sessionKeylet_);
-    if (!sle || !sle->isFieldPresent(sfSessionCap))
+    if (!sle)
         return;
 
-    auto charge = fee;
-    if (isTesSuccess(result) && ctx_.tx.getTxnType() == ttPAYMENT)
-        charge += ctx_.tx[sfAmount].xrp();
+    bool const hasCap = sle->isFieldPresent(sfSessionCap);
+    bool const hasTxCount = sle->isFieldPresent(sfSessionMaxTxCount);
+    if (!hasCap && !hasTxCount)
+        return;
 
-    sle->setFieldAmount(
-        sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
+    if (hasCap)
+    {
+        auto charge = fee;
+        if (isTesSuccess(result) && ctx_.tx.getTxnType() == ttPAYMENT)
+            charge += ctx_.tx[sfAmount].xrp();
+
+        sle->setFieldAmount(
+            sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
+    }
+
+    if (hasTxCount)
+        sle->setFieldU32(sfSessionTxCount, sle->getFieldU32(sfSessionTxCount) + 1);
+
     view().update(sle);
 }
 

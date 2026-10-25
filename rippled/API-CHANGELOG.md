@@ -29,6 +29,7 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 - `ledger_entry`: With the `SigningSessions` amendment, a `signing_session` request field returns a `SigningSession` entry, either by index (a hex string) or by an object with `account` and `session_key` (both addresses); a missing or invalid address returns `malformedRequest` or `malformedAddress`.
 - `account_objects`: The `type` filter accepts `signing_session`.
 - `ledger_entry`, `account_objects`: A `SigningSession` entry may carry `SessionMaxPerTx` (the most one payment of a mode-C session may send) and `SessionWitness` (an account that co-signs every session transaction).
+- `ledger_entry`, `account_objects`: A `SigningSession` entry may carry `SessionMaxTxCount` (the most transactions the session may sign, in any mode) with `SessionTxCount` (how many it has signed, from 0). `SigningSessionSet` accepts an optional `SessionMaxTxCount` from 1 to 100000 (`temMALFORMED` otherwise).
 - `sign`: With `signature_target` set to `WitnessSignature`, the witness of a signing session signs the transaction into its `WitnessSignature` field.
 
 ### Changes
@@ -37,6 +38,7 @@ This version is supported by all `xrpld` versions. For WebSocket and HTTP JSON-R
 - `submit`: A session-signed transaction that uses `TicketSequence` is refused with `tefSESSION_TX_NOT_ALLOWED`, except the session's own close (`SigningSessionDelete` without `Owner`, signed by the session key).
 - `submit`: The session's own close, signed by the session key, may pay at most the base fee of its type; a higher `Fee` is refused with `tefSESSION_LIMIT` (other session-signed transactions keep the margin of 1000 base fee units).
 - `submit`: A session-signed transaction that would replace, in the transaction queue, a transaction its session key did not sign (same `Sequence` or `TicketSequence`) is refused with `telCAN_NOT_QUEUE_FEE`, whatever its fee, including when its fee would let it into the open ledger.
+- `submit`: A session-signed transaction whose session has reached its `SessionMaxTxCount` is refused with `tefSESSION_LIMIT`, except the session's own close. Each session-signed transaction applied, with a `tes` or `tec` result, adds one to `SessionTxCount`; the own close does not.
 
 ### Bugfixes
 

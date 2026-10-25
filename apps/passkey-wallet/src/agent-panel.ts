@@ -3,30 +3,30 @@
 // server only relays them; every approval is a transaction of the Stax account, read in clear
 // and signed on the device (classical key, or the ML-DSA-44 root once migrated).
 
-import { describeLedgerError } from "@carbs/ledger";
-
-import {
-  AGENT_REQUESTS_PATH,
-  type AgentDecision,
-  type AgentRequestRecord,
-  type AgentRequestStatus,
-  MAX_TEXT_LENGTH,
-  type PaymentIntent,
-  type SessionRequest,
-  isAgentRequestRecord,
+import type {
+  AgentDecision,
+  AgentRequestRecord,
+  AgentRequestStatus,
+  PaymentIntent,
+  SessionRequest,
 } from "../server/agent-requests.ts";
 import type { Connection } from "./account.ts";
+import {
+  agentErrorText,
+  approveAgentRequest,
+  fetchAgentRecords,
+  lastApprovedSession,
+  readAgentSession,
+  rejectAgentRequest,
+  secondsUntil,
+} from "./agent-approvals.ts";
+import { agentIdOf } from "./agent-id.ts";
 import { element, guarded } from "./dom.ts";
-import { type SubmittedTx, read } from "./ledger.ts";
 import { signAndSubmitWithStax, staxAccount } from "./ledger-panel.ts";
 import { explorerLink, log, logError } from "./log.ts";
-import { RpcError, type RpcResult } from "./rpc.ts";
-import { closeSessionTx, openSessionTx, paymentTx } from "./session.ts";
+import { closeSessionTx } from "./session.ts";
 
 const POLL_INTERVAL_MS = 2_000;
-const DROPS_PER_XRP = 1_000_000;
-/** Seconds between the Unix epoch and the XRPL epoch (2000-01-01). */
-const RIPPLE_EPOCH_OFFSET_S = 946_684_800;
 const SECONDS_PER_MINUTE = 60;
 const HASH_PREFIX_LENGTH = 12;
 
@@ -46,12 +46,6 @@ const ui = {
   history: element("agent-history", HTMLOListElement),
 };
 
-/** The agent session the human approved last: the owner account and the agent's key. */
-interface AgentSession {
-  owner: string;
-  sessionKey: string;
-}
-
 /** What the page gives the panel at setup. */
 interface Wiring {
   getConnection: () => Connection | undefined;
@@ -64,64 +58,8 @@ let records: AgentRequestRecord[] = [];
 const busy = new Set<string>();
 let inFlight: Promise<void> | undefined;
 
-async function fetchRecords(): Promise<AgentRequestRecord[]> {
-  const answer = await fetch(AGENT_REQUESTS_PATH);
-  if (!answer.ok) throw new Error(`wallet server: HTTP ${answer.status} on ${AGENT_REQUESTS_PATH}`);
-  const body: unknown = await answer.json();
-  if (!Array.isArray(body) || !body.every(isAgentRequestRecord))
-    throw new Error("wallet server: unexpected agent requests answer");
-  return body;
-}
-
-async function postDecision(id: string, decision: AgentDecision): Promise<void> {
-  const answer = await fetch(`${AGENT_REQUESTS_PATH}/${id}/decision`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(decision),
-  });
-  if (!answer.ok) {
-    const body: unknown = await answer.json();
-    const reason = read(body, ["error"]);
-    throw new Error(
-      `wallet server refused the decision: ${typeof reason === "string" ? reason : `HTTP ${answer.status}`}`,
-    );
-  }
+function logDecision(decision: AgentDecision): void {
   log(`Décision transmise à l'agent : demande ${STATUS_LABELS[decision.status]}.`);
-}
-
-function errorText(error: unknown): string {
-  const message = error instanceof Error ? error.message : describeLedgerError(error);
-  return (message.trim() === "" ? "unknown error" : message).slice(0, MAX_TEXT_LENGTH);
-}
-
-function lastApprovedSession(): AgentSession | undefined {
-  const record = records.find(
-    (candidate) =>
-      candidate.request.kind === "session" &&
-      candidate.status === "approved" &&
-      candidate.owner !== undefined,
-  );
-  if (record?.owner === undefined) return undefined;
-  return { owner: record.owner, sessionKey: record.request.sessionKey };
-}
-
-/** The session's ledger entry; undefined once it is gone (revoked or closed). */
-async function sessionEntry(
-  connection: Connection,
-  session: AgentSession,
-): Promise<RpcResult | undefined> {
-  try {
-    return await connection.node.request("ledger_entry", {
-      signing_session: { account: session.owner, session_key: session.sessionKey },
-    });
-  } catch (error) {
-    if (error instanceof RpcError && error.code === "entryNotFound") return undefined;
-    throw error;
-  }
-}
-
-function xrp(drops: unknown): string {
-  return typeof drops === "string" ? `${Number(drops) / DROPS_PER_XRP}` : "?";
 }
 
 function describeDuration(seconds: number): string {
@@ -133,7 +71,7 @@ function describeDuration(seconds: number): string {
 
 function describeSessionRequest(request: SessionRequest): string {
   return (
-    `Budget demandé par l'agent : plafond ${request.capXrp} XRP, ` +
+    `Budget demandé par l'agent ${agentIdOf(request.sessionKey)} : plafond ${request.capXrp} XRP, ` +
     `max ${request.maxPerTxXrp} XRP par paiement, durée ${describeDuration(request.durationSeconds)}, ` +
     `but : « ${request.purpose} », clé de l'agent ${request.sessionKey}.`
   );
@@ -158,48 +96,22 @@ async function approve(connection: Connection, record: AgentRequestRecord): Prom
   const stax = staxAccount();
   if (stax === undefined) throw new Error("connect the Stax in the Ledger section first");
   const { request } = record;
-  const tx =
-    request.kind === "session"
-      ? openSessionTx(stax.address, request.sessionKey, {
-          mode: "cap",
-          capXrp: request.capXrp,
-          maxPerTxXrp: request.maxPerTxXrp,
-          durationSeconds: request.durationSeconds,
-        })
-      : {
-          ...paymentTx(stax.address, request.destination, request.amountXrp),
-          ...(request.destinationTag === undefined
-            ? {}
-            : { DestinationTag: request.destinationTag }),
-        };
   log(
     request.kind === "session"
       ? `Session de l'agent : ouverture du budget sur la Stax${stax.postQuantum ? " (racine ML-DSA-44)" : ""}…`
       : `Paiement escaladé par l'agent : ${request.amountXrp} XRP vers ${request.destination}, signez sur la Stax…`,
   );
-  let submitted: SubmittedTx;
-  try {
-    submitted = await signAndSubmitWithStax(connection, tx, stax.postQuantum);
-  } catch (error) {
-    // The device refusal (or any signing error) is reported to the agent, then to the journal.
-    await postDecision(record.id, {
-      status: "failed",
-      owner: stax.address,
-      note: errorText(error),
-    }).catch(logError);
-    throw error;
-  }
-  await postDecision(record.id, {
-    status: submitted.result === "tesSUCCESS" ? "approved" : "failed",
-    owner: stax.address,
-    txHash: submitted.hash,
-    result: submitted.result,
-  });
+  logDecision(
+    await approveAgentRequest(record, {
+      address: stax.address,
+      signAndSubmit: (tx) => signAndSubmitWithStax(connection, tx, stax.postQuantum),
+    }),
+  );
 }
 
 async function reject(record: AgentRequestRecord): Promise<void> {
   log(`Demande de l'agent refusée : ${describeRequest(record)}`);
-  await postDecision(record.id, { status: "rejected", note: "refused by the owner" });
+  logDecision(await rejectAgentRequest(record));
 }
 
 /** Runs a decision with its buttons off, logs its error, then refreshes the page. */
@@ -282,7 +194,7 @@ function renderHistory(decided: readonly AgentRequestRecord[]): void {
 
 /** The live line: spent / cap and seconds left, as the ledger stores them. */
 async function renderSession(connection: Connection | undefined): Promise<void> {
-  const session = lastApprovedSession();
+  const session = lastApprovedSession(records);
   const stax = staxAccount();
   if (session === undefined) {
     ui.session.textContent = "Aucune session d'agent approuvée.";
@@ -294,32 +206,27 @@ async function renderSession(connection: Connection | undefined): Promise<void> 
     ui.revoke.disabled = true;
     return;
   }
-  const entry = await sessionEntry(connection, session);
-  const node = read(entry, ["node"]);
-  ui.revoke.disabled = node === undefined || stax?.address !== session.owner;
-  if (node === undefined) {
+  const state = await readAgentSession(connection, session);
+  ui.revoke.disabled = state === undefined || stax?.address !== session.owner;
+  if (state === undefined) {
     ui.session.textContent = `Session de l'agent ${session.sessionKey} : fermée (plus d'entrée sur le ledger).`;
     return;
   }
-  const expiration = read(node, ["Expiration"]);
-  const remaining =
-    typeof expiration === "number"
-      ? expiration - (Math.floor(Date.now() / 1000) - RIPPLE_EPOCH_OFFSET_S)
-      : undefined;
+  const remaining = state.expiration === undefined ? undefined : secondsUntil(state.expiration);
   const time =
     remaining === undefined ? "" : remaining > 0 ? ` · expire dans ${remaining} s` : " · expirée";
   ui.session.textContent =
-    `Session de l'agent ${session.sessionKey} (compte ${session.owner}) : ` +
-    `dépensé ${xrp(read(node, ["SessionSpent"]))} / ${xrp(read(node, ["SessionCap"]))} XRP` +
-    ` · max ${xrp(read(node, ["SessionMaxPerTx"]))} XRP par paiement${time}`;
+    `Session de l'agent ${agentIdOf(session.sessionKey)} (${session.sessionKey}, compte ${session.owner}) : ` +
+    `dépensé ${state.spentXrp} / ${state.capXrp ?? "?"} XRP` +
+    ` · max ${state.maxPerTxXrp ?? "?"} XRP par paiement${time}`;
 }
 
 async function render(connection: Connection | undefined): Promise<void> {
   try {
-    records = await fetchRecords();
+    records = await fetchAgentRecords();
     ui.status.textContent = `Serveur du wallet joint · ${records.length} demande(s) de l'agent.`;
   } catch (error) {
-    ui.status.textContent = `Serveur du wallet injoignable : ${errorText(error)}`;
+    ui.status.textContent = `Serveur du wallet injoignable : ${agentErrorText(error)}`;
     return;
   }
   const staxConnected = staxAccount() !== undefined;
@@ -351,7 +258,7 @@ export function setupAgentPanel(
     guarded(
       async () => {
         const connection = getConnection();
-        const session = lastApprovedSession();
+        const session = lastApprovedSession(records);
         const stax = staxAccount();
         if (connection === undefined || session === undefined) return;
         if (stax?.address !== session.owner)
