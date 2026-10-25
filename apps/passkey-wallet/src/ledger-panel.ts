@@ -2,37 +2,30 @@
 // post-quantum root (ML-DSA-44) once the account was migrated by the web app (Quantum screen).
 // Chrome or Edge only: WebHID is not in Safari or Firefox.
 
-import {
-  type LedgerDevice,
-  connectLedger,
-  getClassicPublicKey,
-  getMlDsaPublicKey,
-  kDefaultXrpPath,
-  signClassic,
-  signMlDsa,
-} from "@carbs/ledger";
-import { type XrplDefinitions, encodeForSigning } from "ripple-binary-codec";
-import { deriveAddress, verify } from "ripple-keypairs";
+import { describeLedgerError, getMlDsaPublicKey } from "@carbs/ledger";
+import { deriveAddress } from "ripple-keypairs";
 
 import { element, guarded } from "./dom.ts";
-import { bytesToHex, hexToBytes } from "./hex.ts";
-import {
-  type SubmittedTx,
-  type TxJson,
-  accountInfo,
-  autofill,
-  read,
-  submitAndWait,
-} from "./ledger.ts";
+import { bytesToHex } from "./hex.ts";
+import type { SubmittedTx, TxJson } from "./ledger.ts";
 import { explorerLink, log, logError } from "./log.ts";
 import { type Connection, requestFunding } from "./account.ts";
+import {
+  type DeviceKey,
+  type Stax,
+  accountState,
+  connectStax,
+  isPostQuantumRoot,
+  submitSignedByStax,
+} from "./stax.ts";
 
-const LSF_DISABLE_MASTER = 0x00100000;
 const DROPS_PER_XRP = 1_000_000;
-/** XRPL single-signing prefix STX\0: the classical path of the XRP app adds it itself. */
-const SIGNING_PREFIX_BYTES = 4;
-/** The device's classical account key (what the XRP app derives by default). */
-const CLASSIC_CURVE = "secp256k1";
+/**
+ * How long a read on the existing connection may take before the device counts as gone. Short:
+ * the reconnection that follows still needs the click's user activation (5 s in Chrome) for
+ * the browser's device chooser.
+ */
+const EXISTING_READ_TIMEOUT_MS = 2_500;
 
 const ui = {
   info: element("ledger-info", HTMLElement),
@@ -44,41 +37,9 @@ const ui = {
   payPq: element("ledger-pay-pq", HTMLInputElement),
 };
 
-/** A key of the device: XRPL address and upper-case hex public key. */
-interface DeviceKey {
-  address: string;
-  publicKey: string;
-}
-
-interface Stax {
-  device: LedgerDevice;
-  account: DeviceKey;
-  pqKey: DeviceKey;
-}
-
 let stax: Stax | undefined;
-
-interface AccountState {
-  balance: string;
-  regularKey: string | undefined;
-  masterDisabled: boolean;
-}
-
-async function accountState(
-  connection: Connection,
-  address: string,
-): Promise<AccountState | undefined> {
-  const info = await accountInfo(connection.node, address);
-  if (info === undefined) return undefined;
-  const drops = read(info, ["account_data", "Balance"]);
-  const regularKey = read(info, ["account_data", "RegularKey"]);
-  const flags = read(info, ["account_data", "Flags"]);
-  return {
-    balance: typeof drops === "string" ? `${Number(drops) / DROPS_PER_XRP} XRP` : "?",
-    regularKey: typeof regularKey === "string" ? regularKey : undefined,
-    masterDisabled: typeof flags === "number" && (flags & LSF_DISABLE_MASTER) !== 0,
-  };
-}
+/** The last reconnection failed (chooser closed, or the click's activation expired). */
+let reconnectNeedsClick = false;
 
 /** The connected Stax account, and whether its account is now controlled by its ML-DSA key. */
 export function staxAccount(): { address: string; postQuantum: boolean } | undefined {
@@ -86,36 +47,78 @@ export function staxAccount(): { address: string; postQuantum: boolean } | undef
   return { address: stax.account.address, postQuantum: ui.payPq.checked };
 }
 
-/** Signs with the account key; the device shows the transaction in clear. */
-async function signClassicTx(
-  device: LedgerDevice,
-  account: DeviceKey,
-  tx: TxJson,
-  defs: XrplDefinitions,
-): Promise<TxJson> {
-  const unsigned: TxJson = { ...tx, SigningPubKey: account.publicKey };
-  const signingData = encodeForSigning(unsigned, defs);
-  const fields = hexToBytes(signingData).subarray(SIGNING_PREFIX_BYTES);
-  const signature = bytesToHex(await signClassic(device, kDefaultXrpPath, CLASSIC_CURVE, fields));
-  if (!verify(signingData, signature, account.publicKey)) {
-    throw new Error("the Ledger signature does not verify under the account key");
-  }
-  return { ...unsigned, TxnSignature: signature };
+/** The connected device (the migration panel reads its keys). */
+export function connectedStax(): Stax | undefined {
+  return stax;
+}
+
+/** The ML-DSA-44 key read again from the device, and the account it answered for. */
+export interface Reread {
+  account: string;
+  pqKey: DeviceKey;
+}
+
+/** Rejects once ms have passed: a device gone mid-connection never answers. */
+function timeout(ms: number): Promise<never> {
+  const { promise, reject } = Promise.withResolvers<never>();
+  setTimeout(() => reject(new Error(`no answer from the Stax after ${ms / 1_000} s`)), ms);
+  return promise;
 }
 
 /**
- * Signs with the ML-DSA-44 root: the device parses the signing data (`STX\0` included) and
- * shows it in clear, then signs with pure ML-DSA and an empty context; the node verifies it.
+ * Opens the device again. connectStax() starts first, inside the click (WebHID's chooser needs
+ * its user activation); the stale connection is closed afterwards, its error only logged.
  */
-async function signMlDsaTx(
-  device: LedgerDevice,
-  pqKey: DeviceKey,
-  tx: TxJson,
-  defs: XrplDefinitions,
-): Promise<TxJson> {
-  const unsigned: TxJson = { ...tx, SigningPubKey: pqKey.publicKey };
-  const signature = await signMlDsa(device, hexToBytes(encodeForSigning(unsigned, defs)));
-  return { ...unsigned, TxnSignature: bytesToHex(signature) };
+function reconnect(stale: Stax | undefined): Promise<Reread> {
+  log("Reconnexion à la Stax (choisissez-la dans la fenêtre du navigateur si elle s'ouvre)…");
+  const connecting = connectStax();
+  if (stale !== undefined)
+    stale.device
+      .close()
+      .catch((error: unknown) =>
+        log(`Ancienne connexion à la Stax non fermée (${describeLedgerError(error)}).`),
+      );
+  return connecting.then(
+    (next) => {
+      stax = next;
+      reconnectNeedsClick = false;
+      log(`Stax reconnectée : ${next.account.address}.`);
+      return { account: next.account.address, pqKey: next.pqKey };
+    },
+    (error: unknown) => {
+      reconnectNeedsClick = true;
+      throw new Error(
+        `reconnexion à la Stax impossible (${describeLedgerError(error)}) : cliquez à nouveau sur « Relire la clé », la fenêtre du navigateur proposera la Stax`,
+      );
+    },
+  );
+}
+
+async function readOnExistingConnection(current: Stax): Promise<Reread> {
+  const publicKey = bytesToHex(
+    await Promise.race([getMlDsaPublicKey(current.device), timeout(EXISTING_READ_TIMEOUT_MS)]),
+  );
+  log("Clé ML-DSA-44 relue sur la connexion existante.");
+  return {
+    account: current.account.address,
+    pqKey: { address: deriveAddress(publicKey), publicKey },
+  };
+}
+
+/**
+ * Reads the ML-DSA-44 key from the device again: on the existing connection when it answers
+ * (the app was not reinstalled), otherwise over a new connection. Call it straight from the
+ * click, with no await before: the reconnection may need the click's user activation.
+ */
+export function rereadMlDsaKey(): Promise<Reread> {
+  const current = stax;
+  if (current === undefined || reconnectNeedsClick) return reconnect(current);
+  return readOnExistingConnection(current).catch((error: unknown) => {
+    log(
+      `Lecture sur la connexion existante impossible (${describeLedgerError(error)}) : l'app a sans doute été réinstallée.`,
+    );
+    return reconnect(current);
+  });
 }
 
 /** Signs a transaction of the Stax account on the device (classical or ML-DSA key) and submits it. */
@@ -125,15 +128,8 @@ export async function signAndSubmitWithStax(
   withPq: boolean,
 ): Promise<SubmittedTx> {
   if (stax === undefined) throw new Error("connect the Ledger first");
-  const filled = await autofill(connection.node, connection.defs, {
-    ...tx,
-    Account: stax.account.address,
-  });
   log(`${String(tx["TransactionType"])} : relisez et validez sur la Stax…`);
-  const signed = withPq
-    ? await signMlDsaTx(stax.device, stax.pqKey, filled, connection.defs)
-    : await signClassicTx(stax.device, stax.account, filled, connection.defs);
-  const submitted = await submitAndWait(connection.node, connection.defs, signed);
+  const submitted = await submitSignedByStax(connection, stax, tx, withPq);
   log(
     `${String(tx["TransactionType"])} signé ${withPq ? "en ML-DSA-44" : "avec la clé classique"} sur la Stax :`,
     submitted,
@@ -147,11 +143,7 @@ export async function refreshLedgerPanel(connection: Connection | undefined): Pr
     stax !== undefined && connection !== undefined
       ? await accountState(connection, stax.account.address)
       : undefined;
-  const migrated =
-    state !== undefined &&
-    stax !== undefined &&
-    state.regularKey === stax.pqKey.address &&
-    state.masterDisabled;
+  const migrated = stax !== undefined && isPostQuantumRoot(stax, state);
   ui.fund.disabled = stax === undefined || connection === undefined || state !== undefined;
   for (const field of ui.payForm.elements) {
     if (field instanceof HTMLInputElement || field instanceof HTMLButtonElement)
@@ -173,7 +165,7 @@ export async function refreshLedgerPanel(connection: Connection | undefined): Pr
     `Clé ML-DSA-44 de la Stax : ${stax.pqKey.address}`,
     migrated
       ? " · racine post-quantique active (clé maître désactivée)"
-      : " · migration post-quantique : écran Quantum de l'app web",
+      : " · pas encore migrée : voir « Migrer vers la racine ML-DSA-44 » ci-dessous",
   );
 }
 
@@ -187,19 +179,7 @@ export function setupLedgerPanel(
     "click",
     run(async () => {
       log("Connexion à la Stax (choisissez-la dans la fenêtre du navigateur)…");
-      const device = await connectLedger();
-      try {
-        const classic = await getClassicPublicKey(device, kDefaultXrpPath, CLASSIC_CURVE);
-        const pqPublicKey = bytesToHex(await getMlDsaPublicKey(device));
-        stax = {
-          device,
-          account: { address: classic.address, publicKey: bytesToHex(classic.publicKey) },
-          pqKey: { address: deriveAddress(pqPublicKey), publicKey: pqPublicKey },
-        };
-      } catch (error) {
-        await device.close();
-        throw error;
-      }
+      stax = await connectStax();
       log(`Stax connectée : ${stax.account.address} (clé ML-DSA : ${stax.pqKey.address}).`);
     }),
   );

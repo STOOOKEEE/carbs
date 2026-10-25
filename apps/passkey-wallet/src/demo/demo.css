@@ -1,0 +1,584 @@
+/* The stage demo: dark, large type, high contrast, one screen at 1440x900 without scrolling. */
+
+:root {
+  color-scheme: dark;
+  --bg: #07090d;
+  --panel: #11151d;
+  --line: #262d3a;
+  --text: #f4f6fa;
+  --muted: #a3acbb;
+  --paid: #3ddc84;
+  --ledger: #ff5a5f;
+  --device: #b98cff;
+  --waiting: #ffb020;
+  --injection: #ff8a3d;
+  --expiry: #6cb6ff;
+  --accent: #5b8cff;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 18px 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+/* Header */
+
+.demo-header {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  min-width: 0;
+}
+
+.demo-header h1 {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.demo-header .dot {
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+.demo-header .accent {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--device);
+}
+
+/* The subtitle claims the ML-DSA-44 root only once the Stax account is migrated. */
+.demo-header .accent.root-muted {
+  color: var(--muted);
+}
+
+.status {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 16px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status.problem {
+  color: var(--ledger);
+}
+
+/* Columns */
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 22px;
+  min-height: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+}
+
+.column h2,
+.label {
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* Timeline */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.event {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-areas: "icon body amount" "icon body time";
+  column-gap: 12px;
+  align-items: start;
+  flex: none;
+  padding: 8px 12px;
+  border-left: 6px solid var(--muted);
+  border-radius: 10px;
+  background: #0c1017;
+  animation: arrive 0.4s ease-out;
+}
+
+.event-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--bg);
+  background: var(--muted);
+}
+
+.event-body {
+  grid-area: body;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Two lines at most: long thoughts and the final summary end with an ellipsis. */
+.event-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 20px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.event-detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.event-amount {
+  grid-area: amount;
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.event-time {
+  grid-area: time;
+  justify-self: end;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.event-quiet {
+  border-left-color: var(--line);
+}
+
+.event-quiet .event-text {
+  color: var(--muted);
+}
+
+.event-type-thought .event-text {
+  font-style: italic;
+}
+
+.event-paid {
+  border-left-color: var(--paid);
+}
+.event-paid .event-icon {
+  background: var(--paid);
+}
+.event-paid .event-detail,
+.event-paid .event-amount {
+  color: var(--paid);
+}
+
+.event-ledger {
+  border-left-color: var(--ledger);
+  background: #1c0d10;
+}
+.event-ledger .event-icon {
+  background: var(--ledger);
+}
+.event-ledger .event-detail,
+.event-ledger .event-amount {
+  color: var(--ledger);
+}
+
+.event-device {
+  border-left-color: var(--device);
+  background: #170f24;
+}
+.event-device .event-icon {
+  background: var(--device);
+}
+.event-device .event-detail,
+.event-device .event-amount {
+  color: var(--device);
+}
+
+.event-waiting {
+  border-left-color: var(--waiting);
+}
+.event-waiting .event-icon {
+  background: var(--waiting);
+}
+.event-waiting .event-amount {
+  color: var(--waiting);
+}
+
+.event-injection {
+  border-left-color: var(--injection);
+}
+.event-injection .event-icon {
+  background: var(--injection);
+}
+.event-injection .event-text {
+  color: var(--injection);
+}
+
+.event-expiry {
+  border-left-color: var(--expiry);
+}
+.event-expiry .event-icon {
+  background: var(--expiry);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+/* Centre: Agent ID and budget */
+
+.centre-column {
+  justify-content: flex-start;
+  gap: 22px;
+}
+
+.agent-id-card,
+.budget-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* One line, sized to the column (about 360px wide at 1440). */
+.agent-id {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: clamp(32px, 3.1vw, 56px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.hint {
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.spent {
+  font-size: 44px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.spent .of {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.gauge {
+  height: 24px;
+  border-radius: 14px;
+  background: #1d2330;
+  overflow: hidden;
+}
+
+.gauge-fill {
+  --fill: 0%;
+  width: var(--fill);
+  height: 100%;
+  border-radius: 14px;
+  background: var(--paid);
+  transition:
+    width 0.6s ease,
+    background 0.3s;
+}
+
+.gauge-fill.warning {
+  background: var(--waiting);
+}
+
+.budget-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 4px 0 0;
+}
+
+.budget-facts dt {
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.budget-facts dd {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-facts dd.expired {
+  color: var(--ledger);
+}
+
+.session-state {
+  font-size: 20px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+
+.session-open {
+  color: var(--paid);
+}
+
+.session-waiting {
+  color: var(--waiting);
+}
+
+.session-over {
+  color: var(--ledger);
+}
+
+/* Stax */
+
+.stax-status {
+  font-size: 20px;
+  color: var(--muted);
+}
+
+.stax-status.post-quantum {
+  color: var(--device);
+}
+
+button {
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 14px 22px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pending {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pending-empty {
+  font-size: 22px;
+  color: var(--muted);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 2px solid var(--waiting);
+  border-radius: 14px;
+  background: #1a1509;
+}
+
+.card-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--waiting);
+}
+
+.card-agent-id,
+.card-amount {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 30px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.card-facts {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* The agent's own words, as the memo on the Stax: shown, never verified. */
+.card-memo {
+  font-size: 18px;
+  font-style: italic;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.card-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.stax-message {
+  margin-top: auto;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 600;
+  background: #0c1017;
+}
+
+.message-ok {
+  color: var(--paid);
+}
+
+.message-device {
+  color: var(--device);
+  border: 2px solid var(--device);
+}
+
+.message-error {
+  color: var(--ledger);
+}
+
+.message-info {
+  color: var(--muted);
+}
+
+/* Footer: the two guardrail layers */
+
+.layers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+
+.layer {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 12px 22px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  color: var(--muted);
+  transition:
+    border-color 0.3s,
+    background 0.3s,
+    color 0.3s;
+}
+
+.layer-name {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.layer-what {
+  font-size: 22px;
+}
+
+.layer-count {
+  margin-left: auto;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.layer-device.lit {
+  border-color: var(--device);
+  color: var(--device);
+}
+
+.layer-ledger.lit {
+  border-color: var(--ledger);
+  color: var(--ledger);
+}
+
+.layer-device.flash {
+  background: color-mix(in srgb, var(--device) 22%, transparent);
+  animation: pulse 0.8s ease-in-out 3;
+}
+
+.layer-ledger.flash {
+  background: color-mix(in srgb, var(--ledger) 22%, transparent);
+  animation: pulse 0.8s ease-in-out 3;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.02);
+  }
+}
