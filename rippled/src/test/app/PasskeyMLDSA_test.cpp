@@ -667,6 +667,52 @@ class PasskeyMLDSA_test : public beast::unit_test::Suite
         BEAST_EXPECT(env.balance(bob) == XRP(10005));
     }
 
+    // The upstream defect of PasskeyListSet being Delegable applies to
+    // ML-DSA-44 passkeys too: a delegate registers its own ML-DSA-44 key in
+    // the account's list and signs as the account. fixPasskeyListNotDelegable
+    // refuses the delegation and the delegated PasskeyListSet.
+    void
+    testDelegatedListSet(FeatureBitset features)
+    {
+        testcase("a delegate cannot register its own ML-DSA-44 passkey for the account");
+        using namespace test::jtx;
+
+        Account const alice{"alice"};
+        Account const bob{"bob"};
+        Account const carol{"carol"};
+        Account const bobPq{"bobPq", KeyType::Dilithium};
+
+        // Before the fix: the takeover works.
+        {
+            Env env{*this, envconfig(), features - fixPasskeyListNotDelegable};
+            env.fund(XRP(1000), alice, bob, carol);
+            env.close();
+            env(delegate::set(alice, bob, {"PasskeyListSet"}));
+            env.close();
+            env(passkeyListSet(alice, bobPq, kPasskeyId), delegate::As(bob));
+            env.close();
+            env(pay(alice, carol, XRP(100)), WebAuthnSig(bobPq, kPasskeyId));
+            env(pay(alice, carol, XRP(100)), Sig(bobPq));
+            env.close();
+            BEAST_EXPECT(env.balance(carol) == XRP(1200));
+        }
+
+        // With the fix: refused, and bob's key has no authority.
+        {
+            Env env{*this, envconfig(), features};
+            env.fund(XRP(1000), alice, bob, carol);
+            env.close();
+            env(delegate::set(alice, bob, {"PasskeyListSet"}), Ter(temMALFORMED));
+            env(passkeyListSet(alice, bobPq, kPasskeyId), delegate::As(bob), Ter(temINVALID));
+            env.close();
+            BEAST_EXPECT(!env.le(keylet::passkeyList(alice.id())));
+            env(pay(alice, carol, XRP(100)), WebAuthnSig(bobPq, kPasskeyId), Ter(tefBAD_AUTH));
+            env(pay(alice, carol, XRP(100)), Sig(bobPq), Ter(tefBAD_AUTH));
+            env.close();
+            BEAST_EXPECT(env.balance(carol) == XRP(1000));
+        }
+    }
+
     void
     testSessionKeyAddedToList(FeatureBitset features)
     {
@@ -1107,6 +1153,7 @@ public:
         testNotInList(all);
         testPasskeyIdBound(all);
         testOtherSigningPaths(all);
+        testDelegatedListSet(all);
         testChallengeAsBytes(all);
         testFullyPostQuantum(all);
         testSession(all);

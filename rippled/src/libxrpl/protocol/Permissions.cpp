@@ -247,6 +247,12 @@ Permission::isDelegable(std::uint32_t permissionValue, Rules const& rules) const
     if (!txType)
         return false;
 
+    // A delegate holding PasskeyListSet could register its own key in the
+    // account's passkey list, and a passkey has full authority over the
+    // account.
+    if (*txType == ttPASSKEY_LIST_SET && rules.enabled(fixPasskeyListNotDelegable))
+        return false;
+
     auto const txIt = txDelegationMap_.find(*txType);
 
     // Tx-level permissions require the transaction type itself to be delegable, and
