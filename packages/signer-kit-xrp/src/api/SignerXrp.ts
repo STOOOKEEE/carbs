@@ -19,6 +19,16 @@ export interface SignerXrp {
     options?: AddressOptions,
   ) => GetAddressDAReturnType;
 
+  /**
+   * Signs with the classical key of `derivationPath` (`INS 0x04`, chunked).
+   *
+   * `transaction` is the transaction's signing fields **without** the XRPL
+   * signing prefix: the XRP app prepends `STX\0` itself (`SMT\0` when
+   * `SigningPubKey` is empty, for a multi-signature) and the kit forwards the
+   * bytes unchanged, so bytes that already start with `STX\0` would be signed
+   * with the prefix twice. Set `SigningPubKey` to the device key and leave
+   * `TxnSignature` out. The app buffers at most 10,000 bytes (`6700`).
+   */
   signTransaction: (
     derivationPath: string,
     transaction: Uint8Array,
