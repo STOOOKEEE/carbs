@@ -26,6 +26,8 @@ export const kRippleEpochOffset = 946_684_800;
 
 /** Signing prefix of a single signature: `STX\0` (`HashPrefix::TxSign`). */
 export const kTxSignPrefix = Uint8Array.of(0x53, 0x54, 0x58, 0x00);
+/** Signing prefix of a session witness's co-signature: `WTS\0` (`HashPrefix::WitnessTxSign`). */
+export const kWitnessSignPrefix = Uint8Array.of(0x57, 0x54, 0x53, 0x00);
 /** Prefix of the transaction id hash: `TXN\0` (`HashPrefix::TransactionId`). */
 export const kTxIdPrefix = Uint8Array.of(0x54, 0x58, 0x4e, 0x00);
 
@@ -68,6 +70,13 @@ export const kSessionResultCodes = [
   "tefSESSION_LIMIT",
   "tefSESSION_TX_NOT_ALLOWED",
 ] as const;
+/**
+ * The carbs protections on top of the spec: optional, looked up only when a transaction uses them
+ * (a node without them still serves SigningSessions).
+ */
+export const kSessionMaxPerTxField = "SessionMaxPerTx";
+export const kSessionWitnessField = "SessionWitness";
+export const kWitnessSignatureField = "WitnessSignature";
 export const kAllTransactionsFlagName = "tfAllTransactions";
 export const kDisableMasterFlagName = "asfDisableMaster";
 

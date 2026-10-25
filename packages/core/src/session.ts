@@ -4,26 +4,35 @@
  * The builders check what the node checks statelessly (preflight) so the UI can say it before
  * signing; the node stays the authority and its code is what the user sees. Every session
  * transaction carries `LastLedgerSequence`: the builders take it as a required field.
+ *
+ * Two carbs protections sit on top of the spec: a per-transaction bound of a mode-C session
+ * (`SessionMaxPerTx`) and a witness that co-signs every session transaction (`SessionWitness`,
+ * `WitnessSignature` signed under `WTS\0`).
  */
 
 import { decodeAccountID } from "ripple-address-codec";
 import { accountIdBytes, isClassicAddress } from "./address.js";
-import { bytesToHex, concatBytes } from "./bytes.js";
+import { bytesToHex, concatBytes, hexToBytes } from "./bytes.js";
 import {
   kAllTransactionsFlagName,
   kMaxSessionDuration,
   kPermissionMaxSize,
   kSessionMaxLedgerWindow,
+  kSessionMaxPerTxField,
+  kSessionWitnessField,
+  kTxSignPrefix,
+  kWitnessSignatureField,
+  kWitnessSignPrefix,
 } from "./constants.js";
-import type { Definitions } from "./definitions.js";
-import { sha512Half, type TxJson } from "./encode.js";
+import { DefinitionsError, type Definitions } from "./definitions.js";
+import { encodeForSigning, encodeTx, sha512Half, transactionHash, type TxJson } from "./encode.js";
 import { signTransaction, type BytesSigner, type SignedTx } from "./sign.js";
 
-/** Exactly one of the three modes (section 6.2). */
+/** Exactly one of the three modes (section 6.2); mode C may bound each transaction's amount. */
 export type SessionMode =
   | { kind: "all" }
   | { kind: "permissions"; permissions: readonly string[] }
-  | { kind: "cap"; capDrops: bigint };
+  | { kind: "cap"; capDrops: bigint; maxPerTxDrops?: bigint };
 
 /** Fields every transaction the client builds carries (filled from the node, see `node.ts`). */
 export interface TxCommonFields {
@@ -39,6 +48,8 @@ export interface SessionSetParams {
   sessionKey: string;
   durationSec: number;
   mode: SessionMode;
+  /** An account that must co-sign every transaction of the session (`SessionWitness`). */
+  witness?: string;
   common: TxCommonFields;
 }
 
@@ -76,8 +87,15 @@ function checkAddress(address: string, what: string): void {
     throw new SessionParamsError("temMALFORMED", `${what} is not an address`);
 }
 
+/** The protections are optional on the node: refuse to build one it does not serve. */
+function requireField(defs: Definitions, name: string): void {
+  if (!defs.hasField(name)) {
+    throw new DefinitionsError(`server_definitions: the node does not serve the field ${name}`);
+  }
+}
+
 export function buildSessionSet(params: SessionSetParams, defs: Definitions): TxJson {
-  const { account, sessionKey, durationSec, mode, common } = params;
+  const { account, sessionKey, durationSec, mode, witness, common } = params;
   checkAddress(account, "Account");
   checkAddress(sessionKey, "SessionKey");
   if (sessionKey === account) {
@@ -123,7 +141,25 @@ export function buildSessionSet(params: SessionSetParams, defs: Definitions): Tx
         throw new SessionParamsError("temBAD_AMOUNT", "the cap must be a positive XRP amount");
       }
       tx["SessionCap"] = mode.capDrops.toString();
+      if (mode.maxPerTxDrops !== undefined) {
+        if (mode.maxPerTxDrops <= 0n || mode.maxPerTxDrops > mode.capDrops) {
+          throw new SessionParamsError(
+            "temBAD_AMOUNT",
+            "the per-transaction bound must be a positive XRP amount at most the cap",
+          );
+        }
+        requireField(defs, kSessionMaxPerTxField);
+        tx[kSessionMaxPerTxField] = mode.maxPerTxDrops.toString();
+      }
       break;
+  }
+  if (witness !== undefined) {
+    checkAddress(witness, kSessionWitnessField);
+    if (witness === account || witness === sessionKey) {
+      throw new SessionParamsError("temMALFORMED", "the witness is the account or the session key");
+    }
+    requireField(defs, kSessionWitnessField);
+    tx[kSessionWitnessField] = witness;
   }
   return tx;
 }
@@ -193,4 +229,46 @@ export async function signWithSessionKey(
     throw new SessionSignError("a session key never signs as its own account");
   }
   return signTransaction(tx, sessionKey, defs);
+}
+
+/**
+ * What a session's witness signs: `WTS\0 ‖ signing fields`, the same fields as the session key's
+ * signature (its `SigningPubKey` included; `TxnSignature` and `WitnessSignature` are not signing
+ * fields) under the witness prefix.
+ */
+export function witnessSigningData(tx: TxJson, defs: Definitions): Uint8Array {
+  return concatBytes(kWitnessSignPrefix, encodeForSigning(tx, defs).subarray(kTxSignPrefix.length));
+}
+
+/**
+ * Add the witness's co-signature to a transaction the session key has signed. The witness signs
+ * with a single key (the node refuses an empty `SigningPubKey`), the account's master or regular
+ * key; the node checks which key it is (`tefSESSION_NO_WITNESS`).
+ */
+export async function signAsWitness(
+  sessionSigned: TxJson,
+  witness: BytesSigner,
+  defs: Definitions,
+): Promise<SignedTx> {
+  const sessionPubKey = sessionSigned["SigningPubKey"];
+  if (typeof sessionPubKey !== "string" || sessionPubKey.length === 0) {
+    throw new SessionSignError("the witness co-signs a transaction the session key has signed");
+  }
+  if (typeof sessionSigned["TxnSignature"] !== "string") {
+    throw new SessionSignError("the witness co-signs after the session key's signature");
+  }
+  if (bytesToHex(witness.publicKey) === bytesToHex(hexToBytes(sessionPubKey))) {
+    throw new SessionSignError("the session key is not its own witness");
+  }
+  requireField(defs, kWitnessSignatureField);
+  const signature = await witness.sign(witnessSigningData(sessionSigned, defs));
+  const signed: TxJson = {
+    ...sessionSigned,
+    [kWitnessSignatureField]: {
+      SigningPubKey: bytesToHex(witness.publicKey),
+      TxnSignature: bytesToHex(signature),
+    },
+  };
+  const blob = encodeTx(signed, defs);
+  return { tx: signed, blob, hash: transactionHash(blob) };
 }

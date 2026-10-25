@@ -41,15 +41,29 @@ const kSimulatedFields: [string, FieldInfo][] = [
     "SessionDuration",
     { nth: 114, isVLEncoded: false, isSerialized: true, isSigningField: true, type: "UInt32" },
   ],
+  // The carbs protections on top of the spec (rippled `sfields.macro`): free numbers on `develop`.
+  [
+    "SessionMaxPerTx",
+    { nth: 49, isVLEncoded: false, isSerialized: true, isSigningField: true, type: "Amount" },
+  ],
+  [
+    "SessionWitness",
+    { nth: 35, isVLEncoded: true, isSerialized: true, isSigningField: true, type: "AccountID" },
+  ],
+  [
+    "WitnessSignature",
+    { nth: 43, isVLEncoded: false, isSerialized: true, isSigningField: false, type: "STObject" },
+  ],
 ];
 const kSimulatedTransactionTypes = { SigningSessionSet: 130, SigningSessionDelete: 131 };
 const kSimulatedLedgerEntryType = { SigningSession: 0x009a };
 const kSimulatedAllTransactions = 0x00010000;
-/** Appended after the last `tef` code, in the order of spec 6.1. */
+/** Appended after the last `tef` code, in the order of spec 6.1, then the witness protection's. */
 const kSimulatedResultOrder = [
   "tefSESSION_EXPIRED",
   "tefSESSION_LIMIT",
   "tefSESSION_TX_NOT_ALLOWED",
+  "tefSESSION_NO_WITNESS",
 ];
 
 /** The AlphaNet definitions with the SigningSessions identifiers added (SIMULATED). */
