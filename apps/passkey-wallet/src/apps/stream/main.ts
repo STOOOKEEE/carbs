@@ -8,6 +8,7 @@ import { DeviceError } from "@carbs/ledger";
 import type { Connection } from "../../account.ts";
 import { agentErrorText } from "../../agent-approvals.ts";
 import { NODE_URL } from "../../config.ts";
+import { guarded } from "../../dom.ts";
 import { loadDefinitions } from "../../ledger.ts";
 import { NodeClient } from "../../rpc.ts";
 import { closeSessionTx, openSessionTx, paymentTx } from "../../session.ts";
@@ -79,18 +80,21 @@ function endReasonFor(code: string): string {
 }
 
 /** Runs an owner action or an abuse attempt with the buttons off, and shows its error. */
-function action(run: () => Promise<void>): () => void {
-  return () => {
-    if (state.busy) return;
-    state.busy = true;
-    render(state);
-    run()
-      .catch((error: unknown) => showMessage(agentErrorText(error), "error"))
-      .finally(() => {
+function action(run: () => Promise<void>): (event?: Event) => void {
+  return guarded(
+    async () => {
+      if (state.busy) return;
+      state.busy = true;
+      render(state);
+      try {
+        await run();
+      } finally {
         state.busy = false;
-        render(state);
-      });
-  };
+      }
+    },
+    (error) => showMessage(agentErrorText(error), "error"),
+    async () => render(state),
+  );
 }
 
 /** One meter payment: the session key pays the provider, no prompt. */
