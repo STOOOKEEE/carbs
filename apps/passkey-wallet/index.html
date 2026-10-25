@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
+    />
+    <title>carbs · wallet passkey</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>carbs · wallet passkey</h1>
+        <p class="muted">
+          Proof of concept sur le nœud carbs (standalone) : les transactions sont signées par la
+          passkey de cet appareil (Touch ID), vérifiées nativement par le XRPL.
+        </p>
+        <p class="muted" id="node-status">Nœud : connexion…</p>
+      </header>
+
+      <section id="account-section">
+        <h2>1. Compte</h2>
+        <div id="account-info" class="muted">Aucun compte dans ce navigateur.</div>
+        <div class="actions">
+          <button id="open-account" type="button">Créer un compte (faucet)</button>
+          <button id="forget-account" type="button" class="secondary">Oublier ce compte</button>
+        </div>
+      </section>
+
+      <section id="passkey-section">
+        <h2>2. Passkey</h2>
+        <div id="passkey-info" class="muted">Pas de passkey.</div>
+        <div class="actions">
+          <button id="register-passkey" type="button">
+            Créer la passkey et l'enregistrer (PasskeyListSet)
+          </button>
+          <button id="lock-account" type="button" class="secondary">
+            Passkey uniquement (désactiver la clé maître)
+          </button>
+        </div>
+      </section>
+
+      <section id="pay-section">
+        <h2>3. Payer avec la passkey</h2>
+        <form id="pay-form">
+          <label>Destination <input id="pay-destination" required placeholder="r…" /></label>
+          <label
+            >Montant (XRP)
+            <input id="pay-amount" required type="number" min="0.000001" step="any" value="1"
+          /></label>
+          <button type="submit">Signer avec Touch ID et envoyer</button>
+        </form>
+      </section>
+
+      <section id="ledger-section">
+        <h2>Ledger Stax</h2>
+        <p class="muted">
+          Chrome ou Edge (WebHID), Stax déverrouillée sur l'app XRP. Chaque transaction est relue en
+          clair sur l'écran avant la signature.
+        </p>
+        <div id="ledger-info" class="muted">Stax non connectée.</div>
+        <div class="actions">
+          <button id="ledger-connect" type="button">Connecter la Stax</button>
+          <button id="ledger-fund" type="button" class="secondary">
+            Financer le compte Stax (faucet)
+          </button>
+        </div>
+        <form id="ledger-pay-form">
+          <label>Destination <input id="ledger-pay-destination" required placeholder="r…" /></label>
+          <label
+            >Montant (XRP)
+            <input
+              id="ledger-pay-amount"
+              required
+              type="number"
+              min="0.000001"
+              step="any"
+              value="1"
+          /></label>
+          <label class="inline"
+            ><input id="ledger-pay-pq" type="checkbox" /> signer en ML-DSA-44</label
+          >
+          <button type="submit">Signer sur la Stax et envoyer</button>
+        </form>
+      </section>
+
+      <section id="session-section">
+        <h2>Sessions de signature</h2>
+        <p class="muted">
+          Une validation (Touch ID ou Stax) ouvre une session ; la clé de session signe ensuite sans
+          rien demander, dans les limites que le nœud fait respecter. Mode C : paiements XRP
+          plafonnés ; mode A : toutes les transactions délégables ; mode P : une liste de
+          permissions.
+        </p>
+        <div id="session-info" class="muted">Aucune session ouverte.</div>
+        <div class="actions">
+          <label
+            >Ouvrir avec
+            <select id="session-opener">
+              <option value="passkey">Touch ID (compte passkey)</option>
+              <option value="stax">Ledger Stax</option>
+            </select></label
+          >
+          <label
+            >Mode
+            <select id="session-mode">
+              <option value="cap">C : plafond de dépense</option>
+              <option value="all">A : toutes les transactions</option>
+              <option value="permissions">P : permissions</option>
+            </select></label
+          >
+          <label
+            >Durée (s) <input id="session-duration" type="number" min="1" max="600" value="300"
+          /></label>
+          <fieldset id="session-cap-fields">
+            <legend>Plafonds (mode C)</legend>
+            <label
+              >Plafond total (XRP)
+              <input id="session-cap" type="number" min="0.000001" step="any" value="50"
+            /></label>
+            <label
+              >Max par paiement (XRP)
+              <input id="session-max-per-tx" type="number" min="0.000001" step="any" value="20"
+            /></label>
+          </fieldset>
+          <fieldset id="session-permissions" hidden>
+            <legend>Permissions (mode P)</legend>
+          </fieldset>
+          <label class="inline"
+            ><input id="session-witness" type="checkbox" /> exiger un témoin</label
+          >
+          <button id="session-open" type="button">Ouvrir la session</button>
+        </div>
+        <form id="session-pay-form">
+          <label
+            >Destination <input id="session-pay-destination" required placeholder="r…"
+          /></label>
+          <label
+            >Montant (XRP)
+            <input
+              id="session-pay-amount"
+              required
+              type="number"
+              min="0.000001"
+              step="any"
+              value="5"
+          /></label>
+          <button type="submit">Payer avec la clé de session (sans validation)</button>
+        </form>
+        <h3>Attaques</h3>
+        <div class="actions">
+          <button id="attack-regular-key" type="button" class="secondary">
+            Clé volée : changer la RegularKey
+          </button>
+          <button id="attack-account-set" type="button" class="secondary">
+            Clé volée : AccountSet
+          </button>
+          <button id="attack-per-tx" type="button" class="secondary">
+            Dépasser le max par paiement
+          </button>
+          <button id="attack-no-witness" type="button" class="secondary">
+            Payer sans le témoin
+          </button>
+          <button id="session-close" type="button" class="secondary">
+            Fermer la session (par la clé)
+          </button>
+          <button id="attack-after-close" type="button" class="secondary">
+            Payer après la fermeture
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Journal</h2>
+        <ol id="log"></ol>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

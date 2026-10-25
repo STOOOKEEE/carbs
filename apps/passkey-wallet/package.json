@@ -1,0 +1,26 @@
+{
+  "name": "@carbs/passkey-wallet",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Proof of concept: an XRPL wallet whose transactions are signed by a WebAuthn passkey (Touch ID), on the carbs standalone node.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "node server/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "session-demo": "node scripts/session-demo.ts",
+    "agent": "node scripts/agent/agent.ts"
+  },
+  "dependencies": {
+    "ripple-binary-codec": "2.11.0",
+    "ripple-keypairs": "3.1.0",
+    "ripple-address-codec": "5.0.1",
+    "@carbs/ledger": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "vite": "^8.3.5"
+  }
+}
