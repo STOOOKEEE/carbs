@@ -1,5 +1,5 @@
-// Page wiring: the passkey wallet (no device), the Ledger, session and AI agent panels,
-// one shared node connection.
+// Page wiring: the passkey wallet (no device), the post-quantum Touch ID account, the Ledger,
+// session and AI agent panels, one shared node connection.
 
 import { refreshAgentPanel, setupAgentPanel } from "./agent-panel.ts";
 import { NODE_URL } from "./config.ts";
@@ -8,6 +8,7 @@ import { accountInfo, loadDefinitions, read } from "./ledger.ts";
 import { refreshLedgerPanel, setupLedgerPanel } from "./ledger-panel.ts";
 import { explorerLink, log, logError } from "./log.ts";
 import { refreshMigrationPanel, setupMigrationPanel } from "./migration-panel.ts";
+import { refreshPqPasskeyPanel, setupPqPasskeyPanel } from "./pq-passkey-panel.ts";
 import { NodeClient } from "./rpc.ts";
 import { refreshSessionPanel, setupSessionPanel } from "./session-panel.ts";
 import { type StoredWallet, clearWallet, loadWallet, saveWallet } from "./storage.ts";
@@ -78,6 +79,7 @@ async function refreshPasskeyWallet(): Promise<void> {
 
 async function refresh(): Promise<void> {
   await refreshPasskeyWallet();
+  await refreshPqPasskeyPanel(connection);
   await refreshLedgerPanel(connection);
   await refreshMigrationPanel(connection);
   await refreshSessionPanel(connection);
@@ -149,6 +151,7 @@ ui.payForm.addEventListener(
   }),
 );
 
+setupPqPasskeyPanel(() => connection, refresh);
 setupLedgerPanel(() => connection, refresh);
 setupMigrationPanel(() => connection, refresh);
 setupSessionPanel(

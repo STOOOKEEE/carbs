@@ -17,9 +17,9 @@ const UNCOMPRESSED_POINT_LENGTH = 65;
 const UNCOMPRESSED_POINT_PREFIX = 0x04;
 /** The node's prefix for a P-256 public key, in place of 0x04. */
 const XRPL_P256_PREFIX = 0xf6;
-const USER_ID_LENGTH = 16;
-const REGISTRATION_CHALLENGE_LENGTH = 32;
-const RELYING_PARTY_NAME = "carbs";
+export const USER_ID_LENGTH = 16;
+export const REGISTRATION_CHALLENGE_LENGTH = 32;
+export const RELYING_PARTY_NAME = "carbs";
 
 export interface Passkey {
   /** Credential id, hex: the PasskeyID on the ledger. */
@@ -28,7 +28,7 @@ export interface Passkey {
   publicKey: string;
 }
 
-function credentialResponse<T extends AuthenticatorResponse>(
+export function credentialResponse<T extends AuthenticatorResponse>(
   credential: Credential | null,
   isExpected: (response: AuthenticatorResponse) => response is T,
 ): { credential: PublicKeyCredential; response: T } {
