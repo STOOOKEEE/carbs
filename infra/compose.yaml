@@ -1,9 +1,10 @@
 # The carbs demo stack: standalone xrpld, its ledger closer, and the passkey wallet.
 # Run from infra/: XRPLD_BIN=/path/to/xrpld GENESIS_SEED=… docker compose up -d
 # Ports are published on 127.0.0.1 only; `tailscale serve` (or another TLS proxy) exposes them:
-#   wss://<host>:9448 -> 127.0.0.1:18006 (node, for scripts and the XRPL explorer);
-#   https://<host>:9449 -> 127.0.0.1:18080 (wallet) with /node -> 127.0.0.1:18006 (the page's node).
-# Public: `tailscale funnel` on :10000 with the same two paths (/ and /node).
+#   wss://<host>:9448 -> 127.0.0.1:18006 (node, for scripts);
+#   https://<host>:9449 -> 127.0.0.1:18080 (wallet). The wallet server pipes WebSocket upgrades to
+#   the node, so the pages and the XRPL explorer reach the node on the wallet's own origin.
+# Public: `tailscale funnel --https=10000 http://127.0.0.1:18080` (Funnel serves 443, 8443, 10000).
 
 services:
   xrpld:

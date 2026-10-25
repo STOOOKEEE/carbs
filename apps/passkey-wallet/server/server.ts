@@ -34,6 +34,7 @@ import { handleGame } from "./game.ts";
 import { GAME_API_PREFIX } from "../src/apps/game/protocol.ts";
 import { handleDex } from "./dex.ts";
 import { faucetCorsHeaders } from "./faucet-cors.ts";
+import { nodeUpgradeProxy } from "./node-proxy.ts";
 import { DEX_API_PREFIX } from "../src/apps/dex/api.ts";
 
 const PORT = Number(process.env["PORT"] ?? 8080);
@@ -292,7 +293,7 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   return handleStatic(url, res);
 }
 
-createServer((req, res) => {
+const server = createServer((req, res) => {
   const handler = route(req, res);
   handler.catch((error: unknown) => {
     console.error(
@@ -300,6 +301,8 @@ createServer((req, res) => {
     );
     if (!res.headersSent) reply(res, 500, JSON.stringify({ error: "internal error" }));
   });
-}).listen(PORT, () =>
+});
+server.on("upgrade", nodeUpgradeProxy(NODE_WS));
+server.listen(PORT, () =>
   console.log(`passkey wallet on :${PORT}, node ${NODE_WS}, faucet from ${genesisAddress}`),
 );
