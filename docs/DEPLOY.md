@@ -1,6 +1,6 @@
 # Deploying the web app
 
-`apps/web` is a client-rendered single-page app (`ssr: false`). `pnpm --filter web generate` writes a **static site** to `apps/web/.output/public`; any static host serves it. **Nothing here has been deployed**: publishing and credentials are the owner's (see the end of this file).
+`apps/web` is a client-rendered single-page app (`ssr: false`). `pnpm --filter web generate` writes a **static site** to `apps/web/.output/public`; any static host serves it. **Deployed** at https://carbs-kappa.vercel.app (Vercel project `carbs`, the static output uploaded with `vercel deploy --prod` and `apps/web/vercel.json` copied next to it); publishing and credentials stay the owner's (see the end of this file).
 
 ## Build and check locally
 
@@ -49,7 +49,7 @@ A passkey signs with WebAuthn, and the public AlphaNet's validators may refuse s
 
 ## Browsers
 
-The future Ledger path uses WebHID. **Use Chrome.** Brave and Firefox may not expose `navigator.hid`; the Account screen says so when it is missing. Today the Stax is SIMULATED and works in any browser; no real-device path exists yet.
+The Ledger path uses WebHID. **Use Chrome.** Brave and Firefox may not expose `navigator.hid`; the Account screen says so when it is missing. The default device is the SIMULATED one, which works in any browser; a real Stax over USB is picked on a click (Device Management Kit, `connectLedger`).
 
 ## Security headers (set them at the host)
 
