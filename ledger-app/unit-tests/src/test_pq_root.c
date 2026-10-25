@@ -164,6 +164,23 @@ int handle_sign(uint8_t p1, uint8_t p2, uint8_t* work_buffer,
 
 int handle_get_app_configuration(void) { return io_send_sw(SW_OK); }
 
+/* As reject_transaction() in sign_transaction.c (outside a swap): it answers
+ * 0x6985 only in PENDING_REVIEW, and always resets the context. */
+void reject_transaction(void) {
+    if (sign_state == PENDING_REVIEW) {
+        io_send_sw(SW_DENY);
+    }
+    reset_transaction_context();
+}
+
+/* As ui_error_blind_signing() in ui/other/blind_signing.c: the error screen,
+ * then reject_transaction(). */
+int ui_error_blind_signing(void) {
+    blind_error_screens++;
+    reject_transaction();
+    return 0;
+}
+
 /* ---------------------------------------------------------------- helpers */
 
 #define INS_GET_APP_CONFIG INS_GET_APP_CONFIGURATION
@@ -500,6 +517,60 @@ static void test_review_lock_ends_with_the_review(void** state) {
     assert_memory_equal(signed_message, b.bytes, b.length);
 }
 
+/* ------------------------------------------------- the blind-signing setting
+ */
+
+#define BLIND_SESSION "30-signing-session-set/06-unknown-permission.raw"
+
+/* Blind signing disabled in the settings: the app must not offer to sign a
+ * transaction it cannot show, exactly as review_transaction() (transaction.c)
+ * does on the classical path: the error screen and 0x6985. */
+static void test_blind_signing_disabled_refuses(void** state) {
+    (void)state;
+    test_storage.allow_blind_sign = BlindSignDisabled;
+    message_t message;
+    load_signing_data(BLIND_SESSION, &message);
+
+    assert_int_equal(send_signing_data(&message, 250), SW_DENY);
+    assert_int_equal(blind_error_screens, 1);
+    assert_int_equal(blind_review_screens + review_screens, 0);
+    assert_int_equal(signatures, 0);
+    assert_int_equal(sign_state, IDLE);
+
+    /* Nothing is left pending: the next request is served normally. */
+    message_t a;
+    load_signing_data(PAYMENT_A, &a);
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    assert_int_equal(review_screens, 1);
+}
+
+/* Blind signing enabled: the blind review is shown and its approval signs. */
+static void test_blind_signing_enabled_reviews(void** state) {
+    (void)state;
+    message_t message;
+    load_signing_data(BLIND_SESSION, &message);
+
+    assert_int_equal(send_signing_data(&message, 250), NO_SW);
+    assert_int_equal(blind_review_screens, 1);
+    assert_int_equal(blind_error_screens, 0);
+    approve();
+    assert_int_equal(last_sw, SW_OK);
+    assert_int_equal(signatures, 1);
+    assert_memory_equal(signed_message, message.bytes, message.length);
+}
+
+/* A clear-signed transaction does not depend on the setting. */
+static void test_clear_signing_ignores_the_setting(void** state) {
+    (void)state;
+    test_storage.allow_blind_sign = BlindSignDisabled;
+    message_t a;
+    load_signing_data(PAYMENT_A, &a);
+    assert_int_equal(send_signing_data(&a, 250), NO_SW);
+    assert_int_equal(review_screens, 1);
+    approve();
+    assert_int_equal(signatures, 1);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup(test_public_key_chunks, setup),
@@ -516,6 +587,9 @@ int main(void) {
         cmocka_unit_test_setup(test_other_instruction_cancels_review, setup),
         cmocka_unit_test_setup(test_approval_checks_reviewed_bytes, setup),
         cmocka_unit_test_setup(test_review_lock_ends_with_the_review, setup),
+        cmocka_unit_test_setup(test_blind_signing_disabled_refuses, setup),
+        cmocka_unit_test_setup(test_blind_signing_enabled_reviews, setup),
+        cmocka_unit_test_setup(test_clear_signing_ignores_the_setting, setup),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

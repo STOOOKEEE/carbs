@@ -29,6 +29,7 @@
 #include "../apdu/global.h"
 #include "../apdu/messages/sign_transaction.h"
 #include "../globals.h"
+#include "../ui/other/blind_signing.h"
 #include "../ui/transaction/review_menu.h"
 #include "../xrp/xrp_parse.h"
 
@@ -181,6 +182,14 @@ static int review_signing_data(void) {
     if (result != 0 && result != BLIND_SIGN_REQUIRED) {
         PQ->message_length = 0;
         return io_send_sw(SW_WRONG_DATA);
+    }
+    if (result == BLIND_SIGN_REQUIRED && N_storage.allow_blind_sign == BlindSignDisabled) {
+        /* As review_transaction() (transaction.c): the error screen, whose
+         * reject_transaction() answers 0x6985 and resets the context. It
+         * answers only in PENDING_REVIEW, which this request now is. */
+        PQ->message_length = 0;
+        sign_state = PENDING_REVIEW;
+        return ui_error_blind_signing();
     }
     /* From here until on_review_result, the buffer is frozen: handle_pq_sign
      * refuses every chunk, and the approval checks this hash. */
