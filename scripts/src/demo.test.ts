@@ -8,6 +8,7 @@ import {
 import { alphanetDefinitions, alphanetServerDefinitions } from "@carbs/sessions/testing";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
+import { faucetOrigins, parseArgs, parseOrigin } from "./args.js";
 import { childEnv } from "./child-env.js";
 import { localConfig, portsOf } from "./config.js";
 import { createFaucetServer, fund, parseDestination } from "./faucet.js";
@@ -200,6 +201,64 @@ describe("dev faucet", () => {
       now += 60_001;
       expect((await post(origins[0] ?? "")).status).toBe(200);
       expect(submits).toBe(4);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("command line", () => {
+  it("lets the local web app call the faucet by default", () => {
+    const args = parseArgs(["--no-web"]);
+    expect(args.web).toBe(false);
+    expect(faucetOrigins(args)).toEqual(["http://localhost:3000", "http://127.0.0.1:3000"]);
+  });
+
+  it("adds the origins given with --web-origin (the hosted web app)", () => {
+    const args = parseArgs(["--no-web", "--web-origin", "https://carbs-kappa.vercel.app"]);
+    expect(faucetOrigins(args)).toEqual([
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "https://carbs-kappa.vercel.app",
+    ]);
+  });
+
+  it("refuses a --web-origin that is not a plain http(s) origin", () => {
+    for (const value of [
+      "carbs-kappa.vercel.app",
+      "https://carbs-kappa.vercel.app/",
+      "https://carbs-kappa.vercel.app/path",
+      "https://*.vercel.app",
+      "ftp://example.org",
+      undefined,
+    ]) {
+      expect(() => parseOrigin(value), String(value)).toThrow(/--web-origin/);
+    }
+    expect(() => parseArgs(["--web-origin"])).toThrow(/--web-origin/);
+    expect(() => parseArgs(["--other"])).toThrow(/unknown argument/);
+  });
+});
+
+describe("dev faucet, called from another site", () => {
+  it("answers Chrome's Private Network Access preflight for a listed origin only", async () => {
+    const genesis = classicSignerFromSeed(generateClassicSeed("ecdsa-secp256k1"));
+    const server = createFaucetServer({ client: nodeDouble().client, genesis }, [
+      "https://carbs-kappa.vercel.app",
+    ]);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const preflight = (origin: string) =>
+        fetch(`${base}/accounts`, {
+          method: "OPTIONS",
+          headers: { origin, "access-control-request-private-network": "true" },
+        });
+      const listed = await preflight("https://carbs-kappa.vercel.app");
+      expect(listed.status).toBe(204);
+      expect(listed.headers.get("access-control-allow-private-network")).toBe("true");
+      const other = await preflight("https://evil.example");
+      expect(other.status).toBe(403);
+      expect(other.headers.get("access-control-allow-private-network")).toBeNull();
     } finally {
       server.close();
     }

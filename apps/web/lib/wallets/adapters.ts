@@ -51,6 +51,9 @@ export interface PasskeySource {
 
 type Listener = (data: unknown) => void;
 
+/** The network name a wallet reports while the screens run on the simulation. */
+export const SIMULATED_NODE_NAME = "Simulated node (SIMULATED)";
+
 const CAPABILITIES: WalletCapabilities = { sign: true, signAndSubmit: true, signMessage: false };
 
 /** A transaction of the xrpl-connect shape as the JSON the node takes. */
@@ -160,7 +163,7 @@ abstract class CarbsAdapter implements WalletAdapter {
     const simulated = this.host.backend.mode === "simulated";
     return {
       id: network.id,
-      name: simulated ? `${network.name} (SIMULATED)` : network.name,
+      name: simulated ? SIMULATED_NODE_NAME : network.name,
       wss: network.wss,
       rpc: network.rpc,
     };
@@ -232,7 +235,7 @@ export class PasskeyMacAdapter extends CarbsAdapter {
   }
 }
 
-/** A throw-away account (SIMULATED). */
+/** A throw-away account: a master key in the page, on the node in effect (SIMULATED on the simulation). */
 export class DemoAccountAdapter extends CarbsAdapter {
   readonly id = "demo-account";
   readonly name = DEMO_ACCOUNT.name;

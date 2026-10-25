@@ -43,15 +43,12 @@ describe("Result view", () => {
     expect(wrapper.find("[data-testid='not-final']").exists()).toBe(false);
   });
 
-  it("links a live transaction to the explorer of the node it was sent to, not of the header's network", () => {
-    const { ctx } = mountScreen(ResultView, { props: { result: result(), simulated: false } });
-    ctx.network.select("alphanet"); // the header says AlphaNet...
+  it("links a live transaction to the explorer of the node it was sent to", () => {
     const own: AppNetwork = { ...NETWORKS.local, explorer: "https://explorer.local.example" };
     const { wrapper } = mountScreen(ResultView, {
       props: { result: result(), simulated: false },
       backend: liveOn(own),
     });
-    // ... and the link still points at the node's own explorer.
     expect(wrapper.get("[data-testid='explorer-link']").attributes("href")).toBe(
       `https://explorer.local.example/transactions/${HASH}`,
     );

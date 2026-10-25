@@ -9,29 +9,41 @@ pnpm install
 pnpm --filter web dev            # http://localhost:3000 (Chrome, Edge or Brave for the real Stax over WebHID)
 pnpm --filter web typecheck
 pnpm --filter web test           # node tests and component tests (vitest, happy-dom)
-XRPLD_BIN=… GENESIS_SEED=… pnpm demo   # the standalone node, its closer, a dev faucet and this app on the live backend
+XRPLD_BIN=… GENESIS_SEED=… pnpm demo   # the standalone node, its closer, a dev faucet and this app on the local node
 pnpm --filter web generate       # static site in apps/web/.output/public (see docs/DEPLOY.md)
 ```
 
 ## What is real and what is SIMULATED
 
-The app runs on one of two backends behind the same small interfaces (`lib/ports.ts`: `NodePort`, `DevicePort`, `WalletPort`, `ExposurePort`, `TxBuilders`). The default is the **simulation** (`lib/sim/*`); with `pnpm demo` (or the header's Backend switch) it runs on a **live** node (`lib/live/*`). A striped **SIMULATED** badge marks every result or screen that comes from the simulation, including, on the live backend, the Ledger device.
+The app runs on one of two backends behind the same small interfaces (`lib/ports.ts`: `NodePort`, `DevicePort`, `WalletPort`, `ExposurePort`, `TxBuilders`). The default is the **simulation** (`lib/sim/*`); a **live** node (`lib/live/*`) is picked in the header. A striped **SIMULATED** badge marks every result or screen that comes from the simulation, and only those: on a live node, the parts that are still simulated (the software Stax double, unless a real Stax is connected) keep their own badge.
+
+### The header's Node
+
+The header has one choice, **Node** (`components/ui/NodePicker.vue`, `lib/node-choice.ts`), saved in the browser (`carbs-node`):
+
+| Node                    | What runs                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simulated** (default) | the simulation; a visitor with no node needs nothing else                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Local node**          | the standalone node with the amendment on the person's machine. Picking it opens a dialog (`NodeDialog.vue`) that gives the command (`XRPLD_BIN=/path/to/xrpld GENESIS_SEED=… pnpm demo --no-web`, plus `--web-origin <this page>` when the page is not the local dev server, so the dev faucet answers it), the URLs it uses (`ws://localhost:6006`, faucet `http://localhost:3005/accounts`), an optional custom URL (collapsed) and a Connect button |
+| **Team node**           | the team's node on its server (`NUXT_PUBLIC_TEAM_NODE_URL`, `NUXT_PUBLIC_TEAM_FAUCET_URL`), reachable on the team's tailnet; the dialog has nothing to type and says that a browser with its own secure DNS cannot resolve `*.ts.net` names                                                                                                                                                                                                             |
+
+Connect asks the node for its definitions (it must serve the SigningSessions names) and its last validated ledger (`lib/node-probe.ts`) and shows "Connected · ledger N", or the exact reason it failed (for example a timeout after 8 s) with Retry. On success the choice is saved and the page reloads on that node (`lib/boot.ts`). If the saved node does not answer at a later load, the page runs on the simulation, the header shows the SIMULATED badge and says why once, for a few seconds, and the saved choice is forgotten so the next load does not wait for it again. An https page may use `ws://` and `http://` on `localhost`, `127.0.0.1` and `[::1]` (browsers treat the loopback as trustworthy), and only `wss://` and `https://` elsewhere (`checkNodeUrl`, `lib/networks.ts`). The Quantum screen does not follow this choice: it reads the public AlphaNet and mainnet.
 
 | Piece                                      | Simulated backend (default)                                                                                    | Live backend                                                                                                                                                                                                               |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node (submit, account state, sessions)     | `lib/sim/node.ts`: follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals; no real signatures | the standalone node with the amendment, through `@carbs/sessions` with the definitions of its `server_definitions` (`lib/live/node.ts`)                                                                                    |
+| Node (submit, account state, sessions)     | `lib/sim/node.ts`: follows spec 6.5 and 6.13 in order, answers the `tefSESSION_*` refusals; no real signatures | the standalone node with the amendment (local or team), through `@carbs/sessions` with the definitions of its `server_definitions` (`lib/live/node.ts`)                                                                    |
 | Ledger Stax                                | `lib/sim/device.ts`: the screen lines of spec 7.3                                                              | the person's choice (`lib/live/device-selection.ts`): the SIMULATED software double of `@carbs/ledger` (`lib/live/device.ts`, default) or a real Stax over USB, `connectLedger()` on a click (`lib/live/ledger-device.ts`) |
 | Wallet (master key, passkey, session keys) | `lib/sim/wallet.ts`: the software authenticator (real P-256, no prompt), keyed digests instead of signatures   | real keys: secp256k1 master, the browser's WebAuthn passkey (the software authenticator in tests), P-256 or ML-DSA-44 session keys                                                                                         |
 | Exposure check                             | `lib/sim/exposure.ts` over the simulated history                                                               | `checkExposure` of `@carbs/sessions` on the AlphaNet and mainnet (read-only), the Quantum screen's default                                                                                                                 |
 | Quantum migration                          | the simulated node and Stax                                                                                    | a fresh AlphaNet account, signed in the page, validated, with explorer links; on the chosen device (on a real Stax, step 3 needs the ML-DSA-44 key read again after reinstalling the XRP app)                              |
 
-The **Apps** screen shows no result of either backend: it links to the pages of the team's wallet server (`apps/passkey-wallet`), which run on the team's own node and network (`NUXT_PUBLIC_APPS_URL`, see `docs/DEPLOY.md`). Each card says the session the page opens, as its source sets it (`lib/live-apps.ts`, whose test reads those sources), what the ledger and the Stax refuse, and the rows of the Stax review. The links are navigation: nothing is fetched from that host and `connect-src` does not list it.
+The **Apps** screen shows no result of either backend: it links to the pages of the team's wallet server (`apps/passkey-wallet`), which run on the team's own node and network (`NUXT_PUBLIC_APPS_URL`, see `docs/DEPLOY.md`). Each card says the session the page opens, as its source sets it (`lib/live-apps.ts`, whose test reads those sources), what the ledger and the Stax refuse, and the rows of the Stax review. The links are navigation: the Apps screen fetches nothing from that host. `connect-src` lists it only because the header's Team node uses the same server's faucet.
 
 `lib/sim/node.test.ts` checks the simulation against the cases of spec 6.15; it proves that the simulation follows the spec and nothing about rippled. The live backend was run against the standalone node in modes A, P and C (see `docs/DEVLOG.md`); the component tests run it against a test double of the node.
 
 ## Wallet entry
 
-The header's **Connect wallet** lists three adapters, written against the `WalletAdapter` interface of xrpl-connect 1.0.0 (`lib/wallets/adapters.ts`) and nothing else: **Ledger Stax** (post-quantum root, Device Management Kit only; SIMULATED unless a real Stax is connected over USB on the live backend), **Passkey (this Mac)** (the browser's WebAuthn when you press Connect; the software authenticator of `@carbs/sessions` in tests) and **Demo account** (SIMULATED, thrown away on reload). Each shows its key type, who signs what and a SIMULATED badge for the parts that are. No Xaman, WalletConnect or GemWallet adapter, no API key, no environment variable for a wallet. The legacy ledgerjs adapter of xrpl-connect is never imported (a test scans the sources).
+The header's **Connect wallet** lists three adapters, written against the `WalletAdapter` interface of xrpl-connect 1.0.0 (`lib/wallets/adapters.ts`) and nothing else: **Ledger Stax** (post-quantum root, Device Management Kit only; SIMULATED unless a real Stax is connected over USB on the live backend), **Passkey (this Mac)** (the browser's WebAuthn when you press Connect; the software authenticator of `@carbs/sessions` in tests) and **Demo account** (a key in the page, thrown away on reload; the account is real on a live node, SIMULATED on the simulation). Each shows its key type, who signs what and a SIMULATED badge for the parts that are. No Xaman, WalletConnect or GemWallet adapter, no API key, no environment variable for a wallet. The legacy ledgerjs adapter of xrpl-connect is never imported (a test scans the sources).
 
 On the simulated backend a passkey connected here is registered in the simulated node's passkey list and its WebAuthn assertion is verified there with real P-256; on the live backend the node verifies it.
 
@@ -68,14 +80,15 @@ The reusable shapes (`.panel`, `.panel-stack`, `.btn`, `.chip`, `.sim-badge`, `.
 assets/tokens.css        design tokens (the look)
 assets/css/main.css      base styles and the few shared classes
 components/screens/      the six screens, one component each, with their tests
-components/ui/           SIMULATED badge, result view, explorer links, device modal, headers
+components/ui/           SIMULATED badge, result view, explorer links, device modal, node picker and dialog, headers
 lib/ports.ts             Node, Device, Wallet, Exposure interfaces
 lib/sim/                 the simulated implementations and their tests
 lib/demo.ts, migration.ts  the stores behind the screens (state is read back from the node)
 lib/live-apps.ts         the Apps screen's catalogue of the team's live apps and the link to their server
 layouts/, pages/         Nuxt routing: /, /account, /session, /actions, /attack, /apps, /quantum
 lib/wallets/             the three wallet adapters, the passkey and the wallet entry's logic
-lib/networks.ts, csp.ts  AlphaNet, Local node, Mainnet (read-only); the CSP is built from them
+lib/networks.ts, csp.ts  Local node, Team node, AlphaNet, Mainnet (read-only); the CSP is built from them
+lib/node-choice.ts, boot.ts, node-probe.ts  the header's Node, the page load on it, the dialog's Connect
 lib/explorer.ts          links to the explorer of the network an address or a hash lives on
 server/                  Nitro: moves the inline config script into a file (CSP script-src 'self')
 ```

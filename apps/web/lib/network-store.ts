@@ -2,34 +2,37 @@ import { reactive } from "vue";
 import {
   DEFAULT_LOCAL_FAUCET,
   DEFAULT_LOCAL_WSS,
-  DEFAULT_NETWORK_ID,
+  DEFAULT_TEAM_FAUCET,
+  DEFAULT_TEAM_WSS,
   LOCAL_URL_STORAGE_KEY,
-  NETWORK_STORAGE_KEY,
-  SELECTABLE_NETWORK_IDS,
   checkNodeUrl,
   createNetworks,
-  explorerTxUrl,
-  isNetworkId,
   localRpcFor,
   type AppNetwork,
   type NetworkId,
   type UrlCheck,
 } from "./networks";
+import type { LiveNodeChoice, NodeChoice } from "./node-choice";
 
 /** Minimal storage surface, so tests can pass a fake (or none). */
 export interface KeyValueStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface NetworkStoreOptions {
   storage?: KeyValueStorage | null;
-  /** `location.protocol` of the page: https forbids ws:// and http:// nodes. */
+  /** `location.protocol` of the page: https forbids ws:// and http:// nodes but the loopback. */
   pageProtocol?: string;
   /** Default URL of the local node, from `NUXT_PUBLIC_LOCAL_NODE_URL`. */
   localWss?: string;
   /** The dev faucet of the local node, from `NUXT_PUBLIC_LOCAL_FAUCET_URL`. */
   localFaucet?: string;
+  /** The team's node, from `NUXT_PUBLIC_TEAM_NODE_URL`. */
+  teamWss?: string;
+  /** The team's faucet, from `NUXT_PUBLIC_TEAM_FAUCET_URL`. */
+  teamFaucet?: string;
 }
 
 function safeGet(storage: KeyValueStorage | null, key: string): string | null {
@@ -48,55 +51,79 @@ function safeSet(storage: KeyValueStorage | null, key: string, value: string): v
   }
 }
 
-/** Which network the person chose, and the local node URL, with persistence. */
+function safeRemove(storage: KeyValueStorage | null, key: string): void {
+  try {
+    storage?.removeItem?.(key);
+  } catch {
+    // Nothing to forget, or storage blocked.
+  }
+}
+
+/**
+ * The nodes the page knows (the local node, with a URL the person may change, and the team's),
+ * and which one is in effect, as `lib/boot.ts` found it.
+ */
 export function createNetworkStore(options: NetworkStoreOptions = {}) {
   const storage = options.storage ?? null;
   const pageProtocol = options.pageProtocol ?? "http:";
   const defaultLocal = options.localWss ?? DEFAULT_LOCAL_WSS;
   const localFaucet = options.localFaucet ?? DEFAULT_LOCAL_FAUCET;
+  const team = {
+    wss: options.teamWss ?? DEFAULT_TEAM_WSS,
+    faucet: options.teamFaucet ?? DEFAULT_TEAM_FAUCET,
+  };
 
-  const saved = safeGet(storage, NETWORK_STORAGE_KEY);
-  const savedId = saved !== null && isNetworkId(saved) && SELECTABLE_NETWORK_IDS.includes(saved);
   const state = reactive({
-    selectedId: (savedId ? saved : DEFAULT_NETWORK_ID) as NetworkId,
+    /** The node the screens run on; the simulation until a live node answered. */
+    node: "simulated" as NodeChoice,
     localWss: safeGet(storage, LOCAL_URL_STORAGE_KEY) ?? defaultLocal,
   });
 
-  function check(): UrlCheck {
-    return checkNodeUrl(state.localWss, pageProtocol);
+  function networks(): Record<NetworkId, AppNetwork> {
+    return createNetworks(
+      { wss: state.localWss, rpc: localRpcFor(state.localWss), faucet: localFaucet },
+      team,
+    );
   }
 
-  function networks(): Record<NetworkId, AppNetwork> {
-    return createNetworks({
-      wss: state.localWss,
-      rpc: localRpcFor(state.localWss),
-      faucet: localFaucet,
-    });
+  function nodeNetwork(choice: LiveNodeChoice): AppNetwork {
+    return networks()[choice];
   }
 
   return {
     state,
-    /** The network in use. A local URL the page cannot use is refused, not silently kept. */
-    selected(): AppNetwork {
-      return networks()[state.selectedId];
-    },
+    pageProtocol,
+    /** The local node's URL when nothing was typed. */
+    defaultLocalWss: defaultLocal,
     networks,
-    select(id: NetworkId): void {
-      if (!SELECTABLE_NETWORK_IDS.includes(id)) return;
-      state.selectedId = id;
-      safeSet(storage, NETWORK_STORAGE_KEY, id);
+    nodeNetwork,
+    /**
+     * The network the screens run on: the live node in effect, else the local node, which the
+     * simulation stands in for.
+     */
+    selected(): AppNetwork {
+      return nodeNetwork(state.node === "team" ? "team" : "local");
     },
-    /** Set the local node URL. Returns the check; an invalid URL is not saved. */
+    /** Whether the page can use that node's URL (https allows wss://, https:// and the loopback). */
+    check(choice: LiveNodeChoice = "local"): UrlCheck {
+      return checkNodeUrl(nodeNetwork(choice).wss, pageProtocol);
+    },
+    /**
+     * Set the local node URL. An empty value goes back to the default. Returns the check; a URL
+     * the page cannot use is neither kept nor saved.
+     */
     setLocalWss(url: string): UrlCheck {
-      const result = checkNodeUrl(url, pageProtocol);
-      state.localWss = url;
-      if (result.ok) safeSet(storage, LOCAL_URL_STORAGE_KEY, url);
+      const value = url.trim();
+      if (value === "" || value === defaultLocal) {
+        state.localWss = defaultLocal;
+        safeRemove(storage, LOCAL_URL_STORAGE_KEY);
+        return { ok: true, reason: null };
+      }
+      const result = checkNodeUrl(value, pageProtocol);
+      if (!result.ok) return result;
+      state.localWss = value;
+      safeSet(storage, LOCAL_URL_STORAGE_KEY, value);
       return result;
-    },
-    check,
-    /** Explorer link for a transaction, on the explorer of the selected network. */
-    explorerTx(hash: string): string | null {
-      return explorerTxUrl(networks()[state.selectedId], hash);
     },
   };
 }

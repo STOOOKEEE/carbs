@@ -4,11 +4,13 @@
  * live backend, all on this machine. Ctrl-C stops everything.
  *
  *   XRPLD_BIN=/path/to/xrpld GENESIS_SEED=… pnpm demo [--no-web] [--web-port 3000] [--keep]
+ *     [--web-origin https://carbs-kappa.vercel.app]
  *
  * XRPLD_BIN must be a build that carries the SigningSessions amendment: without it the web
  * app refuses the node and stays on the simulation, and says why. The genesis seed comes from
  * the environment, is never written anywhere, and is not passed to any child process (the
- * faucet that signs with it runs in this process; `childEnv`).
+ * faucet that signs with it runs in this process; `childEnv`). `--web-origin` lets another
+ * page (the hosted web app, whose "Local node" choice uses this node) call the dev faucet.
  */
 import { WebSocketClient, classicSignerFromSeed } from "@carbs/sessions";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -16,34 +18,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { faucetOrigins, parseArgs } from "./args.js";
 import { childEnv } from "./child-env.js";
 import { localConfig, portsOf } from "./config.js";
 import { createFaucetServer } from "./faucet.js";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const FAUCET_PORT = 3005;
-const DEFAULT_WEB_PORT = 3000;
 const READY_POLLS = 120;
 const READY_POLL_MS = 500;
-
-interface Args {
-  web: boolean;
-  webPort: number;
-  keep: boolean;
-}
-
-function parseArgs(argv: readonly string[]): Args {
-  const args: Args = { web: true, webPort: DEFAULT_WEB_PORT, keep: false };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--") continue;
-    if (arg === "--no-web") args.web = false;
-    else if (arg === "--keep") args.keep = true;
-    else if (arg === "--web-port") args.webPort = Number(argv[(i += 1)]);
-    else throw new Error(`unknown argument ${String(arg)}`);
-  }
-  return args;
-}
 
 function fail(message: string): never {
   console.error(`demo: ${message}`);
@@ -133,25 +116,27 @@ async function main(): Promise<void> {
     XRPLD_ADMIN_WS: `ws://127.0.0.1:${ports.adminWs}`,
   });
 
-  const origins = [`http://localhost:${args.webPort}`, `http://127.0.0.1:${args.webPort}`];
+  const origins = faucetOrigins(args);
   const faucet = createFaucetServer({ client, genesis }, origins);
   await new Promise<void>((resolve, reject) => {
     faucet.once("error", reject);
     faucet.listen(FAUCET_PORT, "127.0.0.1", resolve);
   });
   console.log(
-    `demo: dev faucet on http://127.0.0.1:${FAUCET_PORT}/accounts (the browser never holds the genesis key)`,
+    `demo: dev faucet on http://127.0.0.1:${FAUCET_PORT}/accounts for ${origins.join(", ")} (the browser never holds the genesis key)`,
   );
 
   if (args.web) {
     run("web", "pnpm", ["--filter", "web", "dev", "--port", String(args.webPort)], {
-      NUXT_PUBLIC_BACKEND: "live",
+      NUXT_PUBLIC_BACKEND: "local",
       NUXT_PUBLIC_LOCAL_NODE_URL: publicUrl,
       NUXT_PUBLIC_LOCAL_FAUCET_URL: `http://127.0.0.1:${FAUCET_PORT}/accounts`,
     });
-    console.log(`demo: web app on http://localhost:${args.webPort}/ (live backend)`);
+    console.log(`demo: web app on http://localhost:${args.webPort}/ (Node: Local node)`);
   } else {
-    console.log("demo: --no-web: start the app yourself with NUXT_PUBLIC_BACKEND=live");
+    console.log(
+      "demo: --no-web: pick Node > Local node in the web app's header (or start it with NUXT_PUBLIC_BACKEND=local)",
+    );
   }
   console.log("demo: Ctrl-C stops everything");
 }
