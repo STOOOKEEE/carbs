@@ -108,8 +108,9 @@ checkValidity(HashRouter& router, STTx const& tx, Rules const& rules)
     auto const siggoodFlag = oldPrefixSig ? kSfSiggoodOldPrefix : kSfSiggood;
 
     // Before fixPasskeyChallenge, the verdict on a WebAuthn passkey signature
-    // depends on the platform, and the fix changes it (see
-    // isSignatureVerdictCacheable). Verify such a transaction on every call
+    // depends on the platform, and the fix changes it; before
+    // fixP256StrictDer, the verdict on a P-256 signature changes with that fix
+    // (see isSignatureVerdictCacheable). Verify such a transaction on every call
     // and neither read nor record a verdict, so that none crosses the
     // activation in either direction. A verdict forced by forceValidity still
     // holds. Remove this when PasskeyChallenge and P256StrictDer are retired in
@@ -177,8 +178,9 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity)
     // the result. An already cached bad verdict still wins, since checkValidity
     // tests its bad flag first. Drop kSfSiggoodOldPrefix when Cleanup3_4_0 is
     // retired. kSfSigforced keeps the forced verdict for a WebAuthn passkey
-    // signature before fixPasskeyChallenge, which checkValidity otherwise
-    // verifies on every call; drop it when PasskeyChallenge is retired.
+    // signature before fixPasskeyChallenge, or a P-256 one before
+    // fixP256StrictDer, which checkValidity otherwise verifies on every call;
+    // drop it when PasskeyChallenge and P256StrictDer are both retired.
     HashRouterFlags flags = HashRouterFlags::UNDEFINED;
     switch (validity)
     {

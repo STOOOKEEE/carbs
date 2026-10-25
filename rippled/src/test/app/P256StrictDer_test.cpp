@@ -14,6 +14,7 @@
 #include <test/jtx/txflags.h>
 #include <test/jtx/utility.h>
 #include <test/jtx/webauthn.h>
+#include <test/jtx/xchain_bridge.h>
 
 #include <xrpld/app/main/Application.h>
 
@@ -524,6 +525,35 @@ class P256StrictDer_test : public beast::unit_test::Suite
         BEAST_EXPECT(!flipped.verify(bridge, true));
     }
 
+    // The same check as a transaction: attestationPreflight passes the rules
+    // to AttestationBase::verify. With the fix a high-S P-256 attestation is
+    // temXCHAIN_BAD_PROOF in preflight; without it, it passes preflight and
+    // fails at the bridge lookup (there is no bridge here).
+    void
+    testXChainAttestationTx(FeatureBitset features, bool strict)
+    {
+        testcase(
+            std::string("cross-chain attestation transaction, ") + (strict ? "with" : "without") +
+            " the fix");
+        using namespace test::jtx;
+
+        Env env{*this, envconfig(), strict ? features : features - fixP256StrictDer};
+        Account const submitter{"submitter"};
+        Account const lockingDoor{"lockingDoor"};
+        Account const issuingDoor{"issuingDoor"};
+        Account const sender{"sender"};
+        Account const reward{"reward"};
+        Account const signer{"signer", KeyType::P256};
+        env.fund(XRP(10000), submitter, lockingDoor, issuingDoor, reward);
+        env.close();
+
+        auto const jvBridge = bridge(lockingDoor, xrpIssue(), issuingDoor, xrpIssue());
+        auto jv = claimAttestation(
+            submitter, jvBridge, sender, XRP(1), reward, true, 1, std::nullopt, Signer(signer));
+        alter(jv, sfSignature, flipS);
+        env(jv, strict ? Ter(temXCHAIN_BAD_PROOF) : Ter(tecNO_ENTRY));
+    }
+
 public:
     void
     run() override
@@ -539,6 +569,7 @@ public:
             testTxnSignatureNextToPasskey(all, strict);
             testPayChanClaim(all, strict);
             testSessionWitness(all, strict);
+            testXChainAttestationTx(all, strict);
         }
         testCacheAcrossTheFix(all);
         testXChainAttestation();

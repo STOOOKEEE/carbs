@@ -1,5 +1,4 @@
-#include <xrpld/app/ledger/OpenLedger.h>
-#include <xrpld/app/main/Application.h>
+#include <xrpld/app/ledger/LedgerMaster.h>
 #include <xrpld/rpc/Context.h>
 #include <xrpld/rpc/detail/RPCHelpers.h>
 
@@ -68,9 +67,9 @@ doChannelVerify(rpc::JsonContext& context)
     if (!sig || sig->empty())
         return rpcError(RpcInvalidParams);
 
-    // As PaymentChannelClaim checks it under the open ledger's rules.
+    // As PaymentChannelClaim checks it, under the current ledger's rules.
     bool const strictP256Der =
-        context.app.getOpenLedger().current()->rules().enabled(fixP256StrictDer);
+        context.ledgerMaster.getCurrentLedger()->rules().enabled(fixP256StrictDer);
 
     json::Value result;
     result[jss::signature_verified] = verify(*pk, msg.slice(), makeSlice(*sig), strictP256Der);

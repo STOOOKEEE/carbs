@@ -341,8 +341,10 @@ export interface WaitOptions {
   sleep?: (ms: number) => Promise<void>;
   /**
    * Also find the transaction by `(Account, Sequence)` (or `TicketSequence`) when its hash is not
-   * found: a P-256 signature can be re-encoded on the way (the node does not enforce low-S), which
-   * changes the id but not the sequence it consumes (FIANSO-SPEC.md section 8.3).
+   * found: a P-256 signature can be re-encoded on the way (a node without `fixP256StrictDer`, such
+   * as the public AlphaNet, accepts the high-S and loose DER forms), and `PasskeySignature.PasskeyID`
+   * can be changed on any node; either changes the id but not the sequence it consumes
+   * (FIANSO-SPEC.md section 8.3).
    */
   identity?: TxIdentity;
 }

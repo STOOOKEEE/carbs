@@ -106,8 +106,8 @@ verify(STObject const& st, HashPrefix const& prefix, PublicKey const& pk, SF_VL 
     Serializer ss;
     ss.add32(prefix);
     st.addWithoutSigningFields(ss);
-    // Manifests use this, outside any ledger's rules: the lax P-256 form,
-    // unchanged.
+    // Manifests use this, outside any ledger's rules: a P-256 key keeps the lax
+    // form, unchanged.
     return verify(pk, Slice(ss.data(), ss.size()), Slice(sig->data(), sig->size()), false);
 }
 
