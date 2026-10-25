@@ -277,6 +277,7 @@ describe("ML-DSA-44 root key through the contract (SIMULATED device)", () => {
       "Transaction Type",
       "Account",
       "Session key",
+      "Agent ID",
       "Network ID",
       "Allows",
       "Valid for",
@@ -324,10 +325,14 @@ describe("classical keys through the contract (SIMULATED device)", () => {
       const simulated = device();
       const signer = await deviceClassicSigner(simulated, "44'/144'/0'/0/0", curve);
       const account = addressFromPublicKey(signer.publicKey);
-      // Ten permissions make the transaction longer than one APDU.
-      const tx: TxJson = {
+      const verified = (signed: { tx: TxJson }) =>
+        keypairsVerify(
+          bytesToHex(encodeForSigning(signed.tx, defs)),
+          String(signed.tx["TxnSignature"]),
+          bytesToHex(signer.publicKey),
+        );
+      const session: TxJson = {
         ...sessionSet(account),
-        Flags: 0,
         Permissions: [
           "Payment",
           "EscrowCreate",
@@ -341,20 +346,27 @@ describe("classical keys through the contract (SIMULATED device)", () => {
           "PaymentMint",
         ].map((p) => ({ Permission: { PermissionValue: p } })),
       };
-      delete tx["Flags"];
-      // A memo makes the transaction longer than one APDU (255 bytes, the path included).
-      tx["Memos"] = [{ Memo: { MemoData: "AB".repeat(120) } }];
-      const signed = await signTransaction(tx, signer, defs);
-      expect(
-        encodeForDevice({ ...signed.tx, TxnSignature: undefined }, defs).length,
-      ).toBeGreaterThan(255);
-      const data = bytesToHex(encodeForSigning(signed.tx, defs));
-      expect(
-        keypairsVerify(data, String(signed.tx["TxnSignature"]), bytesToHex(signer.publicKey)),
-      ).toBe(true);
+      delete session["Flags"];
+      expect(verified(await signTransaction(session, signer, defs))).toBe(true);
       expect(
         simulated.reviews.at(-1)?.lines.filter((l) => l.label.startsWith("Allows [")).length,
       ).toBe(10);
+      // A memo makes a payment longer than one APDU (255 bytes, the path included). The client
+      // does not predict memo lines; a payment is not a session, so the device still signs it.
+      const payment: TxJson = {
+        TransactionType: "Payment",
+        Account: account,
+        Destination: kOwnAddress,
+        Amount: "1000000",
+        Fee: "12",
+        Sequence: 4,
+        Memos: [{ Memo: { MemoData: "AB".repeat(200) } }],
+      };
+      const signed = await signTransaction(payment, signer, defs);
+      expect(
+        encodeForDevice({ ...signed.tx, TxnSignature: undefined }, defs).length,
+      ).toBeGreaterThan(255);
+      expect(verified(signed)).toBe(true);
     });
   }
 

@@ -3,12 +3,13 @@
  * (`docs/device-contract.md`, FIANSO-SPEC.md section 7.3). They follow the device track's frozen
  * vectors (`ledger-app/tests/standalone/testcases/*.txt`, one `Label; value` line each).
  *
- * Order: `Transaction Type`, `Account`, `Session key` (when present), then every shown field in
- * serialization order, then the synthetic rows of `SigningSessionSet`: `Allows` in mode C (a
- * `SessionCap` is set), then `Note`.
+ * Order: `Transaction Type`, `Account`, `Session key` and `Agent ID` (when present), then every
+ * shown field in serialization order, then the synthetic rows of `SigningSessionSet`: `Allows` in
+ * mode C (a `SessionCap` is set), then `Note`.
  */
 
 import { kPermissionMaxSize, type Definitions } from "@carbs/sessions";
+import { agentIdOf } from "./agent-id.js";
 
 export interface ScreenLine {
   label: string;
@@ -135,6 +136,8 @@ const kLabels: Record<string, string> = {
   SessionDuration: "Valid for",
   Fee: "Fee",
   SessionCap: "Max spend",
+  SessionMaxPerTx: "Max per payment",
+  SessionWitness: "Witness",
   Owner: "Owner",
   RegularKey: "Regular Key",
   SetFlag: "Set Flag",
@@ -177,8 +180,9 @@ function value(
 ): string | undefined {
   switch (field) {
     case "Fee":
-    case "SessionCap":
       return formatXrp(String(raw));
+    case "SessionCap":
+    case "SessionMaxPerTx":
     case "Amount":
       return typeof raw === "string" ? formatXrp(raw) : undefined;
     case "SessionDuration":
@@ -210,8 +214,10 @@ export function reviewLines(tx: Record<string, unknown>, defs: Definitions): Rev
   if (!name) return { kind: "blind", lines: [{ label: "Transaction Type", value: type }] };
   const lines: ScreenLine[] = [{ label: "Transaction Type", value: name }];
   lines.push({ label: "Account", value: String(tx["Account"]) });
-  if (typeof tx["SessionKey"] === "string")
+  if (typeof tx["SessionKey"] === "string") {
     lines.push({ label: "Session key", value: tx["SessionKey"] });
+    lines.push({ label: "Agent ID", value: agentIdOf(tx["SessionKey"]) });
+  }
   const ordinal = (field: string) =>
     defs.codec.field.fromString(field)?.ordinal ?? Number.MAX_SAFE_INTEGER;
   const fields = Object.keys(tx)
