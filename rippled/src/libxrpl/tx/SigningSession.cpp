@@ -7,6 +7,7 @@
 #include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Feature.h>
 #include <xrpl/protocol/Indexes.h>
+#include <xrpl/protocol/KeyType.h>
 #include <xrpl/protocol/Keylet.h>
 #include <xrpl/protocol/LedgerFormats.h>
 #include <xrpl/protocol/Permissions.h>
@@ -148,11 +149,18 @@ isSessionExpired(ReadView const& view, SLE const& session)
 bool
 isSessionKeyTypeEnabled(Rules const& rules, KeyType type)
 {
-    if (type == KeyType::P256)
-        return rules.enabled(featurePasskey) && rules.enabled(fixP256StrictDer);
-    if (type == KeyType::Dilithium)
-        return rules.enabled(featureQuantum);
-    return true;
+    // No default: a new key type must be decided here.
+    switch (type)
+    {
+        case KeyType::Secp256k1:
+        case KeyType::Ed25519:
+            return true;
+        case KeyType::P256:
+            return rules.enabled(featurePasskey) && rules.enabled(fixP256StrictDer);
+        case KeyType::Dilithium:
+            return rules.enabled(featureQuantum);
+    }
+    return false;  // LCOV_EXCL_LINE
 }
 
 bool

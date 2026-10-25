@@ -2604,6 +2604,23 @@ class SigningSessions_test : public beast::unit_test::Suite
             }
         }
 
+        // An Ed25519 witness needs no amendment: it co-signs without the P-256
+        // fix.
+        {
+            Env env{*this, features - fixP256StrictDer};
+            Account const alice{"alice"}, bob{"bob"}, key{"key"};
+            Account const witness{"witness", KeyType::Ed25519};
+            env.fund(XRP(10000), alice, bob, witness);
+            env.close();
+            env(session::set(alice, key, 600),
+                Txflags(tfAllTransactions),
+                session::Witness(witness));
+            env.close();
+            auto const lls = [&] { return LastLedgerSeq(env.current()->seq() + 10); };
+            env(pay(alice, bob, XRP(1)), Sig(key), Sig(sfWitnessSignature, witness), lls());
+            env.close();
+        }
+
         Env env{*this, features};
         Account const alice{"alice"}, bob{"bob"}, key{"key"}, witness{"witness"}, carol{"carol"};
         env.fund(XRP(10000), alice, bob, witness, carol);

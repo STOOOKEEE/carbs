@@ -108,9 +108,10 @@ isSessionKeyTypeEnabled(Rules const& rules, KeyType type);
 
 /**
  * Whether `tx` carries a WitnessSignature made by a key of `witness`: its
- * master key, if enabled, or its RegularKey, of a key type whose amendment
- * is enabled. The signature itself is verified with the transaction's
- * (STTx::checkSign); this checks that the key belongs to the witness account.
+ * master key, if enabled, or its RegularKey, of a key type that may sign
+ * under a session (isSessionKeyTypeEnabled). The signature itself is verified
+ * with the transaction's (STTx::checkSign); this checks that the key belongs
+ * to the witness account.
  */
 [[nodiscard]] bool
 isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witness);
