@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -26,7 +27,46 @@ p256Keys()
     return generateKeyPair(KeyType::P256, generateSeed("p256 signature tests"));
 }
 
+// floor(n / 2), n the order of the P-256 group, big-endian.
+constexpr std::array<std::uint8_t, 32> kHalfOrder = {
+    0x7F, 0xFF, 0xFF, 0xFF, 0x80, 0x00, 0x00, 0x00, 0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xDE, 0x73, 0x7D, 0x56, 0xD3, 0x8B, 0xCF, 0x42, 0x79, 0xDC, 0xE5, 0x61, 0x7E, 0x31, 0x92, 0xA8,
+};
+
+// The S of a DER signature as 32 big-endian bytes.
+std::array<std::uint8_t, 32>
+sOf(Slice const& der)
+{
+    std::array<std::uint8_t, 32> s{};
+    std::size_t const rLen = der[3];
+    std::size_t const sLen = der[4 + rLen + 1];
+    std::uint8_t const* sData = der.data() + 4 + rLen + 2;
+    std::size_t const skip = sLen > 32 ? sLen - 32 : 0;
+    std::memcpy(s.data() + 32 - (sLen - skip), sData + skip, sLen - skip);
+    return s;
+}
+
 }  // namespace
+
+// Every P-256 signature sign() makes has a low S, the only form a strict
+// verifier accepts (and the form ECDSA signatures take everywhere else in
+// the protocol). ECDSA draws a fresh nonce each time, so without the
+// normalization about half of these would be high.
+TEST(P256Signature, sign_makes_low_s)
+{
+    auto const [pk, sk] = p256Keys();
+    int high = 0;
+    for (std::uint8_t i = 0; i < 64; ++i)
+    {
+        std::vector<std::uint8_t> const message{i};
+        auto const sig = sign(pk, sk, makeSlice(message));
+        auto const s = sOf(Slice(sig.data(), sig.size()));
+        if (s > kHalfOrder)
+            ++high;
+        EXPECT_TRUE(verify(pk, makeSlice(message), Slice(sig.data(), sig.size())));
+    }
+    EXPECT_EQ(high, 0);
+}
 
 #ifndef _WIN32
 // A signature whose buffer ends right after the tag of S: the parser must
