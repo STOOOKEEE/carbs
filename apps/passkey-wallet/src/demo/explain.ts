@@ -27,6 +27,7 @@ const EXPLANATIONS: Record<string, string> = {
   tefSESSION_TX_NOT_ALLOWED: "not a payment this session allows: refused by the ledger",
   tefSESSION_NO_WITNESS: "the session's witness did not co-sign: refused by the ledger",
   tefBAD_AUTH: "session closed: this key no longer signs for the account",
+  tefBAD_SIGNATURE: "a co-signature where none is needed: refused by the ledger",
   [DEVICE_POLICY_CODE]: "beyond your session policy: blocked on the Stax, nothing signed",
 };
 

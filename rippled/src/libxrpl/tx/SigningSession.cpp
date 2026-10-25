@@ -152,7 +152,14 @@ isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witnes
         return false;
 
     auto const pk = tx.getFieldObject(sfWitnessSignature).getFieldVL(sfSigningPubKey);
-    if (!publicKeyType(makeSlice(pk)))
+    auto const keyType = publicKeyType(makeSlice(pk));
+    if (!keyType)
+        return false;
+
+    // A key of a type whose amendment is not enabled never co-signs, as it
+    // never signs as a session key (Transactor::checkSession).
+    if ((*keyType == KeyType::P256 && !view.rules().enabled(featurePasskey)) ||
+        (*keyType == KeyType::Dilithium && !view.rules().enabled(featureQuantum)))
         return false;
 
     auto const sle = view.read(keylet::account(witness));
