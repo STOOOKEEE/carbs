@@ -26,13 +26,13 @@ export interface AppContext {
   deviceSelection: DeviceSelection;
 }
 
-/** Everything the screens inject, wired on the simulated backend. */
 /** Test doubles for the live parts: the node clients and the faucet's `fetch`. */
 export interface LiveOptions {
   clientFactory?: ClientFactory;
   fetcher?: typeof fetch;
 }
 
+/** Everything the screens inject, wired on the simulated backend. */
 export function createAppContext(
   network: NetworkStoreOptions = {},
   live: LiveOptions = {},

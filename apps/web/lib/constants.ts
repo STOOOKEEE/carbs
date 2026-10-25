@@ -1,19 +1,11 @@
 /**
- * Named constants of the web app. Protocol limits come from spec section 6.9; the
- * flag and code values below the SIMULATION line are used by the simulation only
- * (`lib/sim`, `lib/tx-builders.ts`). The live path never reads them: it takes flags,
- * codes and field names from the `server_definitions` of the node (a test enforces it).
+ * Named constants of the web app. The protocol limits (spec 6.9), the `LastLedgerSequence`
+ * offset and the blackhole address are those of `@carbs/sessions` (`constants.ts`), for the
+ * simulation as for the live path. The flag and code values below the SIMULATION line are
+ * used by the simulation only (`lib/sim`, `lib/tx-builders.ts`). The live path never reads
+ * them: it takes flags, codes and field names from the `server_definitions` of the node (a
+ * test enforces it).
  */
-
-/* ---- Protocol limits (spec 6.9) ---- */
-export const MAX_SESSION_DURATION_SEC = 600;
-export const DEFAULT_SESSION_DURATION_SEC = 600;
-export const SESSION_FEE_MULTIPLE = 1000;
-export const SESSION_MAX_LEDGER_WINDOW = 256;
-export const PERMISSION_MAX_SIZE = 10;
-
-/** Every session transaction carries `LastLedgerSequence` this far ahead (spec 8.3). */
-export const LAST_LEDGER_OFFSET = 150;
 
 /* ---- Units ---- */
 export const DROPS_PER_XRP = 1_000_000;
@@ -43,7 +35,6 @@ export const SESSION_DURATION_CHOICES_SEC = [60, 180, 300, 600] as const;
 export const DEFAULT_CAP_XRP = 20;
 export const DEMO_PAYMENT_XRP = 3.5;
 export const SIM_TICK_MS = 3000;
-export const BLACKHOLE_ADDRESS = "rrrrrrrrrrrrrrrrrrrrBZbvji";
 export const DEFAULT_FEE_DROPS = "12";
 export const SIM_SINK_SEED = "demo:sink";
 export const SIM_VICTIM_SEED = "demo:victim";

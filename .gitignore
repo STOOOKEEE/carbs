@@ -1,6 +1,7 @@
 # Dependencies and build output
 node_modules/
-dist/
+# no trailing slash: `nuxt generate` writes apps/web/dist as a symbolic link
+dist
 .output/
 .nuxt/
 coverage/
@@ -22,8 +23,13 @@ ledger-app/debug/
 .env
 .env.*
 !.env.example
-!.env.local.example
 .DS_Store
+*.pem
+npm-debug.log*
+pnpm-debug.log*
+
+# Link to the hosting project, written by `vercel deploy` (docs/DEPLOY.md)
+.vercel/
 
 # Ripple DevRel DevEx capture hook: installed locally by each developer (see README)
 xrpl-devex-hook/
@@ -33,3 +39,6 @@ xrpl-devex-hook/
 .cursor/
 .codex/
 .grok/
+
+# Build output of the XRP signer kit (packages/signer-kit-xrp/scripts/build.mjs)
+packages/signer-kit-xrp/lib/

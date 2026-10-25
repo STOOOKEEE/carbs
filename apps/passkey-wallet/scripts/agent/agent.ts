@@ -1,26 +1,35 @@
 // An AI agent that lives on a signing session approved by its human on a Ledger Stax.
-// It generates a session key, asks the wallet for a mode C budget (cap, max per payment,
-// short expiry) and, once the owner signed it on the device, buys data from x402 APIs with
-// that key only. Above its limits it can only send an intent to the human. The ledger, not
-// the agent, enforces the budget: a prompt injection cannot make it spend more.
+// It generates a session key (ML-DSA-44 by default: post-quantum end to end with the Stax's
+// ML-DSA root), asks the wallet for a mode C budget (cap, max per payment, short expiry) and,
+// once the owner signed it on the device, buys data from x402 APIs with that key only. Above
+// its limits it can only send an intent to the human. The ledger, not the agent, enforces the
+// budget: a prompt injection cannot make it spend more.
 // Its first request is oversized on purpose: the Stax's session policy blocks it, and the
 // agent asks again for a smaller budget. Every step is posted to the wallet server for the
 // stage demo page (demo.html), with the agent's ID.
-//   node scripts/agent/agent.ts [--wait-expiry] [--no-compromised]
+//   node --import tsx scripts/agent/agent.ts [--wait-expiry] [--no-compromised]
+//     [--classical-session-key]   (or AGENT_SESSION_KEY=secp256k1)
 
 import { setTimeout as delay } from "node:timers/promises";
 
+import { addressFromPublicKey, kMlDsa44SeedLength, mlDsaKeyPairFromSeed } from "@carbs/sessions";
 import { generateSeed } from "ripple-keypairs";
 
 import { DEVICE_POLICY_CODE } from "../../server/agent-events.ts";
 import { DEVICE_POLICY_NOTE, type SessionRequest } from "../../server/agent-requests.ts";
 import { agentIdOf } from "../../src/agent-id.ts";
+import {
+  SESSION_KEY_CODES,
+  SESSION_KEY_LABELS,
+  type SessionKeyAlgorithm,
+} from "../../src/demo/session-key.ts";
 import { addressOfSeed, loadDefinitions } from "../../src/ledger.ts";
 import { NodeClient } from "../../src/rpc.ts";
 import { type ChatMessage, type LlmConfig, chat, parseAction } from "./llm.ts";
 import { type Reporter, report } from "./timeline.ts";
 import {
   type AgentContext,
+  type SessionSecret,
   DECISION_TEXT,
   type Injection,
   TOOL_DESCRIPTIONS,
@@ -59,6 +68,11 @@ const MS_PER_SECOND = 1_000;
 const PROBE_PAYMENT_XRP = 1;
 const WAIT_EXPIRY_FLAG = "--wait-expiry";
 const NO_COMPROMISED_FLAG = "--no-compromised";
+/** A secp256k1 session key instead of ML-DSA-44, to compare. */
+const CLASSICAL_SESSION_KEY_FLAG = "--classical-session-key";
+const SESSION_KEY_ENV = "AGENT_SESSION_KEY";
+/** The exit code of a process stopped by Ctrl+C (128 + SIGINT). */
+const SIGINT_EXIT_CODE = 130;
 /** The same tool with the same arguments this many times in a row ends the run. */
 const MAX_IDENTICAL_CALLS = 3;
 /** The API whose content carries the injection, read by the simulation if the model did not. */
@@ -75,6 +89,40 @@ function positiveNumberEnv(name: string, fallback: number): number {
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
   return value;
+}
+
+/** ML-DSA-44 unless --classical-session-key or AGENT_SESSION_KEY=secp256k1. */
+function sessionKeyAlgorithm(flags: readonly string[]): SessionKeyAlgorithm {
+  const fromEnv = process.env[SESSION_KEY_ENV];
+  if (flags.includes(CLASSICAL_SESSION_KEY_FLAG) || fromEnv === "secp256k1") return "secp256k1";
+  if (fromEnv === undefined || fromEnv === "ml-dsa-44") return "ml-dsa-44";
+  throw new Error(`${SESSION_KEY_ENV} must be ml-dsa-44 or secp256k1, not "${fromEnv}"`);
+}
+
+/** A fresh session key: a random 32-byte ML-DSA-44 seed, or a secp256k1 family seed. */
+function newSessionSecret(algorithm: SessionKeyAlgorithm): SessionSecret {
+  return algorithm === "ml-dsa-44"
+    ? { algorithm, seed: crypto.getRandomValues(new Uint8Array(kMlDsa44SeedLength)) }
+    : { algorithm, seed: generateSeed({ algorithm: "ecdsa-secp256k1" }) };
+}
+
+/** The session key's AccountID, the address the ledger knows it by. */
+function sessionKeyAddress(secret: SessionSecret): string {
+  if (secret.algorithm === "secp256k1") return addressOfSeed(secret.seed);
+  const { publicKey, secretKey } = mlDsaKeyPairFromSeed(secret.seed);
+  secretKey.fill(0);
+  return addressFromPublicKey(publicKey);
+}
+
+/** Zeroes the ML-DSA seed; a secp256k1 family seed is an immutable string, left to the GC. */
+function wipeSessionSecret(secret: SessionSecret): void {
+  if (secret.algorithm === "ml-dsa-44") secret.seed.fill(0);
+}
+
+function describeSessionKey(algorithm: SessionKeyAlgorithm): string {
+  return algorithm === "ml-dsa-44"
+    ? `${SESSION_KEY_LABELS[algorithm]} (post-quantum)`
+    : `${SESSION_KEY_LABELS[algorithm]} (classical, for comparison)`;
 }
 
 function systemPrompt(owner: string, request: SessionRequest): string {
@@ -301,10 +349,20 @@ async function showExpiry(context: AgentContext, waitExpiry: boolean): Promise<v
   if (waitExpiry) await probePayment(context, payTo, `${PROBE_PAYMENT_XRP} XRP after the close`);
 }
 
+interface RunOptions {
+  waitExpiry: boolean;
+  compromised: boolean;
+  llm: LlmConfig;
+  goal: string;
+  walletUrl: string;
+  merchantUrl: string;
+}
+
 async function main(): Promise<void> {
   const flags = process.argv.slice(2);
   const waitExpiry = flags.includes(WAIT_EXPIRY_FLAG);
   const compromised = !flags.includes(NO_COMPROMISED_FLAG);
+  const algorithm = sessionKeyAlgorithm(flags);
   const llm: LlmConfig = {
     url: process.env["AGENT_LLM_URL"] ?? DEFAULT_LLM_URL,
     model: process.env["AGENT_LLM_MODEL"] ?? DEFAULT_LLM_MODEL,
@@ -313,8 +371,30 @@ async function main(): Promise<void> {
   const goal = process.env["AGENT_GOAL"] ?? DEFAULT_GOAL;
   const walletUrl = process.env["WALLET_URL"] ?? DEFAULT_WALLET_URL;
   const merchantUrl = process.env["MERCHANT_URL"] ?? DEFAULT_MERCHANT_URL;
-  const sessionSeed = generateSeed({ algorithm: "ecdsa-secp256k1" });
-  const sessionKey = addressOfSeed(sessionSeed);
+  const sessionSecret = newSessionSecret(algorithm);
+  const wipeOnInterrupt = (): void => {
+    wipeSessionSecret(sessionSecret);
+    process.exit(SIGINT_EXIT_CODE);
+  };
+  process.once("SIGINT", wipeOnInterrupt);
+  try {
+    await runWithSessionKey(sessionSecret, {
+      waitExpiry,
+      compromised,
+      llm,
+      goal,
+      walletUrl,
+      merchantUrl,
+    });
+  } finally {
+    wipeSessionSecret(sessionSecret);
+    process.off("SIGINT", wipeOnInterrupt);
+  }
+}
+
+async function runWithSessionKey(sessionSecret: SessionSecret, options: RunOptions): Promise<void> {
+  const { waitExpiry, compromised, llm, goal, walletUrl, merchantUrl } = options;
+  const sessionKey = sessionKeyAddress(sessionSecret);
   const reporter: Reporter = { walletUrl, agentId: agentIdOf(sessionKey) };
   const wanted: SessionRequest = {
     kind: "session",
@@ -325,11 +405,14 @@ async function main(): Promise<void> {
     purpose: SESSION_PURPOSE,
   };
   const firstCapXrp = positiveNumberEnv("AGENT_FIRST_CAP_XRP", DEFAULT_FIRST_CAP_XRP);
+  const keyDescription = describeSessionKey(sessionSecret.algorithm);
+  console.log(`session key: ${keyDescription}`);
   console.log(`Agent ID ${reporter.agentId} (session key ${sessionKey}): compare it on the Stax`);
   await report(
     reporter,
     "info",
-    `Agent started with a fresh session key: Agent ID ${reporter.agentId}`,
+    `Agent started with a fresh ${keyDescription} session key: Agent ID ${reporter.agentId}`,
+    { code: SESSION_KEY_CODES[sessionSecret.algorithm] },
   );
 
   const node = await NodeClient.connect(process.env["XRPLD_WS"] ?? DEFAULT_NODE_WS);
@@ -341,7 +424,7 @@ async function main(): Promise<void> {
       defs,
       owner,
       sessionKey,
-      sessionSeed,
+      sessionSecret,
       merchantUrl,
       walletUrl,
       agentId: reporter.agentId,

@@ -137,7 +137,3 @@ export function verifySignature(tx: TxJson): boolean {
   if (algorithmOfPublicKey(key) === null) return false;
   return simSignature(key, tx) === signature;
 }
-
-export function isAddress(value: string): boolean {
-  return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(value);
-}

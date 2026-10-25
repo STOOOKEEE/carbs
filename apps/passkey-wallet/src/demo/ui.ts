@@ -6,6 +6,7 @@ export const ui = {
   connection: element("demo-connection", HTMLElement),
   timeline: element("demo-timeline", HTMLOListElement),
   agentId: element("demo-agent-id", HTMLElement),
+  sessionKey: element("demo-session-key", HTMLElement),
   spent: element("demo-spent", HTMLElement),
   cap: element("demo-cap", HTMLElement),
   gaugeFill: element("demo-gauge-fill", HTMLElement),
@@ -17,6 +18,7 @@ export const ui = {
   pending: element("demo-pending", HTMLElement),
   staxMessage: element("demo-stax-message", HTMLElement),
   rootKey: element("demo-root-key", HTMLElement),
+  sessionKeyClaim: element("demo-session-key-claim", HTMLElement),
   layers: {
     device: {
       box: element("demo-layer-device", HTMLElement),

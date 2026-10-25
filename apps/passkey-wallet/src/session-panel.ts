@@ -2,6 +2,7 @@
 // without any prompt, and watch the node refuse what the session does not allow.
 // The session key lives in this page's memory only (proof of concept).
 
+import { kRippleEpochOffset } from "@carbs/sessions";
 import { generateSeed } from "ripple-keypairs";
 
 import { type Connection, requestFunding, signAndSubmitWithPasskey } from "./account.ts";
@@ -33,8 +34,6 @@ import type { StoredWallet } from "./storage.ts";
 
 const DROPS_PER_XRP = 1_000_000;
 const COUNTDOWN_INTERVAL_MS = 1_000;
-/** Seconds between the Unix epoch and the XRPL epoch (2000-01-01). */
-const RIPPLE_EPOCH_OFFSET_S = 946_684_800;
 /** AccountSet flag asfDefaultRipple: an account setting no session may change. */
 const ASF_DEFAULT_RIPPLE = 8;
 
@@ -426,7 +425,7 @@ function describeEntry(node: unknown): string[] {
   }
   if (typeof witness === "string") parts.push(`témoin ${witness}`);
   if (typeof expiration === "number") {
-    const nowRipple = Math.floor(Date.now() / 1000) - RIPPLE_EPOCH_OFFSET_S;
+    const nowRipple = Math.floor(Date.now() / 1000) - kRippleEpochOffset;
     const remaining = expiration - nowRipple;
     parts.push(remaining > 0 ? `expire dans ${remaining} s` : "expirée");
   }

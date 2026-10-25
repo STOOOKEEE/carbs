@@ -97,8 +97,3 @@ export function describeResult(code: string): ResultDescription {
   }
   return { code, ...known };
 }
-
-/** Every code this table knows, for the tests. */
-export function knownResultCodes(): string[] {
-  return Object.keys(DESCRIPTIONS);
-}

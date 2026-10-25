@@ -314,6 +314,27 @@ p {
   color: var(--color-ink);
 }
 
+/* The session key's algorithm: accent for ML-DSA-44 (post-quantum), muted for secp256k1. */
+.key-badge {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: var(--border-width) solid var(--color-ink-muted);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-ink-muted);
+}
+
+.key-badge.post-quantum {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.key-badge[hidden] {
+  display: none;
+}
+
 .hint {
   font-size: 18px;
   color: var(--color-ink-muted);

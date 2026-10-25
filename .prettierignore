@@ -1,8 +1,11 @@
 # Upstream imports are never reformatted (see UPSTREAM.md)
 rippled/
 ledger-app/
-security-key-app/
+# Ledger's XRP signer kit keeps upstream's own Prettier (3.5.3) and settings, so that our
+# extension stays ready for an upstream pull request: `pnpm format:check` runs its check too.
+packages/signer-kit-xrp/
 xrpl-devex-hook/
 pnpm-lock.yaml
 FIANSO-SPEC.md
 packages/*/src/**/fixtures/*.json
+security-key-app/
