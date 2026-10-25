@@ -1,4 +1,4 @@
-import baseConfig from "@ledgerhq/vitest-config-dmk";
+import baseConfig from "./config/vitest-config-dmk/index.mjs";
 import { defineConfig } from "vitest/config";
 import path from "path";
 

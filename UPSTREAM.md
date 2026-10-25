@@ -43,6 +43,8 @@ gh api repos/LedgerHQ/device-sdk-ts/git/blobs/<blob sha> --jq .content | base64 
 
 Without `LICENSE.MD`, the tree object of the import equals the upstream tree of `packages/signer/signer-xrp` at that commit, `f1069923622e28f56fc9c73cb88bc34ba88f9208`. Find the import commit with `git log --diff-filter=A --format=%h -- packages/signer-kit-xrp/src/api/SignerXrp.ts`; `git diff <that commit> HEAD -- packages/signer-kit-xrp` shows our work: first the tooling that builds and tests the kit in this workspace, then the extension for the XRP app of this repository (the ML-DSA-44 root, the session policy and the session status words), written in the kit's own style so that it can be offered upstream (`packages/signer-kit-xrp/UPSTREAM-PR.md`). Upstream tests are never edited or removed.
 
+The kit's tooling packages (`@ledgerhq/tsconfig-dsdk`, `@ledgerhq/vitest-config-dmk`, `@ledgerhq/prettier-config-dsdk`, `@ledgerhq/ldmk-tool`) are private to Ledger's monorepo. The tooling commit therefore copies three shared configuration files of the same upstream commit, byte for byte, into `packages/signer-kit-xrp/config/` (`packages/config/typescript/tsconfig.sdk.json`, `packages/config/vitest/index.js` renamed `index.mjs`, `packages/config/prettier/index.js`), points the kit's `tsconfig.json`, `vitest.config.mjs` and `.prettierrc.js` at them (one line each), pins upstream's versions of Vitest (3.2.6) and Prettier (3.5.3) for the kit, and builds it with esbuild and tsc (`scripts/build.mjs`) in place of `ldmk-tool`.
+
 ## How to verify an import
 
 The tree object of an imported directory must equal the tree object of the upstream commit:

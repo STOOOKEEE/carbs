@@ -1,5 +1,5 @@
 {
-  "extends": "@ledgerhq/tsconfig-dsdk/tsconfig.sdk",
+  "extends": "./config/tsconfig-dsdk/tsconfig.sdk.json",
   "compilerOptions": {
     "baseUrl": ".",
     "outDir": "./lib/types",

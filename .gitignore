@@ -33,3 +33,6 @@ xrpl-devex-hook/
 .cursor/
 .codex/
 .grok/
+
+# Build output of the XRP signer kit (packages/signer-kit-xrp/scripts/build.mjs)
+packages/signer-kit-xrp/lib/
