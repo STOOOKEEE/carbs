@@ -1,10 +1,5 @@
 /* Hash Blaster: the stage demo's look (demo.css), with an arena, a tx grid and a control column. */
 
-:root {
-  --gold: #ffd84a;
-  --pending: var(--waiting);
-}
-
 .game-grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr 0.95fr;
@@ -27,17 +22,17 @@
 
 .arena-prices {
   display: flex;
-  gap: 18px;
-  font-size: 17px;
+  gap: 14px;
+  font-size: 16px;
   white-space: nowrap;
 }
 
 .price-duck {
-  color: var(--text);
+  color: var(--color-ink);
 }
 
 .price-golden {
-  color: var(--gold);
+  color: var(--color-warn);
 }
 
 .arena {
@@ -45,14 +40,18 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border: var(--border-width) solid var(--color-line-strong);
+  border-radius: var(--radius-md);
   background:
-    radial-gradient(ellipse at 50% 120%, #14321f 0%, transparent 60%),
-    linear-gradient(#0b1220, #0a0f18);
-  opacity: 0.45;
+    radial-gradient(
+      ellipse at 50% 120%,
+      color-mix(in srgb, var(--color-ok) 22%, transparent) 0%,
+      transparent 60%
+    ),
+    linear-gradient(var(--color-surface-sunken), var(--color-surface-raised));
+  opacity: 0.6;
   cursor: not-allowed;
-  transition: opacity 0.4s;
+  transition: opacity var(--motion-slow);
 }
 
 .arena.active {
@@ -63,11 +62,12 @@
 .arena-hint {
   position: absolute;
   inset: auto 0 18px;
+  padding: 0 18px;
   z-index: 3;
   text-align: center;
   font-size: 22px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--color-ink);
 }
 
 .arena-banner {
@@ -75,26 +75,26 @@
   inset: 16px 16px auto;
   z-index: 4;
   padding: 12px 18px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   font-size: 24px;
   font-weight: 800;
   text-align: center;
-  background: #0c1017;
+  background: var(--color-surface-raised);
 }
 
 .banner-ledger {
-  color: var(--ledger);
-  border: 2px solid var(--ledger);
+  color: var(--color-danger);
+  border: var(--border-width) solid var(--color-danger);
 }
 
 .banner-device {
-  color: var(--device);
-  border: 2px solid var(--device);
+  color: var(--color-accent);
+  border: var(--border-width) solid var(--color-accent);
 }
 
 .banner-info {
-  color: var(--muted);
-  border: 2px solid var(--line);
+  color: var(--color-ink-muted);
+  border: var(--border-width) solid var(--color-line);
 }
 
 .duck {
@@ -115,7 +115,8 @@
 }
 
 .duck-golden .duck-glyph {
-  filter: sepia(1) saturate(6) hue-rotate(5deg) brightness(1.15) drop-shadow(0 0 10px var(--gold));
+  filter: sepia(1) saturate(6) hue-rotate(5deg) brightness(1.15)
+    drop-shadow(0 0 10px var(--brand-yellow));
 }
 
 .duck .shot-label,
@@ -134,24 +135,24 @@
 }
 
 .duck.locked {
-  border-color: var(--pending);
-  color: var(--pending);
+  border-color: var(--color-warn);
+  color: var(--color-warn);
 }
 
 .duck.validated {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--color-highlight);
+  color: var(--color-highlight-text);
 }
 
 .duck.hit {
-  border-color: var(--paid);
-  color: var(--paid);
+  border-color: var(--color-ok);
+  color: var(--color-ok);
   transform: scale(1.25);
   transition: transform 0.2s;
 }
 
 .duck.miss {
-  color: var(--muted);
+  color: var(--color-ink-muted);
   opacity: 0.5;
   transform: translateY(-30px);
   transition:
@@ -160,8 +161,8 @@
 }
 
 .duck.refused {
-  border-color: var(--ledger);
-  color: var(--ledger);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 @keyframes fly {
@@ -190,51 +191,51 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--pending);
-  box-shadow: 0 0 12px var(--pending);
+  background: var(--color-warn);
+  box-shadow: 0 0 12px var(--color-warn);
 }
 
 .bullet.locked {
-  color: var(--pending);
+  color: var(--color-warn);
 }
 
 .bullet.validated {
-  color: var(--accent);
+  color: var(--color-highlight-text);
 }
 
 .bullet.validated::before {
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
+  background: var(--color-highlight);
+  box-shadow: 0 0 12px var(--color-highlight);
 }
 
 .bullet.hit {
-  color: var(--paid);
+  color: var(--color-ok);
 }
 
 .bullet.hit::before {
-  background: var(--paid);
-  box-shadow: 0 0 16px var(--paid);
+  background: var(--color-ok);
+  box-shadow: 0 0 16px var(--color-ok);
 }
 
 .bullet.miss {
-  color: var(--muted);
+  color: var(--color-ink-muted);
   opacity: 0.4;
 }
 
 .bullet.miss::before {
-  background: var(--muted);
+  background: var(--color-ink-muted);
   box-shadow: none;
 }
 
 .bullet.refused {
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .bullet.refused::before {
   width: 22px;
   height: 22px;
-  background: var(--ledger);
-  box-shadow: 0 0 18px var(--ledger);
+  background: var(--color-danger);
+  box-shadow: 0 0 18px var(--color-danger);
 }
 
 .shot-stats {
@@ -246,7 +247,7 @@
 
 .shot-stats dt {
   font-size: 16px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .shot-stats dd {
@@ -258,16 +259,16 @@
 }
 
 .stat-pending dd {
-  color: var(--pending);
+  color: var(--color-warn);
 }
 
 .stat-validated dd {
-  color: var(--accent);
+  color: var(--color-highlight-text);
 }
 
 .stat-hits dd,
 .stat-won dd {
-  color: var(--paid);
+  color: var(--color-ok);
 }
 
 /* Centre: the session on the ledger */
@@ -288,12 +289,12 @@
 }
 
 .meter-line .of {
-  color: var(--muted);
+  color: var(--color-ink-muted);
   font-weight: 400;
 }
 
 .count-fill {
-  background: var(--accent);
+  background: var(--color-highlight);
 }
 
 .tx-grid {
@@ -306,24 +307,24 @@
 .tx-cell {
   aspect-ratio: 1;
   border-radius: 3px;
-  background: #1d2330;
+  background: var(--color-surface-sunken);
 }
 
 .cell-pending {
-  background: var(--pending);
+  background: var(--color-warn);
 }
 
 .cell-miss {
-  background: #56607a;
+  background: var(--color-ink-muted);
 }
 
 .cell-hit {
-  background: var(--paid);
+  background: var(--color-ok);
 }
 
 .cell-failed,
 .cell-expired {
-  background: var(--ledger);
+  background: var(--color-danger);
   opacity: 0.6;
 }
 
@@ -335,7 +336,7 @@
 
 .owner-status {
   font-size: 18px;
-  color: var(--muted);
+  color: var(--color-ink-muted);
 }
 
 .button-row {
@@ -349,18 +350,18 @@
 
 .control-column button {
   font-size: 20px;
-  padding: 12px 16px;
+  padding: 12px 10px;
 }
 
 button.abuse {
   background: transparent;
-  color: var(--ledger);
-  border-color: var(--ledger);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 button.device-abuse {
-  color: var(--device);
-  border-color: var(--device);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .game-message {
@@ -368,7 +369,7 @@ button.device-abuse {
   border-radius: 12px;
   font-size: 18px;
   font-weight: 600;
-  background: #0c1017;
+  background: var(--color-surface-sunken);
 }
 
 .refusals {
@@ -388,30 +389,30 @@ button.device-abuse {
   gap: 2px;
   padding: 8px 12px;
   border-radius: 10px;
-  border-left: 5px solid var(--ledger);
-  background: color-mix(in srgb, var(--ledger) 12%, transparent);
+  border-left: 5px solid var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
   animation: arrive 0.4s ease-out;
 }
 
 .refusal-device {
-  border-left-color: var(--device);
-  background: color-mix(in srgb, var(--device) 12%, transparent);
+  border-left-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .refusal-code {
-  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 800;
-  color: var(--ledger);
+  color: var(--color-danger);
 }
 
 .refusal-device .refusal-code {
-  color: var(--device);
+  color: var(--color-accent);
 }
 
 .refusal-text {
   font-size: 16px;
-  color: var(--text);
+  color: var(--color-ink);
 }
 
 @keyframes arrive {

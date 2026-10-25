@@ -154,9 +154,12 @@
 
 /*
  * Ledger mode: dark, violet. Only colours (and the page background layer) change.
- * The violet is a token (`--ledger-violet`), one line to adjust.
+ * The violet is a token (`--ledger-violet`), one line to adjust. The web app sets it on
+ * <html>; the wallet stage pages (apps/passkey-wallet) also set it on the columns where
+ * the Ledger Stax is involved, hence the bare attribute selector.
  */
-:root[data-theme="ledger"] {
+:root[data-theme="ledger"],
+[data-theme="ledger"] {
   --ledger-violet: #bbb0ff;
   --ledger-ink: #fbfaff;
   --ledger-night: #0a0714;

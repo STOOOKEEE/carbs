@@ -15,7 +15,14 @@ const pages = Object.fromEntries(
     .map((name) => [name.slice(0, -PAGE_SUFFIX.length), `${ROOT}${name}`]),
 );
 
+/**
+ * The stage pages share the web app's art direction (src/theme/stage.css imports
+ * apps/web/assets/tokens.css), so they also serve the web app's self-hosted fonts.
+ */
+const SHARED_PUBLIC_DIR = fileURLToPath(new URL("../web/public", import.meta.url));
+
 export default defineConfig({
+  publicDir: SHARED_PUBLIC_DIR,
   build: {
     rolldownOptions: {
       input: pages,
