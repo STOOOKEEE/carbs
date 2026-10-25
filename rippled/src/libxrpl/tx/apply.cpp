@@ -63,10 +63,11 @@ constexpr HashRouterFlags kSfSiggoodOldPrefix = HashRouterFlags::PRIVATE8;
 
 // A verdict forced by forceValidity, which verified nothing. Before
 // fixPasskeyChallenge, checkValidity keeps no verdict on a WebAuthn passkey
-// signature, nor before fixP256StrictDer on a P-256 signature (see
+// signature, nor before fixP256StrictDer on a P-256 signature, nor before
+// PasskeyMLDSA on an ML-DSA-44 passkey signature (see
 // isSignatureVerdictCacheable), but a forced verdict has to hold in every
-// era, so it is recorded here too. Remove this flag when PasskeyChallenge
-// and P256StrictDer are both retired in features.macro.
+// era, so it is recorded here too. Remove this flag when PasskeyChallenge,
+// P256StrictDer and PasskeyMLDSA are all retired in features.macro.
 constexpr HashRouterFlags kSfSigforced = HashRouterFlags::PRIVATE9;
 
 //------------------------------------------------------------------------------
@@ -109,12 +110,13 @@ checkValidity(HashRouter& router, STTx const& tx, Rules const& rules)
 
     // Before fixPasskeyChallenge, the verdict on a WebAuthn passkey signature
     // depends on the platform, and the fix changes it; before
-    // fixP256StrictDer, the verdict on a P-256 signature changes with that fix
-    // (see isSignatureVerdictCacheable). Verify such a transaction on every call
-    // and neither read nor record a verdict, so that none crosses the
-    // activation in either direction. A verdict forced by forceValidity still
-    // holds. Remove this when PasskeyChallenge and P256StrictDer are retired in
-    // features.macro.
+    // fixP256StrictDer, the verdict on a P-256 signature changes with that fix;
+    // before PasskeyMLDSA, the verdict on an ML-DSA-44 passkey signature
+    // changes with it (see isSignatureVerdictCacheable). Verify such a
+    // transaction on every call and neither read nor record a verdict, so that
+    // none crosses the activation in either direction. A verdict forced by
+    // forceValidity still holds. Remove this when PasskeyChallenge,
+    // P256StrictDer and PasskeyMLDSA are retired in features.macro.
     bool const uncachedSig = !isSignatureVerdictCacheable(tx, rules) && !any(flags & kSfSigforced);
 
     if (!uncachedSig && any(flags & sigbadFlag))
@@ -178,9 +180,10 @@ forceValidity(HashRouter& router, uint256 const& txid, Validity validity)
     // the result. An already cached bad verdict still wins, since checkValidity
     // tests its bad flag first. Drop kSfSiggoodOldPrefix when Cleanup3_4_0 is
     // retired. kSfSigforced keeps the forced verdict for a WebAuthn passkey
-    // signature before fixPasskeyChallenge, or a P-256 one before
-    // fixP256StrictDer, which checkValidity otherwise verifies on every call;
-    // drop it when PasskeyChallenge and P256StrictDer are both retired.
+    // signature before fixPasskeyChallenge, a P-256 one before
+    // fixP256StrictDer, or an ML-DSA-44 passkey one before PasskeyMLDSA, which
+    // checkValidity otherwise verifies on every call; drop it when
+    // PasskeyChallenge, P256StrictDer and PasskeyMLDSA are all retired.
     HashRouterFlags flags = HashRouterFlags::UNDEFINED;
     switch (validity)
     {
@@ -243,6 +246,16 @@ isSignatureVerdictCacheable(STTx const& tx, Rules const& rules)
     // verdict on such a transaction is kept, so none crosses the activation.
     if (!rules.enabled(fixP256StrictDer) &&
         (hasP256Key(tx) || tx.isFieldPresent(sfPasskeySignature)))
+        return false;
+
+    // PasskeyMLDSA verifies a PasskeySignature next to an ML-DSA-44
+    // SigningPubKey, which was refused (with fixP256StrictDer) or ignored
+    // (without it) before: a verdict changes in both directions. Until it and
+    // the amendments it needs are enabled (isPasskeyMLDSAEnabled), no verdict
+    // on such a transaction is kept, so none crosses the activation. Only the
+    // top level is read, as below.
+    if (!isPasskeyMLDSAEnabled(rules) && tx.isFieldPresent(sfPasskeySignature) &&
+        publicKeyType(makeSlice(tx.getSigningPubKey())) == KeyType::Dilithium)
         return false;
 
     // Only the WebAuthn branch of signature verification changes with
