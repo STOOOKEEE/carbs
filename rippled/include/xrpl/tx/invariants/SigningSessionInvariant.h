@@ -21,12 +21,17 @@ namespace xrpl {
  *  1. Only SigningSessionSet creates a session, and only SigningSessionDelete
  *     or AccountDelete removes one; the owner count moves by one with each.
  *  2. Account, SessionKey, Expiration, Permissions, SessionCap,
- *     SessionMaxPerTx, SessionWitness and the mode flag never change; a
- *     session has exactly one mode, SessionSpent only
- *     with SessionCap and zero at creation; Expiration is within
- *     kMaxSessionDuration of the parent close time at creation.
+ *     SessionMaxPerTx, SessionMaxTxCount, SessionWitness and the mode flag
+ *     never change; a session has exactly one mode, SessionSpent only
+ *     with SessionCap and zero at creation, SessionTxCount only with
+ *     SessionMaxTxCount (within 1..kMaxSessionTxCount) and zero at creation;
+ *     Expiration is within kMaxSessionDuration of the parent close time at
+ *     creation.
  *  3. SessionSpent only increases, never above SessionCap, and only in a
  *     transaction its session signed (the own close is exempt).
+ *     SessionTxCount increases by exactly one in each transaction its
+ *     session signs and keeps (the own close is exempt), never otherwise,
+ *     and never above SessionMaxTxCount.
  *  4. A mode-C session transaction other than the own close has the shape
  *     of a session cap payment (isSessionCapPayment), and counts at most
  *     SessionMaxPerTx beyond its fee. When it does not delete its session,

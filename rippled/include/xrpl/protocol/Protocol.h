@@ -504,6 +504,11 @@ constexpr std::size_t kPermissionMaxSize = 10;
 constexpr std::uint32_t kMaxSessionDuration = 600;
 
 /**
+ * The most transactions a signing session may sign (SessionMaxTxCount).
+ */
+constexpr std::uint32_t kMaxSessionTxCount = 100000;
+
+/**
  * How many base fee units a session-signed transaction may pay on top of
  * the fee its type requires. The session's own close gets no margin.
  */

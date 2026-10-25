@@ -17,3 +17,15 @@ export function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   }
   return bytes;
 }
+
+/**
+ * A Memos field with one memo. The XRP app shows MemoType and MemoData as text when they are
+ * printable ASCII (ledger-app/src/xrp/general.c blob_formatter), so both must be ASCII.
+ */
+export function textMemos(
+  type: string,
+  data: string,
+): { Memo: { MemoType: string; MemoData: string } }[] {
+  const hexOf = (text: string) => bytesToHex(new TextEncoder().encode(text));
+  return [{ Memo: { MemoType: hexOf(type), MemoData: hexOf(data) } }];
+}

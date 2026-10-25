@@ -405,7 +405,8 @@ public:
     /**
      * The rules of invokeCheckSession, in order: eligibility, then
      * LastLedgerSequence, expiry, the fee ceiling, in mode C the cap and
-     * SessionMaxPerTx, and the SessionWitness co-signature.
+     * SessionMaxPerTx, in any mode SessionMaxTxCount, and the SessionWitness
+     * co-signature.
      */
     static NotTEC
     checkSession(
@@ -603,12 +604,13 @@ private:
     reset(XRPAmount fee);
 
     /**
-     * Counts what a mode-C session-signed transaction took from the account
-     * in its session's SessionSpent: the fee claimed, plus the Amount on
-     * tesSUCCESS (FIANSO-SPEC 6.6). Called exactly twice in operator():
-     * before the first invariant pass, and after the fee-claim reset, which
-     * erases the first count. The own close is exempt, and a session that no
-     * longer exists is skipped.
+     * Counts a session-signed transaction in its session: in mode C, what it
+     * took from the account in SessionSpent (the fee claimed, plus the
+     * Amount on tesSUCCESS, FIANSO-SPEC 6.6); in any mode with
+     * SessionMaxTxCount, one more in SessionTxCount, on tes and tec alike.
+     * Called exactly twice in operator(): before the first invariant pass,
+     * and after the fee-claim reset, which erases the first count. The own
+     * close is exempt, and a session that no longer exists is skipped.
      */
     void
     chargeSession(TER result, XRPAmount fee);

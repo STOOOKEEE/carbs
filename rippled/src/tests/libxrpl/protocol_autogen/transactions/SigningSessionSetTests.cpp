@@ -35,6 +35,7 @@ TEST(TransactionsSigningSessionSetTests, BuilderSettersRoundTrip)
     auto const sessionCapValue = canonical_AMOUNT();
     auto const sessionMaxPerTxValue = canonical_AMOUNT();
     auto const sessionWitnessValue = canonical_ACCOUNT();
+    auto const sessionMaxTxCountValue = canonical_UINT32();
 
     SigningSessionSetBuilder builder{
         accountValue,
@@ -49,6 +50,7 @@ TEST(TransactionsSigningSessionSetTests, BuilderSettersRoundTrip)
     builder.setSessionCap(sessionCapValue);
     builder.setSessionMaxPerTx(sessionMaxPerTxValue);
     builder.setSessionWitness(sessionWitnessValue);
+    builder.setSessionMaxTxCount(sessionMaxTxCountValue);
 
     auto tx = builder.build(publicKey, secretKey);
 
@@ -110,6 +112,14 @@ TEST(TransactionsSigningSessionSetTests, BuilderSettersRoundTrip)
         EXPECT_TRUE(tx.hasSessionWitness());
     }
 
+    {
+        auto const& expected = sessionMaxTxCountValue;
+        auto const actualOpt = tx.getSessionMaxTxCount();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfSessionMaxTxCount should be present";
+        expectEqualField(expected, *actualOpt, "sfSessionMaxTxCount");
+        EXPECT_TRUE(tx.hasSessionMaxTxCount());
+    }
+
 }
 
 // 2 & 4) Start from an STTx, construct a builder from it, build a new wrapper,
@@ -132,6 +142,7 @@ TEST(TransactionsSigningSessionSetTests, BuilderFromStTxRoundTrip)
     auto const sessionCapValue = canonical_AMOUNT();
     auto const sessionMaxPerTxValue = canonical_AMOUNT();
     auto const sessionWitnessValue = canonical_ACCOUNT();
+    auto const sessionMaxTxCountValue = canonical_UINT32();
 
     // Build an initial transaction
     SigningSessionSetBuilder initialBuilder{
@@ -146,6 +157,7 @@ TEST(TransactionsSigningSessionSetTests, BuilderFromStTxRoundTrip)
     initialBuilder.setSessionCap(sessionCapValue);
     initialBuilder.setSessionMaxPerTx(sessionMaxPerTxValue);
     initialBuilder.setSessionWitness(sessionWitnessValue);
+    initialBuilder.setSessionMaxTxCount(sessionMaxTxCountValue);
 
     auto initialTx = initialBuilder.build(publicKey, secretKey);
 
@@ -202,6 +214,13 @@ TEST(TransactionsSigningSessionSetTests, BuilderFromStTxRoundTrip)
         auto const actualOpt = rebuiltTx.getSessionWitness();
         ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfSessionWitness should be present";
         expectEqualField(expected, *actualOpt, "sfSessionWitness");
+    }
+
+    {
+        auto const& expected = sessionMaxTxCountValue;
+        auto const actualOpt = rebuiltTx.getSessionMaxTxCount();
+        ASSERT_TRUE(actualOpt.has_value()) << "Optional field sfSessionMaxTxCount should be present";
+        expectEqualField(expected, *actualOpt, "sfSessionMaxTxCount");
     }
 
 }
@@ -271,6 +290,8 @@ TEST(TransactionsSigningSessionSetTests, OptionalFieldsReturnNullopt)
     EXPECT_FALSE(tx.getSessionMaxPerTx().has_value());
     EXPECT_FALSE(tx.hasSessionWitness());
     EXPECT_FALSE(tx.getSessionWitness().has_value());
+    EXPECT_FALSE(tx.hasSessionMaxTxCount());
+    EXPECT_FALSE(tx.getSessionMaxTxCount().has_value());
 }
 
 }

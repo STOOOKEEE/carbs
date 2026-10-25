@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
+    />
+    <title>carbs · ticket desk minting on the XRPL</title>
+    <link rel="stylesheet" href="/src/apps/mint/mint.css" />
+  </head>
+  <body>
+    <header class="mint-header">
+      <h1>
+        Ticket desk: mints alone, cannot move a single XRP
+        <span class="dot">·</span>
+        <span class="accent">enforced by the XRPL ledger</span>
+      </h1>
+      <p id="mint-connection" class="status">Connecting…</p>
+    </header>
+
+    <main class="mint-grid">
+      <section class="column" aria-label="Owner and session">
+        <h2>1 · The studio opens the desk once</h2>
+        <div class="card rules-card">
+          <p class="label">Session asked for</p>
+          <p class="rules-profile">Profile: Minting</p>
+          <ul class="rules-list">
+            <li>Mode P: <strong>NFTokenMint</strong> only (permission 26)</li>
+            <li>At most <strong id="mint-rule-count">50</strong> transactions</li>
+            <li>Valid <strong id="mint-rule-duration">10 min</strong></li>
+          </ul>
+        </div>
+        <div class="buttons">
+          <button id="mint-open-stax" type="button" class="primary">Open with Ledger Stax</button>
+          <button id="mint-open-mac" type="button" class="secondary">
+            Open with Mac (Touch ID)
+          </button>
+        </div>
+        <p id="mint-owner-message" class="message message-info">
+          The owner approves once; then the desk's key signs every mint alone.
+        </p>
+
+        <div class="card session-card">
+          <p class="label">Agent ID of the desk's key</p>
+          <p id="mint-agent-id" class="agent-id">––––-––––</p>
+          <p class="label">Transactions on the ledger</p>
+          <p class="big-figure">
+            <span id="mint-tx-count">0</span> <span class="of">/</span>
+            <span id="mint-tx-max">–</span>
+          </p>
+          <div class="gauge"><div id="mint-gauge-fill" class="gauge-fill"></div></div>
+          <dl class="facts">
+            <div>
+              <dt>Time left</dt>
+              <dd id="mint-countdown">–</dd>
+            </div>
+            <div>
+              <dt>Spent / cap</dt>
+              <dd id="mint-spent">–</dd>
+            </div>
+          </dl>
+          <p id="mint-session-state" class="session-state session-idle">No session yet.</p>
+          <button id="mint-close" type="button" class="secondary" disabled>Close session</button>
+        </div>
+
+        <div class="card reserve-card">
+          <p class="label">The owner's XRP, honestly</p>
+          <dl class="facts reserve-facts">
+            <div>
+              <dt>Balance</dt>
+              <dd id="mint-balance">–</dd>
+            </div>
+            <div>
+              <dt>Fees paid by the desk</dt>
+              <dd id="mint-fees">–</dd>
+            </div>
+            <div>
+              <dt>Reserve locked</dt>
+              <dd id="mint-reserve">–</dd>
+            </div>
+            <div>
+              <dt>Since the session opened</dt>
+              <dd id="mint-reserve-delta">–</dd>
+            </div>
+          </dl>
+          <p class="hint">
+            Minting moves no XRP: it costs only the fees. Tickets live in NFT pages of up to 32;
+            each page (and the session entry while open) locks one owner reserve increment. Locked,
+            not spent: it comes back when pages are emptied or the session closes.
+          </p>
+        </div>
+      </section>
+
+      <section class="column" aria-label="Minting desk">
+        <h2>2 · The desk's key mints, no prompt</h2>
+        <div class="buttons">
+          <button id="mint-one" type="button" class="primary" disabled>Mint 1 ticket</button>
+          <button id="mint-burst" type="button" class="primary" disabled>Mint 20 tickets</button>
+        </div>
+        <p id="mint-desk-message" class="message message-info">Open a session first.</p>
+        <p class="label">
+          Tickets on the ledger (account_nfts, taxon <span id="mint-taxon">–</span>):
+          <strong id="mint-gallery-count">0</strong>
+        </p>
+        <ol id="mint-gallery" class="gallery"></ol>
+      </section>
+
+      <section class="column" aria-label="Abuse attempts">
+        <h2>3 · Try to abuse the desk</h2>
+        <div class="abuse-list">
+          <button id="mint-abuse-pay" type="button" class="abuse" disabled>
+            Send 10 XRP to an outside account
+            <span class="expect">expect tefSESSION_TX_NOT_ALLOWED</span>
+          </button>
+          <button id="mint-abuse-burn" type="button" class="abuse" disabled>
+            Burn the newest ticket
+            <span class="expect">expect tefSESSION_TX_NOT_ALLOWED</span>
+          </button>
+          <button id="mint-abuse-count" type="button" class="abuse" disabled>
+            Mint past the limit
+            <span class="expect">expect tefSESSION_LIMIT</span>
+          </button>
+          <button id="mint-abuse-device" type="button" class="abuse device" disabled>
+            Ask the Stax for <span id="mint-device-count">200</span> mints
+            <span class="expect">expect a refusal on the device</span>
+          </button>
+        </div>
+        <p class="label">Activity</p>
+        <ol id="mint-activity" class="activity"></ol>
+      </section>
+    </main>
+
+    <footer class="layers">
+      <div id="mint-layer-device" class="layer layer-device">
+        <span class="layer-name">Device:</span>
+        <span class="layer-what">minting profile, at opening</span>
+        <span id="mint-layer-device-count" class="layer-count">0 refused</span>
+      </div>
+      <div id="mint-layer-ledger" class="layer layer-ledger">
+        <span class="layer-name">Ledger:</span>
+        <span class="layer-what">SigningSessions, at every transaction</span>
+        <span id="mint-layer-ledger-count" class="layer-count">0 refused</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/apps/mint/main.ts"></script>
+  </body>
+</html>

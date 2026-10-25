@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' wss: ws://localhost:*; style-src 'self'"
+    />
+    <title>carbs · agent budget on the XRPL</title>
+    <link rel="stylesheet" href="/src/demo/demo.css" />
+  </head>
+  <body>
+    <header class="demo-header">
+      <h1>
+        Agent budget, enforced by the XRPL ledger
+        <span class="dot">·</span>
+        <span id="demo-root-key" class="accent root-muted">Ledger Stax not connected</span>
+      </h1>
+      <p id="demo-connection" class="status">Connecting…</p>
+    </header>
+
+    <main class="demo-grid">
+      <section class="column timeline-column" aria-label="Agent timeline">
+        <h2>Agent, live</h2>
+        <ol id="demo-timeline" class="timeline">
+          <li class="event event-thought">
+            <span class="event-icon">…</span>
+            <span class="event-body"><span class="event-text">Waiting for the agent.</span></span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="column centre-column" aria-label="Budget on the ledger">
+        <div class="agent-id-card">
+          <p class="label">Agent ID</p>
+          <p id="demo-agent-id" class="agent-id">––––-––––</p>
+          <p class="hint">Check that the Stax shows the same Agent ID</p>
+        </div>
+        <div class="budget-card">
+          <p class="label">Budget on the ledger</p>
+          <p class="spent">
+            <span id="demo-spent">0</span> <span class="of">/</span>
+            <span id="demo-cap">–</span> XRP
+          </p>
+          <div class="gauge"><div id="demo-gauge-fill" class="gauge-fill"></div></div>
+          <dl class="budget-facts">
+            <div>
+              <dt>Max per payment</dt>
+              <dd id="demo-max-per-tx">–</dd>
+            </div>
+            <div>
+              <dt>Expires in</dt>
+              <dd id="demo-countdown">–</dd>
+            </div>
+          </dl>
+          <p id="demo-session-state" class="session-state">No session yet.</p>
+        </div>
+      </section>
+
+      <section class="column stax-column" aria-label="Ledger Stax">
+        <h2>Ledger Stax</h2>
+        <p id="demo-stax-status" class="stax-status">Not connected.</p>
+        <button id="demo-stax-connect" type="button" class="primary">Connect the Stax</button>
+        <div id="demo-pending" class="pending"></div>
+        <p id="demo-stax-message" class="stax-message" hidden></p>
+      </section>
+    </main>
+
+    <footer class="layers">
+      <div id="demo-layer-device" class="layer layer-device">
+        <span class="layer-name">Device:</span>
+        <span class="layer-what">session policy, at opening</span>
+        <span id="demo-layer-device-count" class="layer-count">0 refused</span>
+      </div>
+      <div id="demo-layer-ledger" class="layer layer-ledger">
+        <span class="layer-name">Ledger:</span>
+        <span class="layer-what">SigningSessions, at every payment</span>
+        <span id="demo-layer-ledger-count" class="layer-count">0 refused</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/demo/main.ts"></script>
+  </body>
+</html>
