@@ -17,14 +17,13 @@
 
 namespace xrpl {
 
-enum class HashRouterFlags : std::uint16_t {
+enum class HashRouterFlags : std::uint32_t {
     // Public flags
     UNDEFINED = 0x00,
     BAD = 0x02,  // Temporarily bad
     SAVED = 0x04,
     HELD = 0x08,     // Held by LedgerMaster after potential processing failure
     TRUSTED = 0x10,  // Comes from a trusted source
-    // 0x20 is PRIVATE9 below: do not give it to a public flag.
 
     // Private flags. Each group is owned by one file; do not read, set, or
     // reuse a flag outside the file noted.
@@ -39,9 +38,8 @@ enum class HashRouterFlags : std::uint16_t {
     // Used in apply.cpp
     PRIVATE7 = 0x4000,
     PRIVATE8 = 0x8000,
-    // Used in apply.cpp. The private range above is full; no public flag
-    // uses this bit. Remove when PasskeyChallenge is retired.
-    PRIVATE9 = 0x0020
+    // Used in apply.cpp. Remove when PasskeyChallenge is retired.
+    PRIVATE9 = 0x10000
 };
 
 constexpr HashRouterFlags
