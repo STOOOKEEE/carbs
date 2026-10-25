@@ -1128,14 +1128,27 @@ Transactor::checkSession(
     if (fee > baseFee() + ctx.view.fees().base * kSessionFeeMultiple)
         return tefSESSION_LIMIT;
 
-    // 5. The cap, in mode C, except for the own close: what the transaction
-    // can take from the account must fit what is left of the cap.
+    // 5. The caps, in mode C, except for the own close: what the transaction
+    // can take from the account must fit what is left of the cap, and the
+    // amount must fit SessionMaxPerTx when the session has one.
     if (auto const cap = (*session)[~sfSessionCap]; cap && !ownClose)
     {
+        auto const amount = ctx.tx[sfAmount].xrp();
         auto const remaining = cap->xrp() - (*session)[sfSessionSpent].xrp();
-        if (fee + ctx.tx[sfAmount].xrp() > remaining)
+        if (fee + amount > remaining)
+            return tefSESSION_LIMIT;
+
+        if (auto const maxPerTx = (*session)[~sfSessionMaxPerTx];
+            maxPerTx && amount > maxPerTx->xrp())
             return tefSESSION_LIMIT;
     }
+
+    // 6. The witness, except for the own close: its signature was verified
+    // with the transaction's (STTx::checkSign); here it must come from a key
+    // of the session's witness.
+    if (auto const witness = (*session)[~sfSessionWitness];
+        witness && !ownClose && !isSessionWitnessed(ctx.view, ctx.tx, *witness))
+        return tefSESSION_NO_WITNESS;
 
     return tesSUCCESS;
 }
@@ -1155,7 +1168,8 @@ Transactor::chargeSession(TER result, XRPAmount fee)
     if (isTesSuccess(result) && ctx_.tx.getTxnType() == ttPAYMENT)
         charge += ctx_.tx[sfAmount].xrp();
 
-    sle->setFieldAmount(sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
+    sle->setFieldAmount(
+        sfSessionSpent, STAmount{sle->getFieldAmount(sfSessionSpent).xrp() + charge});
     view().update(sle);
 }
 
@@ -1254,13 +1268,10 @@ Transactor::checkSingleSign(
         if (slePasskeyList)
         {
             auto const passkeys = slePasskeyList->getFieldArray(sfPasskeys);
-            auto hasMatchingPasskey = std::any_of(
-                passkeys.begin(),
-                passkeys.end(),
-                [&idSigner](STObject const& passkey) {
+            auto hasMatchingPasskey =
+                std::any_of(passkeys.begin(), passkeys.end(), [&idSigner](STObject const& passkey) {
                     return passkey.isFieldPresent(sfPublicKey) &&
-                        calcAccountID(PublicKey(
-                            makeSlice(passkey.getFieldVL(sfPublicKey)))) ==
+                        calcAccountID(PublicKey(makeSlice(passkey.getFieldVL(sfPublicKey)))) ==
                         idSigner;
                 });
             if (hasMatchingPasskey)

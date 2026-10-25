@@ -1,6 +1,7 @@
 #pragma once
 
 #include <xrpl/ledger/ReadView.h>
+#include <xrpl/protocol/AccountID.h>
 #include <xrpl/protocol/Keylet.h>
 #include <xrpl/protocol/Rules.h>
 #include <xrpl/protocol/STLedgerEntry.h>
@@ -94,5 +95,14 @@ isSessionCapPayment(STTx const& tx);
  */
 [[nodiscard]] bool
 isSessionExpired(ReadView const& view, SLE const& session);
+
+/**
+ * Whether `tx` carries a WitnessSignature made by a key of `witness`: its
+ * master key, if enabled, or its RegularKey. The signature itself is verified
+ * with the transaction's (STTx::checkSign); this checks that the key belongs
+ * to the witness account.
+ */
+[[nodiscard]] bool
+isSessionWitnessed(ReadView const& view, STTx const& tx, AccountID const& witness);
 
 }  // namespace xrpl

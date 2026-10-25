@@ -4,19 +4,24 @@
  * every transaction. Built on `buildPqMigration`, `disableMasterRefusals` and the node
  * helpers of `@carbs/sessions`, and on the device contract of `@carbs/ledger`.
  *
- * **SIMULATED:** the device. It is the contract-following software device of
- * `@carbs/ledger` (a test double of the XRP app, with a random seed made in this page), not
- * a Stax; the review is shown by the page's simulated Stax screen. Everything the node
- * answers is real. The account is fresh and has no value.
+ * The device is the one chosen when the run starts (`device-selection.ts`):
+ * - a real Ledger Stax over USB: the master key and the ML-DSA-44 root key are the Stax's,
+ *   every review and confirmation happens on its screen;
+ * - by default the **SIMULATED** software device of `@carbs/ledger` (a test double of the XRP
+ *   app, with a random seed made in this page), whose review is shown by the page's simulated
+ *   Stax screen.
+ * Everything the node answers is real. The account is fresh and has no value.
  *
  * Step 3 (`asfDisableMaster`) is refused by `disableMasterRefusals` unless the proof was
- * validated, the ML-DSA key is recoverable (here: the person saved the simulated device's
- * seed, a post-quantum backup, since a software device cannot be reinstalled) and the
- * surviving authorities were reviewed. The node's own answers are shown as the node's.
+ * validated, the ML-DSA key is recoverable and the surviving authorities were reviewed. On a
+ * Stax the evidence is the key read a second time, after reinstalling the XRP app, identical to
+ * the first; a software device cannot be reinstalled, so there the person saves its seed (a
+ * post-quantum backup). The node's own answers are shown as the node's.
  */
 import {
   addressFromPublicKey,
   bytesToHex,
+  equalBytes,
   fetchCommonFields,
   generateClassicSeed,
   getAccountState,
@@ -29,37 +34,40 @@ import {
   buildPqMigration,
   disableMasterRefusals,
   type MigrationPlan,
+  type RecoverabilityEvidence,
 } from "@carbs/sessions/quantum";
 import {
-  DeviceError,
   SimulatedDevice,
+  describeLedgerError,
   deviceClassicSigner,
   deviceMlDsaSigner,
-  kSw,
-  type Review,
+  getMlDsaPublicKey,
+  kDefaultXrpPath,
+  type ApduTransport,
 } from "@carbs/ledger";
 import { reactive } from "vue";
-import type { DeviceApprover, DeviceReview } from "../ports";
-import { DeviceRejectedError } from "../ports";
-import type { MigrationController, MigrationState } from "../migration";
+import type { DeviceApprover } from "../ports";
+import type { MigrationController, MigrationState, MigrationStep } from "../migration";
 import type { AppNetwork } from "../networks";
 import type { LiveClients } from "./clients";
+import { deviceReview, isDeviceRefusal } from "./contract-device";
+import { createDeviceSelection, type DeviceSelection } from "./device-selection";
 import { toNodeResult } from "./result";
 import type { LiveExposure } from "./exposure";
 
 const FAUCET_POLL_MS = 2000;
 const FAUCET_POLLS = 30;
 const DEVICE_SEED_BYTES = 64;
-const MASTER_PATH = "44'/144'/0'/0/0";
-const STEP_TITLES = [
-  {
-    id: 1,
-    title: "SetRegularKey to the ML-DSA-44 key",
-    signedBy: "master key, on the SIMULATED device",
-  },
-  { id: 2, title: "Proof transaction", signedBy: "ML-DSA-44 key, on the SIMULATED device" },
-  { id: 3, title: "AccountSet asfDisableMaster", signedBy: "master key, on the SIMULATED device" },
-] as const;
+const SIMULATED_DEVICE_LABEL = "the SIMULATED device";
+const STAX_LABEL = "the Ledger Stax (USB)";
+
+function stepTitles(device: string): Pick<MigrationStep, "id" | "title" | "signedBy">[] {
+  return [
+    { id: 1, title: "SetRegularKey to the ML-DSA-44 key", signedBy: `master key, on ${device}` },
+    { id: 2, title: "Proof transaction", signedBy: `ML-DSA-44 key, on ${device}` },
+    { id: 3, title: "AccountSet asfDisableMaster", signedBy: `master key, on ${device}` },
+  ];
+}
 
 export interface LiveMigrationDeps {
   clients: LiveClients;
@@ -67,26 +75,16 @@ export interface LiveMigrationDeps {
   network: () => AppNetwork;
   /** The page's simulated Stax screen. */
   approver: DeviceApprover;
+  /** Simulated device or real Stax; without it, the simulated device. */
+  device?: DeviceSelection;
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
-}
-
-function asDeviceReview(review: Review): DeviceReview {
-  return {
-    title: review.kind === "blind" ? "Blind signing required" : "Review transaction",
-    lines: review.lines.map((line) => ({ label: line.label, value: line.value })),
-    simulated: true,
-  };
-}
-
-/** The device contract reports a refusal on the screen as status word 0x6985. */
-function isDenied(error: unknown): boolean {
-  return error instanceof DeviceError && error.statusWord === kSw.denied;
 }
 
 export function createLiveMigration(deps: LiveMigrationDeps): MigrationController {
   const fetcher = deps.fetcher ?? globalThis.fetch.bind(globalThis);
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const selection = deps.device ?? createDeviceSelection();
 
   const state: MigrationState = reactive({
     address: null,
@@ -95,6 +93,7 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
     authoritiesReviewed: false,
     recoverySeed: null,
     recoveryConfirmed: false,
+    realDevice: false,
     before: null,
     after: null,
     busy: false,
@@ -108,6 +107,8 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
   let backupDescription: string | null = null;
   /** The seed of the device made by the latest `start()`; shown only when the person asks for the backup. */
   let pendingSeed: string | null = null;
+  /** Real Stax only: the ML-DSA-44 key read a second time. */
+  let secondRead: RecoverabilityEvidence | null = null;
 
   async function guarded(work: () => Promise<void>): Promise<void> {
     state.busy = true;
@@ -115,12 +116,9 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
     try {
       await work();
     } catch (error) {
-      state.error =
-        error instanceof DeviceRejectedError || isDenied(error)
-          ? "Rejected on the device. Nothing was sent."
-          : error instanceof Error
-            ? error.message
-            : String(error);
+      state.error = isDeviceRefusal(error)
+        ? "Rejected on the device. Nothing was sent."
+        : describeLedgerError(error);
     } finally {
       state.busy = false;
     }
@@ -152,27 +150,44 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
       state.recoverySeed = null;
       if (deps.network().readOnly) throw new Error("This network is read-only");
       const defs = await deps.clients.definitions("alphanet");
-      // The simulated device: the contract, a software key, a seed made here and shown later.
-      const seed = crypto.getRandomValues(new Uint8Array(DEVICE_SEED_BYTES));
-      const device = new SimulatedDevice({
-        defs,
-        bip39Seed: seed,
-        classicSeeds: {
-          secp256k1: generateClassicSeed("ecdsa-secp256k1"),
-          ed25519: generateClassicSeed("ed25519"),
-        },
-        approve: (review) => deps.approver(asDeviceReview(review)),
-      });
-      master = await deviceClassicSigner(device, MASTER_PATH, "secp256k1");
+      const realDevice = selection.choice === "usb";
+      let device: ApduTransport;
+      let seed: Uint8Array | null = null;
+      if (realDevice) {
+        // Refuses at once when no Stax is connected. The transport looks the Stax up at each
+        // APDU, so reconnecting it (after reinstalling the XRP app) keeps the run going.
+        selection.ledger();
+        device = selection.transport;
+      } else {
+        // The simulated device: the contract, a software key, a seed made here and shown later.
+        seed = crypto.getRandomValues(new Uint8Array(DEVICE_SEED_BYTES));
+        device = new SimulatedDevice({
+          defs,
+          bip39Seed: seed,
+          classicSeeds: {
+            secp256k1: generateClassicSeed("ecdsa-secp256k1"),
+            ed25519: generateClassicSeed("ed25519"),
+          },
+          approve: (review) => deps.approver(deviceReview(review, true)),
+        });
+      }
+      master = await deviceClassicSigner(device, kDefaultXrpPath, "secp256k1");
       mlDsa = await deviceMlDsaSigner(device);
       const address = addressFromPublicKey(master.publicKey);
       await fundFresh(address);
       plan = buildPqMigration(address, mlDsa.publicKey, defs);
-      pendingSeed = bytesToHex(seed);
+      pendingSeed = seed === null ? null : bytesToHex(seed);
       proof = null;
       backupDescription = null;
+      secondRead = null;
       state.address = address;
-      state.steps = STEP_TITLES.map((t) => ({ ...t, status: "todo", result: null, refusal: null }));
+      state.realDevice = realDevice;
+      state.steps = stepTitles(realDevice ? STAX_LABEL : SIMULATED_DEVICE_LABEL).map((t) => ({
+        ...t,
+        status: "todo",
+        result: null,
+        refusal: null,
+      }));
       state.recoverableProven = false;
       state.authoritiesReviewed = false;
       state.recoverySeed = null;
@@ -182,14 +197,46 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
     });
   }
 
+  /** Reads the ML-DSA-44 key from the Stax again and keeps it as the evidence of step 3. */
+  async function readKeyAgain(firstKey: Uint8Array): Promise<void> {
+    const afterReinstall = state.recoveryConfirmed;
+    const second = await getMlDsaPublicKey(selection.transport);
+    secondRead = {
+      kind: "derived-twice",
+      first: firstKey,
+      second,
+      afterReinstall,
+      source: "device",
+    };
+    const same = equalBytes(second, firstKey);
+    state.recoverableProven = same && afterReinstall;
+    if (!same) {
+      throw new Error(
+        "The Stax answered a different ML-DSA-44 key: it is not the device (or the seed) of this account.",
+      );
+    }
+  }
+
   async function proveRecoverable(): Promise<void> {
     await guarded(async () => {
+      if (state.realDevice) {
+        if (mlDsa === null) throw new Error("Start with a fresh account");
+        await readKeyAgain(mlDsa.publicKey);
+        return;
+      }
       if (pendingSeed === null) throw new Error("Start with a fresh account");
       // A software device cannot be reinstalled, so the evidence is a backup the person saves.
       state.recoverySeed = pendingSeed;
       backupDescription =
         "The seed of the SIMULATED device was shown to the person, who confirmed saving it";
     });
+  }
+
+  function recoverability(): RecoverabilityEvidence | undefined {
+    if (state.realDevice) return secondRead ?? undefined;
+    return state.recoverySeed !== null && state.recoveryConfirmed && backupDescription !== null
+      ? { kind: "pq-backup", description: backupDescription }
+      : undefined;
   }
 
   async function sign(
@@ -224,10 +271,7 @@ export function createLiveMigration(deps: LiveMigrationDeps): MigrationControlle
         const report = await deps.exposure.checkRaw(plan.account, "alphanet");
         const refusals = disableMasterRefusals(plan, {
           proofResult: proof ?? undefined,
-          recoverability:
-            state.recoverySeed !== null && state.recoveryConfirmed && backupDescription !== null
-              ? { kind: "pq-backup", description: backupDescription }
-              : undefined,
+          recoverability: recoverability(),
           reviewedReport: report,
           authoritiesAcknowledged: state.authoritiesReviewed,
         });

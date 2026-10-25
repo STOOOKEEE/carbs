@@ -7,7 +7,7 @@
 export type ResultCategory = "tes" | "tec" | "tef" | "tel" | "tem" | "ter";
 
 export type SessionResultCode =
-  "tefSESSION_EXPIRED" | "tefSESSION_LIMIT" | "tefSESSION_TX_NOT_ALLOWED";
+  "tefSESSION_EXPIRED" | "tefSESSION_LIMIT" | "tefSESSION_TX_NOT_ALLOWED" | "tefSESSION_NO_WITNESS";
 
 export interface SessionRule {
   /** One sentence for the UI. */
@@ -16,7 +16,7 @@ export interface SessionRule {
   rule: string;
 }
 
-/** The rules behind the three session codes (section 6.5). */
+/** The rules behind the session codes (section 6.5, and the witness protection of carbs). */
 export const kSessionRules: Readonly<Record<SessionResultCode, SessionRule>> = {
   tefSESSION_TX_NOT_ALLOWED: {
     text: "The session does not allow this transaction (type, shape, or a missing or far LastLedgerSequence).",
@@ -27,8 +27,12 @@ export const kSessionRules: Readonly<Record<SessionResultCode, SessionRule>> = {
     rule: "FIANSO-SPEC.md 6.5 rule 3",
   },
   tefSESSION_LIMIT: {
-    text: "The fee is above the session's ceiling, or fee and amount exceed what remains of the cap.",
-    rule: "FIANSO-SPEC.md 6.5 rules 4 and 5",
+    text: "The fee is above the session's ceiling, fee and amount exceed what remains of the cap, or the amount is above the per-transaction bound.",
+    rule: "FIANSO-SPEC.md 6.5 rules 4 and 5, and the carbs protection SessionMaxPerTx",
+  },
+  tefSESSION_NO_WITNESS: {
+    text: "The session requires its witness's co-signature, and the transaction carries no valid one.",
+    rule: "carbs protection SessionWitness (on top of FIANSO-SPEC.md 6.5)",
   },
 };
 
@@ -97,6 +101,9 @@ export class SessionLimitError extends SessionRefusedError {
 export class SessionTxNotAllowedError extends SessionRefusedError {
   override readonly name = "SessionTxNotAllowedError";
 }
+export class SessionNoWitnessError extends SessionRefusedError {
+  override readonly name = "SessionNoWitnessError";
+}
 
 /** The typed error for a result code (`tesSUCCESS` has none). */
 export function resultError(code: string, nodeMessage: string, hash?: string): NodeResultError {
@@ -107,6 +114,8 @@ export function resultError(code: string, nodeMessage: string, hash?: string): N
       return new SessionLimitError(code, nodeMessage, hash);
     case "tefSESSION_TX_NOT_ALLOWED":
       return new SessionTxNotAllowedError(code, nodeMessage, hash);
+    case "tefSESSION_NO_WITNESS":
+      return new SessionNoWitnessError(code, nodeMessage, hash);
     default:
       return new NodeResultError(code, nodeMessage, hash);
   }

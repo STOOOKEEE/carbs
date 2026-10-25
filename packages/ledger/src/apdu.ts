@@ -55,6 +55,11 @@ export const kSw = {
 
 const kSwNames = new Map<number, string>(Object.entries(kSw).map(([name, sw]) => [sw, name]));
 
+/** `0x6985`. */
+export function formatStatusWord(statusWord: number): string {
+  return `0x${statusWord.toString(16).padStart(4, "0")}`;
+}
+
 export interface Apdu {
   cla: number;
   ins: number;
@@ -80,7 +85,7 @@ export class DeviceError extends Error {
     readonly ins: number,
   ) {
     super(
-      `device answered 0x${statusWord.toString(16).padStart(4, "0")} (${kSwNames.get(statusWord) ?? (statusWord >> 8 === 0x68 ? "parse error" : "unknown")}) to INS 0x${ins.toString(16).padStart(2, "0")}`,
+      `device answered ${formatStatusWord(statusWord)} (${kSwNames.get(statusWord) ?? (statusWord >> 8 === 0x68 ? "parse error" : "unknown")}) to INS 0x${ins.toString(16).padStart(2, "0")}`,
     );
   }
 }
@@ -133,7 +138,8 @@ export function encodeBip32Path(path: string): Uint8Array {
 /**
  * The Device Management Kit's `sendApdu` (`@ledgerhq/device-management-kit` 1.11.0,
  * `lib/types/src/api/DeviceManagementKit.d.ts:85`, args `lib/types/src/internal/send/use-case/SendApduUseCase.d.ts:8-16`,
- * answer `lib/types/src/api/device-session/ApduResponse.d.ts`): the only DMK call this package needs.
+ * answer `lib/types/src/api/device-session/ApduResponse.d.ts`): the only DMK call the commands
+ * need. `DeviceManagementKit` satisfies it as it is (`src/device.ts`).
  */
 export interface DmkApduSender {
   sendApdu(args: {
@@ -150,30 +156,5 @@ export function dmkTransport(dmk: DmkApduSender, sessionId: string): ApduTranspo
       const [hi = 0, lo = 0] = response.statusCode;
       return { data: response.data, statusWord: (hi << 8) | lo };
     },
-  };
-}
-
-/**
- * The raw exchange of the device track's DMK session (`LedgerXrp.exchange` of
- * `packages/ledger/src/device.ts` on `STOOOKEEE/n1-passkey-challenge-fix`): bytes in, data and
- * status word out.
- */
-export type RawExchange = (apdu: Uint8Array) => Promise<{ data: Uint8Array; status: number }>;
-
-/** An `ApduTransport` over a raw exchange. */
-export function rawTransport(exchange: RawExchange): ApduTransport {
-  return {
-    async exchange(apdu) {
-      const { data, status } = await exchange(encodeApdu(apdu));
-      return { data, statusWord: status };
-    },
-  };
-}
-
-/** A raw exchange over an `ApduTransport` (for example the simulated device). */
-export function rawExchangeOf(transport: ApduTransport): RawExchange {
-  return async (bytes) => {
-    const { data, statusWord } = await transport.exchange(decodeApdu(bytes));
-    return { data, status: statusWord };
   };
 }

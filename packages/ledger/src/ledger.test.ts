@@ -25,8 +25,6 @@ import {
   kCla,
   kInsPqSign,
   kSw,
-  rawExchangeOf,
-  rawTransport,
 } from "./apdu.js";
 import { DeviceContractError, signMlDsa } from "./commands.js";
 import { formatDuration, formatXrp, parseScreenVector, reviewLines } from "./screen.js";
@@ -204,22 +202,18 @@ describe("ML-DSA-44 root key through the contract (SIMULATED device)", () => {
     ]);
   });
 
-  it("works over the device track's raw exchange shape (250-byte chunks for 0x11)", async () => {
+  it("accepts 0x11 in chunks shorter than 255 bytes (250, as the first real-device client sent)", async () => {
     const simulated = device();
-    const exchange = rawExchangeOf(simulated);
-    // The device track's client sends 0x11 in 250-byte chunks; the app accepts up to 255.
     const tx = { ...sessionSet(kOwnAddress), SigningPubKey: bytesToHex(simulated.mlDsaPublicKey) };
     const message = encodeForSigning(tx, defs);
     for (let offset = 0; offset < message.length; offset += 250) {
       const last = offset + 250 >= message.length ? 1 : 0;
       const chunk = message.subarray(offset, offset + 250);
-      const answer = await exchange(
-        Uint8Array.of(0xe0, 0x11, offset === 0 ? 0 : 1, last, chunk.length, ...chunk),
+      const answer = await simulated.exchange(
+        decodeApdu(Uint8Array.of(0xe0, 0x11, offset === 0 ? 0 : 1, last, chunk.length, ...chunk)),
       );
-      expect(answer.status).toBe(kSw.ok);
+      expect(answer.statusWord).toBe(kSw.ok);
     }
-    const viaTransport = await deviceMlDsaSigner(rawTransport(exchange));
-    expect(bytesToHex(viaTransport.publicKey)).toBe(bytesToHex(simulated.mlDsaPublicKey));
   });
 
   it("refuses without the prefix, above 2 048 bytes, and on denial", async () => {

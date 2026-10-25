@@ -151,6 +151,7 @@ transResults()
         MAKE_ERROR(tefSESSION_EXPIRED,             "The signing session has expired."),
         MAKE_ERROR(tefSESSION_LIMIT,               "The fee or amount exceeds the signing session's limit."),
         MAKE_ERROR(tefSESSION_TX_NOT_ALLOWED,      "The signing session does not allow this transaction."),
+        MAKE_ERROR(tefSESSION_NO_WITNESS,          "The signing session's witness did not sign this transaction."),
 
         MAKE_ERROR(telLOCAL_ERROR,            "Local failure."),
         MAKE_ERROR(telBAD_DOMAIN,             "Domain too long."),

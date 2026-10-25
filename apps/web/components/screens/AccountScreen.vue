@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BusyNote from "~/components/ui/BusyNote.vue";
 import { computed, ref } from "vue";
+import LedgerDevicePicker from "~/components/ui/LedgerDevicePicker.vue";
 import ResultView from "~/components/ui/ResultView.vue";
 import ScreenHeader from "~/components/ui/ScreenHeader.vue";
 import SimBadge from "~/components/ui/SimBadge.vue";
@@ -70,6 +71,7 @@ async function create(profile: Profile): Promise<void> {
             The simulated Stax below works in any browser; the real one needs Chrome.
           </template>
         </p>
+        <LedgerDevicePicker v-if="profile.id === 'ledger' && backend.mode === 'live'" />
         <button
           class="btn btn-primary"
           :disabled="state.busy || (profile.id === 'ledger' && ledgerBlocked)"

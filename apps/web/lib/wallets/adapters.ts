@@ -182,7 +182,7 @@ async function createFor(host: WalletHost, profile: Profile, adapterName: string
   if (!ok) throw new Error(host.demo.state.error ?? `${adapterName} could not set up the account`);
 }
 
-/** The Ledger Stax, through the Device Management Kit only (simulated until the real flow exists). */
+/** The Ledger Stax through the Device Management Kit: the simulated double or a real one (USB). */
 export class LedgerStaxAdapter extends CarbsAdapter {
   readonly id = "ledger-stax";
   readonly name = LEDGER_STAX.name;

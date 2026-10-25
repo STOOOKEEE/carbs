@@ -5,6 +5,7 @@
  */
 
 export * from "./address.js";
+export * from "./batch.js";
 export * from "./bytes.js";
 export * from "./constants.js";
 export * from "./definitions.js";
