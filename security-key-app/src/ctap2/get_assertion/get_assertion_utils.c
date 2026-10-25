@@ -517,6 +517,11 @@ static int build_and_encode_getAssertion_response(uint8_t *buffer,
         }
     }
 
+    // carbs: a response that did not fit is an error, not a truncated reply.
+    if (encoder.fault) {
+        return ERROR_OTHER;
+    }
+
     *resultLen = encoder.offset;
     return ERROR_NONE;
 }
@@ -564,6 +569,23 @@ int handle_allowList_item(cbipDecoder_t *decoder, cbipItem_t *item, bool unwrap)
         PRINTF("Skipping invalid credential candidate\n");
         return ERROR_INVALID_CREDENTIAL;
     }
+
+#ifdef HAVE_MLDSA_CREDENTIALS
+    // carbs: an ML-DSA-44 credential cannot be answered where the response is copied into
+    // the APDU buffer (CTAP2 over U2F_MSG, NFC): skip it as unusable here, so that a later
+    // credential of the allowList (ES256...) is used instead of the whole request failing.
+    if (!ctap2_large_response_supported()) {
+        credential_data_t credData;
+        if ((credential_decode(&credData,
+                               ctap2AssertData->credential,
+                               ctap2AssertData->credentialLen,
+                               true) != 0) ||
+            (credData.coseAlgorithm == COSE_ALG_ML_DSA_44)) {
+            PRINTF("Skipping ML-DSA-44 credential on this transport\n");
+            return ERROR_INVALID_CREDENTIAL;
+        }
+    }
+#endif
 
     return 0;
 }

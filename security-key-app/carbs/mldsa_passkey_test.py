@@ -191,20 +191,44 @@ def cmd_make(args):
 
 
 def check_attestation(att, cdh):
-    """Packed attestation by the device's ES256 key over authData || clientDataHash."""
+    """Packed attestation by the device's ES256 key over authData || clientDataHash.
+
+    The app always attests this way, for every algorithm, so anything else is a failure. A
+    side-loaded build signs with the PUBLIC test attestation key of the app's repository
+    (attestations/data/test), under Ledger's AAGUID: the check proves the response is
+    consistent, not that it comes from a genuine Ledger (see CARBS.md).
+    """
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import ec
 
     stmt = att.att_stmt
     if att.fmt != "packed" or stmt.get("alg") != COSE_ALG_ES256 or not stmt.get("x5c"):
-        print("attestation: format %s alg %s (not checked)" % (att.fmt, stmt.get("alg")))
-        return
+        raise SystemExit(
+            "attestation is not packed ES256 with a certificate: format %r alg %r"
+            % (att.fmt, stmt.get("alg"))
+        )
     cert = x509.load_der_x509_certificate(bytes(stmt["x5c"][0]))
     cert.public_key().verify(
         bytes(stmt["sig"]), bytes(att.auth_data) + cdh, ec.ECDSA(hashes.SHA256())
     )
-    print("packed attestation verified (ES256, %s)" % cert.subject.rfc4514_string())
+    print("packed attestation verified (ES256)")
+    print("  subject %s" % cert.subject.rfc4514_string())
+    print("  issuer  %s" % cert.issuer.rfc4514_string())
+    print("  AAGUID  %s" % bytes(att.auth_data.credential_data.aaguid).hex())
+    # The test and production certificates carry the same names; tell them apart by content.
+    der = bytes(stmt["x5c"][0])
+    here = os.path.dirname(os.path.abspath(__file__))
+    for env in ("test", "prod"):
+        folder = os.path.join(here, "..", "attestations", "data", env, "FIDO2")
+        names = sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+        for name in names:
+            path = os.path.join(folder, name)
+            if name.endswith("-cert.der") and open(path, "rb").read() == der:
+                note = ""
+                if env == "test":
+                    note = "  (TEST key, public in the app's repository: not proof of a genuine Ledger)"
+                print("  certificate: %s/FIDO2/%s%s" % (env, name, note))
 
 
 def cmd_assert(args):

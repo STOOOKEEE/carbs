@@ -5,7 +5,7 @@
  * under test passes them (the seed of the nonce, where the keys go, the message, the
  * context), and the test checks the derivation chain, the COSE key layout, the signature
  * call (pure ML-DSA-44, empty context) and that the seed and the secret key are wiped.
- * The real ML-DSA runs on the device only; scripts/fido2_mldsa_test.py checks its output.
+ * The real ML-DSA runs on the device only; carbs/mldsa_passkey_test.py checks its output.
  */
 
 #include <stdint.h>
@@ -215,6 +215,10 @@ void test_sign_failures_wipe_the_secret_key(void) {
         -1,
         mldsa_credential_sign(nonce, message, sizeof(message), signature, sizeof(signature)));
     assert_secrets_wiped();
+
+    // The SDK leaves rejected candidates in the signature buffer: wiped too.
+    TEST_ASSERT_TRUE_MESSAGE(wipe_check_covered(signature, sizeof(signature)),
+                             "signature buffer not wiped on failure");
 
     setUp();
     sign_length = MLDSA44_SIGBYTES - 1;

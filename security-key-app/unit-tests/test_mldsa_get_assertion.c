@@ -7,7 +7,9 @@
  * arrives intact behind the credential and authData (resident or not), the message signed is
  * authenticatorData || clientDataHash, the nonce is read before the credential is rewrapped,
  * an ML-DSA assertion is refused where its response cannot be sent (CTAP2 over an APDU
- * transport), and a classical assertion keeps its APDU-sized bound.
+ * transport) and an ML-DSA credential of the allowList is skipped there, so that a later
+ * classical one is used; a response that does not fit is an error, not a truncated reply;
+ * and a classical assertion keeps its APDU-sized bound.
  */
 
 #include <stdint.h>
@@ -54,10 +56,12 @@ int format_hex(const uint8_t *in, size_t in_len, char *out, size_t out_len) {
     return 0;
 }
 
-#define CRED_ID_SIZE  100
-#define NONCE_OFFSET  17
-#define RK_CRED_SIZE  60
-#define AUTHDATA_SIZE 37
+#define CRED_ID_SIZE   100
+#define NONCE_OFFSET   17
+#define RK_CRED_SIZE   60
+#define AUTHDATA_SIZE  37
+#define ALG_BYTE_MLDSA 0x48
+#define ALG_BYTE_ES256 0x07
 
 static uint8_t cred_id[CRED_ID_SIZE];
 static uint8_t client_data_hash[CX_SHA256_SIZE];
@@ -123,12 +127,17 @@ static int fake_decode(credential_data_t *credData,
                        uint32_t encodedCredentialLen,
                        bool fullCredentials,
                        int n) {
-    (void) encodedCredential;
     (void) encodedCredentialLen;
     (void) fullCredentials;
     (void) n;
     memset(credData, 0, sizeof(*credData));
     credData->coseAlgorithm = decoded_alg;
+    // Credentials of the allowList tests carry their algorithm in their first byte.
+    if (encodedCredential != NULL && encodedCredential[0] == ALG_BYTE_MLDSA) {
+        credData->coseAlgorithm = COSE_ALG_ML_DSA_44;
+    } else if (encodedCredential != NULL && encodedCredential[0] == ALG_BYTE_ES256) {
+        credData->coseAlgorithm = COSE_ALG_ES256;
+    }
     credData->userId = user_id;
     credData->userIdLen = sizeof(user_id);
     return 0;
@@ -371,6 +380,176 @@ void test_es256_assertion_unchanged(void) {
     TEST_ASSERT_EQUAL_UINT32(70, bytesLen);
 }
 
+// credential_unwrap / credential_extract: the encoded credential is the ID after its first byte.
+static int fake_parse(const uint8_t *rpIdHash,
+                      uint8_t *credId,
+                      uint32_t credIdLen,
+                      uint8_t **nonce,
+                      uint8_t **encodedCredential,
+                      uint32_t *encodedCredentialLen,
+                      int n) {
+    (void) rpIdHash;
+    (void) n;
+    *nonce = credId + 1;
+    *encodedCredential = credId + 1;
+    *encodedCredentialLen = credIdLen - 1;
+    return 0;
+}
+
+static int fake_unwrap(const uint8_t *rpIdHash,
+                       uint8_t *credId,
+                       uint32_t credIdLen,
+                       uint8_t **nonce,
+                       uint8_t **encodedCredential,
+                       uint32_t *encodedCredentialLen,
+                       int n) {
+    return fake_parse(rpIdHash,
+                      credId,
+                      credIdLen,
+                      nonce,
+                      encodedCredential,
+                      encodedCredentialLen,
+                      n);
+}
+
+static int fake_extract(const uint8_t *rpIdHash,
+                        const uint8_t *credId,
+                        uint32_t credIdLen,
+                        uint8_t **nonce,
+                        uint8_t **encodedCredential,
+                        uint32_t *encodedCredentialLen,
+                        int n) {
+    return fake_parse(rpIdHash,
+                      (uint8_t *) credId,
+                      credIdLen,
+                      nonce,
+                      encodedCredential,
+                      encodedCredentialLen,
+                      n);
+}
+
+static int keep_rewrap(const uint8_t *rpIdHash, uint8_t *credId, uint32_t credIdLen, int n) {
+    (void) rpIdHash;
+    (void) credId;
+    (void) n;
+    return (int) credIdLen;
+}
+
+static uint8_t allow_request[256];
+static uint8_t cred_mldsa[40];
+static uint8_t cred_es256[40];
+
+// {3 (allowList): [{"id": ML-DSA credential, "type": "public-key"}, {"id": ES256 ...}]}
+static void build_allow_list_request(void) {
+    cbipEncoder_t encoder;
+    memset(cred_mldsa, 0x11, sizeof(cred_mldsa));
+    memset(cred_es256, 0x22, sizeof(cred_es256));
+    cred_mldsa[1] = ALG_BYTE_MLDSA;
+    cred_es256[1] = ALG_BYTE_ES256;
+    cbip_encoder_init(&encoder, allow_request, sizeof(allow_request));
+    cbip_add_map_header(&encoder, 1);
+    cbip_add_int(&encoder, TAG_ALLOWLIST);
+    cbip_add_array_header(&encoder, 2);
+    const uint8_t *creds[2] = {cred_mldsa, cred_es256};
+    for (int i = 0; i < 2; i++) {
+        cbip_add_map_header(&encoder, 2);
+        cbip_add_string(&encoder, "id", 2);
+        cbip_add_byte_string(&encoder, creds[i], sizeof(cred_mldsa));
+        cbip_add_string(&encoder, "type", 4);
+        cbip_add_string(&encoder, "public-key", 10);
+    }
+    TEST_ASSERT_FALSE(encoder.fault);
+    globals_get_ctap2_assert_data()->buffer = allow_request;
+}
+
+static int allow_list_item(int index) {
+    cbipDecoder_t decoder;
+    cbipItem_t map, item;
+    cbip_decoder_init(&decoder, allow_request, sizeof(allow_request));
+    cbip_first(&decoder, &map);
+    TEST_ASSERT_EQUAL_INT(
+        CBIPH_STATUS_FOUND,
+        cbiph_get_map_item(&decoder, &map, TAG_ALLOWLIST, NULL, &item, cbipArray));
+    cbip_next(&decoder, &item);
+    for (int i = 0; i < index; i++) {
+        cbiph_next_deep(&decoder, &item);
+    }
+    return handle_allowList_item(&decoder, &item, true);
+}
+
+// Over CTAP2 in an APDU (U2F_MSG, NFC) an ML-DSA credential of the allowList is skipped as
+// unusable; an ES256 one stays valid.
+void test_allow_list_skips_mldsa_over_an_apdu_transport(void) {
+    build_allow_list_request();
+    credential_unwrap_Stub(fake_unwrap);
+    ctap2_large_response_supported_IgnoreAndReturn(false);
+
+    TEST_ASSERT_EQUAL_INT(ERROR_INVALID_CREDENTIAL, allow_list_item(0));
+    TEST_ASSERT_EQUAL_INT(ERROR_NONE, allow_list_item(1));
+}
+
+void test_allow_list_keeps_mldsa_over_ctaphid(void) {
+    build_allow_list_request();
+    credential_unwrap_Stub(fake_unwrap);
+    ctap2_large_response_supported_IgnoreAndReturn(true);
+
+    TEST_ASSERT_EQUAL_INT(ERROR_NONE, allow_list_item(0));
+    TEST_ASSERT_EQUAL_HEX8(ALG_BYTE_MLDSA, globals_get_ctap2_assert_data()->credential[0]);
+}
+
+// The credential the login uses (the first available one) is then the ES256 one, listed
+// after the ML-DSA one: the assertion is signed, with ES256, instead of failing.
+void test_mixed_allow_list_uses_the_es256_credential_over_an_apdu_transport(void) {
+    ctap2_assert_data_t *assert_data = globals_get_ctap2_assert_data();
+
+    build_allow_list_request();
+    assert_data->allowListPresent = 1;
+    assert_data->availableCredentials = 1;
+    credential_extract_Stub(fake_extract);
+    ctap2_large_response_supported_IgnoreAndReturn(false);
+    decoded_alg = 0;
+    cose_alg_to_cx_IgnoreAndReturn(CX_CURVE_SECP256R1);
+    crypto_generate_private_key_IgnoreAndReturn(0);
+    cx_hash_sha256_IgnoreAndReturn(CX_SHA256_SIZE);
+    crypto_sign_application_IgnoreAndReturn(70);
+    send_cbor_response_Stub(capture_response);
+    credential_rewrap_in_place_Stub(keep_rewrap);
+
+    get_assertion_confirm(1);
+    // The credential ID points into the request: the second entry, the ES256 credential.
+    TEST_ASSERT_EQUAL_HEX8(ALG_BYTE_ES256, assert_data->credId[1]);
+    TEST_ASSERT_EQUAL_UINT32(sizeof(cred_es256), assert_data->credIdLen);
+    TEST_ASSERT_EQUAL_UINT(0, sign_calls);
+    TEST_ASSERT_EQUAL_HEX8(ERROR_NONE, responseBuffer[0]);
+    TEST_ASSERT_GREATER_THAN_UINT32(1, response_length);
+}
+
+// A resident credential whose user entity does not fit after the signature: an error, not a
+// response cut after the signature.
+void test_mldsa_assertion_refuses_a_user_entity_that_does_not_fit(void) {
+    ctap2_assert_data_t *assert_data = globals_get_ctap2_assert_data();
+    static char user_name[64];
+    credential_data_t credData = {.coseAlgorithm = COSE_ALG_ML_DSA_44,
+                                  .residentKey = 1,
+                                  .userId = user_id,
+                                  .userIdLen = sizeof(user_id),
+                                  .userStr = user_name,
+                                  .userStrLen = sizeof(user_name)};
+    uint32_t len = 0;
+
+    memset(user_name, 'u', sizeof(user_name));
+    g.display_status = false;
+    assert_data->credId = NULL;
+    // Room for the credential, authData and signature, not for the user's two 64-byte names.
+    TEST_ASSERT_EQUAL_INT(
+        ERROR_OTHER,
+        build_and_encode_getAssertion_response(responseBuffer + 1,
+                                               MLDSA_CREDENTIAL_SIGNATURE_SIZE + 270,
+                                               &credData,
+                                               &len));
+    TEST_ASSERT_EQUAL_UINT(1, sign_calls);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_mldsa_assertion_with_allow_list);
@@ -380,5 +559,9 @@ int main(void) {
     RUN_TEST(test_mldsa_assertion_sent_over_ctaphid);
     RUN_TEST(test_mldsa_assertion_refused_over_an_apdu_transport);
     RUN_TEST(test_es256_assertion_unchanged);
+    RUN_TEST(test_allow_list_skips_mldsa_over_an_apdu_transport);
+    RUN_TEST(test_allow_list_keeps_mldsa_over_ctaphid);
+    RUN_TEST(test_mixed_allow_list_uses_the_es256_credential_over_an_apdu_transport);
+    RUN_TEST(test_mldsa_assertion_refuses_a_user_entity_that_does_not_fit);
     return UNITY_END();
 }

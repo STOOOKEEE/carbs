@@ -28,15 +28,10 @@
 #include "crypto.h"
 #include "mldsa_credential.h"
 
-// Internal SDK function (lib_cxng/src/cx_mldsa_internal.h): deterministic key generation,
-// the only way to get a key pair recoverable from the device seed (the public lcx_mldsa.h
-// has the random MLDSA_keygen only). Same use as ledger-app/src/pq/pq_root.c.
-cx_err_t MLDSA_internal_keygen(uint8_t *pk,
-                               size_t pk_len,
-                               uint8_t *sk,
-                               size_t sk_len,
-                               const uint8_t seed[MLDSA_SEEDBYTES],
-                               MLDSA_param_t param);
+// Internal SDK header (lib_cxng/src, on the include path, see the Makefile): MLDSA_internal_keygen,
+// the deterministic key generation, the only way to get a key pair recoverable from the device
+// seed (the public lcx_mldsa.h has the random MLDSA_keygen only). As ledger-app/src/pq/pq_root.c.
+#include "cx_mldsa_internal.h"
 
 /*
  * RAM: the secret key (2560 bytes) lives on the stack for the duration of one call and is
@@ -114,6 +109,8 @@ int mldsa_credential_sign(const uint8_t *nonce,
     }
     explicit_bzero(secretKey, sizeof(secretKey));
     if (status < 0) {
+        // The SDK leaves rejected candidates (z) in the signature buffer on failure.
+        explicit_bzero(signature, signatureLength);
         PRINTF("ML-DSA signature failed\n");
     }
     return status;

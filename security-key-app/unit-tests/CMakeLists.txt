@@ -254,7 +254,7 @@ ledger_unit_tests_add_test(
                     ${APP_DIR}/cbor-src/cbip_decode.c
                     ${APP_DIR}/cbor-src/cbip_encode.c
     MOCK_HEADERS    ${SDK_DIR}/lib_cxng/include/lcx_ecfp.h
-    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS}
+    INCLUDE_DIRS    ${UT_INCLUDE_DIRS_SDK} ${UT_INCLUDE_DIRS} ${SDK_DIR}/lib_cxng/src
     COMPILE_DEFS    ${UT_MLDSA_COMPILE_DEFS}
     COMPILE_OPTIONS ${UT_SANITIZERS}
     LINK_OPTIONS    ${UT_SANITIZERS}

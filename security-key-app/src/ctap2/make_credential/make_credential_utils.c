@@ -264,6 +264,11 @@ static int sign_and_build_makeCred_response(uint8_t *authData,
     cbip_add_array_header(&encoder, 1);
     cbip_add_byte_string(&encoder, FIDO2_ATTESTATION_CERT, sizeof(FIDO2_ATTESTATION_CERT));
 
+    // carbs: a response that did not fit is an error, not a truncated reply.
+    if (encoder.fault) {
+        return -1;
+    }
+
     return encoder.offset;
 }
 
