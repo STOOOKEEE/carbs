@@ -145,6 +145,9 @@ static const char* testcases[] = {
     "04-ten-permissions.raw",
     "../../tests/standalone/testcases/30-signing-session-set/"
     "05-short-duration.raw",
+    // Encoded with the server_definitions of the carbs node (PR #29).
+    "../../tests/standalone/testcases/30-signing-session-set/"
+    "12-cap-per-tx-and-witness.raw",
     "../../tests/standalone/testcases/31-signing-session-delete/"
     "01-own-close.raw",
     "../../tests/standalone/testcases/31-signing-session-delete/"

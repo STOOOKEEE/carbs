@@ -1,0 +1,10 @@
+Transaction Type; Open session
+Account;   rEmnmhwxmkDk    j9jKiibNuXx     P25VYHJ5Euy   
+Session key;   rHH1fLR86zy5    uZjZXT8iEa4     CHK145ksjAK   
+Network ID; 24100
+Valid for; 5 minutes
+Fee; XRP 0.000012
+Max spend; XRP 50
+Max per payment; XRP 20
+Witness;   rHFqnKBYeky5    tuRySHP4EzK     oK5Xn2xZyYU   
+Note; Cannot change keys, signers or the account

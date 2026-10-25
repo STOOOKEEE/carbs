@@ -1,0 +1,14 @@
+{
+  "TransactionType": "SigningSessionSet",
+  "Account": "rEmnmhwxmkDkj9jKiibNuXxP25VYHJ5Euy",
+  "SessionKey": "rHH1fLR86zy5uZjZXT8iEa4CHK145ksjAK",
+  "SessionDuration": 300,
+  "SessionCap": "50000000",
+  "SessionMaxPerTx": "20000000",
+  "SessionWitness": "rHFqnKBYeky5tuRySHP4EzKoK5Xn2xZyYU",
+  "Fee": "12",
+  "Sequence": 102,
+  "LastLedgerSequence": 5002,
+  "NetworkID": 24100,
+  "SigningPubKey": "02EB0511FD55C2693C1A0E4C767D37ADF1C45B0138AC6ACE236DF58EB152E5E9AB"
+}
