@@ -33,7 +33,7 @@ Or let the host build: root directory `apps/web`, install command `pnpm install 
 | Local node                           | the live backend of Session, Actions and Attack: the standalone node of `infra/` with the amendment | `NUXT_PUBLIC_LOCAL_NODE_URL`, default `ws://localhost:6006` (its HTTP port is the admin RPC and is not in the policy)                                |
 | Mainnet (read-only)                  | the Quantum screen's exposure check only; nothing is ever submitted                                 | `wss://xrplcluster.com`, explorer `https://livenet.xrpl.org`                                                                                         |
 
-Explorer links for the app's transactions point at the explorer of the selected network.
+Explorer links for the app's transactions point at the explorer of the node the transaction was sent to.
 
 ## A hosted site and the node: https needs wss
 
@@ -49,7 +49,7 @@ A passkey signs with WebAuthn, and the public AlphaNet's validators may refuse s
 
 ## Browsers
 
-The Ledger path uses WebHID. **Use Chrome.** Brave and Firefox may not expose `navigator.hid`; the Account screen says so when it is missing. The simulated Stax works in any browser; the real one does not.
+The future Ledger path uses WebHID. **Use Chrome.** Brave and Firefox may not expose `navigator.hid`; the Account screen says so when it is missing. Today the Stax is SIMULATED and works in any browser; no real-device path exists yet.
 
 ## Security headers (set them at the host)
 
